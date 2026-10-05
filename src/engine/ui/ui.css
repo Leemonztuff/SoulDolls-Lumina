@@ -1,0 +1,1475 @@
+/*
+ * Lumina UI — Octopath Traveler II inspired overlay.
+ *
+ * Visual language: deep navy → black translucent panels, thin warm-gold double borders with
+ * small diamond ornaments, serif typography (Crimson Pro body, Cinzel display), cream text with a
+ * faint dark shadow, and slow, elegant easing. Everything scales with the viewport (clamp + vw)
+ * so it reads well from 1280 px up to 2560 px wide.
+ *
+ * Layering inside #lumina-ui (z-index): prompt 1 · hud 2 (minimap inside) · banner 3 · dialog 4 ·
+ * toasts 5 · title 6 · world map 7 · fader 8 · debug 9.
+ * Combat levels add (UI.enableCombat): world labels 1 (before the prompt) · vitals, skills, loot and
+ * boss bar inside the hud · announcer 3 · death screen 7 — their rules are in combat.css.
+ */
+
+/* ------------------------------------------------------------------------------------------ */
+/* Root & design tokens                                                                        */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-root {
+  --lu-gold: #c9a45c;
+  --lu-gold-hi: #e8cf8a;
+  --lu-gold-pale: #f4e3b3;
+  --lu-gold-lo: #8c6a32;
+  --lu-gold-line: rgba(201, 164, 92, 0.92);
+  --lu-gold-faint: rgba(232, 207, 138, 0.42);
+  --lu-cream: #f3ead7;
+  --lu-cream-dim: rgba(243, 234, 215, 0.7);
+  --lu-cream-faint: rgba(243, 234, 215, 0.45);
+  --lu-ink: #07080f;
+  --lu-panel-top: rgba(26, 34, 66, 0.86);
+  --lu-panel-mid: rgba(12, 16, 34, 0.9);
+  --lu-panel-bot: rgba(4, 5, 12, 0.93);
+  --lu-serif: 'Crimson Pro', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --lu-display: 'Cinzel', 'Trajan Pro', 'Crimson Pro', Georgia, serif;
+  --lu-pixel: 'Pixelify Sans', 'Consolas', monospace;
+
+  --lu-fs: clamp(17px, 1.45vw, 36px);      /* dialog body            (~23px @1600) */
+  --lu-fs-md: clamp(14px, 1.12vw, 28px);   /* plates, toasts, choices (~18px @1600) */
+  --lu-fs-sm: clamp(12px, 0.92vw, 23px);   /* labels                 (~15px @1600) */
+  --lu-fs-xs: clamp(10px, 0.76vw, 19px);   /* fine print             (~12px @1600) */
+  --lu-gap: clamp(14px, 1.6vw, 40px);      /* distance to the screen edge */
+  --lu-orn: clamp(11px, 0.86vw, 22px);     /* ornament diamond size */
+
+  --lu-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --lu-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --lu-ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  --lu-text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.45);
+  /* 1 px 4-way outline for Pixelify numerals (combat numbers, vitals, counters) */
+  --lu-outline: 1px 0 0 #120c08, -1px 0 0 #120c08, 0 1px 0 #120c08, 0 -1px 0 #120c08;
+
+  /* Ornament sprites (data-URI SVG): corner gem, mid-edge cluster, small side gem. */
+  --lu-orn-corner: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 .4 15.6 8 8 15.6 .4 8z' fill='%2305060c' fill-opacity='.92'/><path d='M8 2.3 13.7 8 8 13.7 2.3 8z' fill='%23b8904a'/><path d='M8 2.3 13.7 8H2.3z' fill='%23f1dba3'/><path d='M8 5.5 10.5 8 8 10.5 5.5 8z' fill='%233e2a10'/><path d='M8 5.5 10.5 8H5.5z' fill='%236e4f1e'/></svg>");
+  --lu-orn-mid: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 16'><path d='M22 .4 29.6 8 22 15.6 14.4 8z' fill='%2305060c' fill-opacity='.92'/><path d='M22 2.3 27.7 8 22 13.7 16.3 8z' fill='%23b8904a'/><path d='M22 2.3 27.7 8H16.3z' fill='%23f1dba3'/><path d='M22 5.5 24.5 8 22 10.5 19.5 8z' fill='%233e2a10'/><path d='M9 4.6 12.4 8 9 11.4 5.6 8z' fill='%2305060c' fill-opacity='.9'/><path d='M9 5.9 11.1 8 9 10.1 6.9 8z' fill='%23e8cf8a'/><path d='M35 4.6 38.4 8 35 11.4 31.6 8z' fill='%2305060c' fill-opacity='.9'/><path d='M35 5.9 37.1 8 35 10.1 32.9 8z' fill='%23e8cf8a'/></svg>");
+  --lu-orn-side: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 2.2 13.8 8 8 13.8 2.2 8z' fill='%2305060c' fill-opacity='.92'/><path d='M8 4.2 11.8 8 8 11.8 4.2 8z' fill='%23e8cf8a'/><path d='M8 4.2 11.8 8H4.2z' fill='%23f6e7bf'/></svg>");
+
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: none;
+  font-family: var(--lu-serif);
+  color: var(--lu-cream);
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  -webkit-user-select: none;
+  font-kerning: normal;
+}
+.lu-root--contained { position: absolute; }
+.lu-root *, .lu-root *::before, .lu-root *::after { box-sizing: border-box; }
+
+/* Photo mode: everything but the fader (and a combat death screen) fades away. */
+.lu-root.lu-root--hidden > :not(.lu-fader, .lu-death) {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none !important;
+  transition: opacity 0.4s var(--lu-ease), visibility 0s linear 0.4s;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Shared: the ornate panel                                                                     */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-panel {
+  position: relative;
+  background:
+    radial-gradient(130% 85% at 50% -18%, rgba(96, 118, 184, 0.2), rgba(96, 118, 184, 0) 62%),
+    linear-gradient(180deg, var(--lu-panel-top) 0%, var(--lu-panel-mid) 46%, var(--lu-panel-bot) 100%);
+  border: 1px solid var(--lu-gold-line);
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 1px rgba(3, 4, 10, 0.7),
+    inset 0 0 0 1px rgba(3, 4, 10, 0.55),
+    inset 0 1px 0 1px rgba(255, 236, 190, 0.05),
+    0 14px 34px -8px rgba(0, 0, 0, 0.7),
+    0 3px 8px rgba(0, 0, 0, 0.35);
+}
+/* inner (second) gold line of the double border */
+.lu-panel::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--lu-gold-faint);
+  border-radius: 1px;
+  pointer-events: none;
+}
+/* diamond ornaments: 4 corners + 4 mid-edges, all in one pseudo element */
+.lu-panel::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--lu-orn) / -2 - 0.5px);
+  pointer-events: none;
+  background:
+    var(--lu-orn-corner) left top / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-corner) right top / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-corner) left bottom / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-corner) right bottom / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-mid) center top / calc(var(--lu-orn) * 2.75) var(--lu-orn) no-repeat,
+    var(--lu-orn-mid) center bottom / calc(var(--lu-orn) * 2.75) var(--lu-orn) no-repeat,
+    var(--lu-orn-side) left center / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-side) right center / var(--lu-orn) var(--lu-orn) no-repeat;
+}
+/* compact panels: corner gems only */
+.lu-panel--simple::after {
+  background:
+    var(--lu-orn-corner) left top / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-corner) right top / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-corner) left bottom / var(--lu-orn) var(--lu-orn) no-repeat,
+    var(--lu-orn-corner) right bottom / var(--lu-orn) var(--lu-orn) no-repeat;
+}
+
+/* A small rotated-square gem (inline). */
+.lu-gem {
+  display: inline-block;
+  width: 0.46em;
+  height: 0.46em;
+  flex: none;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, var(--lu-gold-pale) 0%, var(--lu-gold) 55%, var(--lu-gold-lo) 100%);
+  box-shadow: 0 0 0 1px rgba(5, 6, 12, 0.85), 0 0 6px rgba(232, 207, 138, 0.35);
+}
+
+/* Keycap */
+.lu-keys { display: inline-flex; align-items: center; gap: 0.28em; white-space: nowrap; }
+.lu-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75em;
+  height: 1.6em;
+  padding: 0 0.42em 0.08em;
+  font-family: var(--lu-pixel);
+  font-size: 0.82em;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #2a1d0c;
+  background: linear-gradient(180deg, #fbf3dc 0%, #eadbb4 58%, #d6c08e 100%);
+  border-radius: 3px;
+  box-shadow:
+    0 0 0 1px rgba(20, 14, 6, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 0 rgba(140, 106, 50, 0.55),
+    0 2px 0 1px rgba(10, 8, 4, 0.75),
+    0 3px 6px rgba(0, 0, 0, 0.45);
+  text-shadow: none;
+  transform: translateY(-1px);
+}
+.lu-key--wide { min-width: 3.4em; }
+.lu-key--sym { font-family: var(--lu-serif); font-weight: 600; } /* 600 is the heaviest loaded Crimson Pro face */
+.lu-key-sep { font-size: 0.8em; opacity: 0.55; margin: 0 -0.05em; }
+
+/* ------------------------------------------------------------------------------------------ */
+/* Dialog box                                                                                   */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-dialog {
+  --lu-portrait: var(--lu-gold);
+  position: absolute;
+  left: 50%;
+  bottom: clamp(18px, 4.6vh, 64px);
+  width: min(76vw, calc(var(--lu-fs) * 47)); /* ≈ 66–68% of the viewport (contract: ~70%) */
+  z-index: 4;
+  font-size: var(--lu-fs);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 18px);
+  transition: opacity 0.32s var(--lu-ease), transform 0.42s var(--lu-ease-out), visibility 0s linear 0.42s;
+}
+.lu-dialog.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition: opacity 0.32s var(--lu-ease), transform 0.5s var(--lu-ease-out), visibility 0s;
+}
+.lu-dialog.is-closing {
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  transition: opacity 0.26s var(--lu-ease-in), transform 0.3s var(--lu-ease-in), visibility 0s linear 0.3s;
+}
+
+.lu-dialog__panel {
+  --lu-panel-top: rgba(26, 33, 66, 0.9);
+  --lu-panel-mid: rgba(12, 15, 33, 0.93);
+  --lu-panel-bot: rgba(4, 5, 12, 0.95);
+  pointer-events: auto;
+  cursor: pointer;
+  min-height: calc(3 * 1.52em + 1.95em);
+  padding: 0.98em 1.7em 0.97em 1.75em;
+}
+/* faint horizontal sheen along the top inside the panel */
+.lu-dialog__sheen {
+  position: absolute;
+  left: 6px; right: 6px; top: 6px;
+  height: 38%;
+  background: linear-gradient(180deg, rgba(160, 180, 240, 0.07), rgba(160, 180, 240, 0));
+  pointer-events: none;
+}
+
+.lu-dialog__text {
+  position: relative;
+  font-size: 1em;
+  line-height: 1.52;
+  font-weight: 400;
+  letter-spacing: 0.012em;
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+  min-height: calc(3 * 1.52em);
+  font-feature-settings: 'kern', 'liga', 'onum';
+}
+.lu-dialog__text .lu-w { white-space: nowrap; }
+.lu-dialog__text .lu-c { opacity: 0; transition: opacity 0.16s linear; }
+.lu-dialog__text .lu-c.is-on { opacity: 1; }
+.lu-dialog__text .lu-hl { color: #f3cf7a; }
+
+/* Speaker name plate overlapping the top-left border */
+.lu-dialog__name {
+  position: absolute;
+  left: 1.35em;
+  top: 0;
+  transform: translateY(-58%);
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  padding: 0.3em 1.15em 0.34em 0.95em;
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 0.74em;
+  letter-spacing: 0.1em;
+  color: var(--lu-gold-hi);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 10px rgba(232, 180, 90, 0.25);
+  background: linear-gradient(180deg, rgba(34, 42, 78, 0.98) 0%, rgba(12, 15, 32, 0.98) 100%);
+  border: 1px solid var(--lu-gold-line);
+  box-shadow:
+    0 0 0 1px rgba(3, 4, 10, 0.75),
+    inset 0 0 0 2px rgba(5, 6, 14, 0.9),
+    inset 0 0 0 3px rgba(232, 207, 138, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  transition: opacity 0.2s var(--lu-ease), transform 0.3s var(--lu-ease-out);
+}
+.lu-dialog__name::before,
+.lu-dialog__name::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 0.5em;
+  height: 0.5em;
+  background: linear-gradient(135deg, var(--lu-gold-pale), var(--lu-gold) 55%, var(--lu-gold-lo));
+  box-shadow: 0 0 0 1px rgba(5, 6, 12, 0.9);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.lu-dialog__name::before { left: 0; }
+.lu-dialog__name::after { left: 100%; }
+.lu-dialog__name.is-empty { opacity: 0; transform: translateY(-40%); }
+.lu-dialog__name.is-swap { opacity: 0; transform: translate(-6px, -58%); transition: none; }
+.lu-dialog__gem {
+  width: 0.62em;
+  height: 0.62em;
+  border-radius: 50%;
+  flex: none;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.85) 0 12%, var(--lu-portrait) 45%, rgba(0, 0, 0, 0.55) 110%);
+  box-shadow: 0 0 0 1px rgba(5, 6, 12, 0.9), 0 0 0 2px rgba(232, 207, 138, 0.55), 0 0 8px var(--lu-portrait);
+}
+
+/* "Next" indicator */
+.lu-dialog__next {
+  position: absolute;
+  right: 1.2em;
+  bottom: 0.62em;
+  width: 0.98em;
+  height: 0.74em;
+  opacity: 0;
+  transition: opacity 0.18s var(--lu-ease);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 5px rgba(240, 200, 120, 0.45));
+}
+.lu-dialog__next svg { display: block; width: 100%; height: 100%; }
+.lu-dialog__next.is-on { opacity: 1; animation: lu-next-bob 1.1s var(--lu-ease) infinite; }
+.lu-dialog__next .lu-end { display: none; }
+.lu-dialog__next.is-last .lu-arrow { display: none; }
+.lu-dialog__next.is-last .lu-end { display: block; }
+.lu-dialog__next.is-last.is-on { animation: lu-next-pulse 1.6s ease-in-out infinite; }
+@keyframes lu-next-bob {
+  0%, 100% { transform: translateY(-2px); opacity: 1; }
+  50% { transform: translateY(3px); opacity: 0.55; }
+}
+@keyframes lu-next-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Choices: a separate ornate window floating above the dialog's right edge */
+.lu-dialog__choices {
+  position: absolute;
+  right: 1.1em;
+  bottom: calc(100% + 1.15em);
+  min-width: 13em;
+  max-width: 88%;
+  margin: 0;
+  padding: 0.62em 1.4em 0.66em 1.05em;
+  list-style: none;
+  font-size: 0.93em;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity 0.22s var(--lu-ease), transform 0.34s var(--lu-ease-out), visibility 0s linear 0.34s;
+}
+.lu-dialog__choices.is-on {
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.26s var(--lu-ease), transform 0.4s var(--lu-ease-out), visibility 0s;
+}
+.lu-choice {
+  position: relative;
+  padding: 0.16em 0.4em 0.18em 1.55em;
+  line-height: 1.35;
+  color: var(--lu-cream-dim);
+  text-shadow: var(--lu-text-shadow);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s var(--lu-ease);
+}
+.lu-choice::before {
+  /* selection bar */
+  content: '';
+  position: absolute;
+  left: 0.9em; right: -0.6em; top: 8%; bottom: 8%;
+  background: linear-gradient(90deg, rgba(232, 190, 110, 0.22), rgba(232, 190, 110, 0.06) 70%, rgba(232, 190, 110, 0));
+  border-left: 1px solid rgba(232, 207, 138, 0.5);
+  opacity: 0;
+  transition: opacity 0.15s var(--lu-ease);
+}
+.lu-choice.is-sel { color: #fff6e0; }
+.lu-choice.is-sel::before { opacity: 1; }
+.lu-choice__label { position: relative; }
+.lu-choice__cursor {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0.62em;
+  height: 0.74em;
+  margin-top: -0.37em;
+  opacity: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 4px rgba(240, 200, 120, 0.5));
+}
+.lu-choice__cursor svg { display: block; width: 100%; height: 100%; }
+.lu-choice.is-sel .lu-choice__cursor { opacity: 1; animation: lu-cursor-nudge 0.9s var(--lu-ease) infinite; }
+.lu-dialog__choices:not(.is-on) .lu-choice__cursor { animation-play-state: paused; }
+@keyframes lu-cursor-nudge {
+  0%, 100% { transform: translateX(-1px); }
+  50% { transform: translateX(3px); }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Area banner                                                                                  */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-banner {
+  position: absolute;
+  left: 50%;
+  top: clamp(56px, 12.5vh, 200px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  opacity: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  /* own compositor layer from the start: promoting it lazily (when the fade-out's transform
+     animation begins) cost a one-time ~200 ms GPU stall */
+  will-change: opacity, transform;
+}
+.lu-banner.is-in { opacity: 1; visibility: visible; animation: lu-fade-in 0.9s var(--lu-ease) both; }
+.lu-banner.is-out { visibility: visible; animation: lu-banner-out 1.1s var(--lu-ease) both; }
+.lu-banner__shade {
+  /* soft dark band that keeps the title legible over any scenery */
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 135%;
+  height: 260%;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(closest-side, rgba(4, 6, 16, 0.8), rgba(4, 6, 16, 0.58) 45%, rgba(4, 6, 16, 0.22) 78%, rgba(4, 6, 16, 0) 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+.lu-banner__row { display: flex; align-items: center; justify-content: center; }
+.lu-banner__rule {
+  width: clamp(40px, 7.5vw, 190px);
+  height: 1px;
+  background: linear-gradient(90deg, rgba(232, 207, 138, 0), rgba(232, 207, 138, 0.95));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+  transform: scaleX(0);
+  transform-origin: right center;
+}
+.lu-banner__rule--r {
+  background: linear-gradient(270deg, rgba(232, 207, 138, 0), rgba(232, 207, 138, 0.95));
+  transform-origin: left center;
+}
+.lu-banner__flourish {
+  width: clamp(84px, 7.6vw, 200px);
+  height: auto;
+  aspect-ratio: 160 / 40;
+  flex: none;
+  opacity: 0;
+  /* no CSS filter here: the SVG carries its own (baked) shadow — filtered layers were the other
+     half of the banner's fade-out stall */
+}
+.lu-banner__flourish svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.lu-banner__flourish--r { transform: scaleX(-1); }
+.lu-banner__title {
+  margin: 0 0.35em;
+  font-family: var(--lu-display);
+  font-weight: 600;
+  font-size: clamp(30px, 3.3vw, 84px);
+  line-height: 1.1;
+  letter-spacing: 0.2em;
+  padding-left: 0.2em; /* balances trailing letter-spacing */
+  color: #fbf4e2;
+  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.85), 0 0 18px rgba(255, 214, 150, 0.35), 0 0 42px rgba(255, 190, 110, 0.18);
+}
+.lu-banner__sub {
+  margin-top: 0.35em;
+  font-family: var(--lu-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(15px, 1.3vw, 33px);
+  letter-spacing: 0.08em;
+  color: var(--lu-gold-hi);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+}
+.lu-banner__sub:empty { display: none; }
+.lu-banner__under {
+  margin-top: 0.7em;
+  width: clamp(120px, 16vw, 400px);
+  height: 1px;
+  background: linear-gradient(90deg, rgba(232, 207, 138, 0), rgba(232, 207, 138, 0.7) 30%, rgba(232, 207, 138, 0.7) 70%, rgba(232, 207, 138, 0));
+  transform: scaleX(0);
+}
+.lu-banner.is-in .lu-banner__rule { animation: lu-rule-in 1.25s var(--lu-ease-out) 0.2s both; }
+.lu-banner.is-in .lu-banner__flourish { animation: lu-fade-in 0.9s var(--lu-ease) 0.45s both; }
+.lu-banner.is-in .lu-banner__title { animation: lu-banner-title-in 1.6s var(--lu-ease-out) 0.1s both; }
+.lu-banner.is-in .lu-banner__sub { animation: lu-sub-in 1.1s var(--lu-ease-out) 0.75s both; }
+.lu-banner.is-in .lu-banner__under { animation: lu-rule-in 1.2s var(--lu-ease-out) 0.9s both; }
+.lu-banner.is-out .lu-banner__rule,
+.lu-banner.is-out .lu-banner__under { transform: scaleX(1); }
+.lu-banner.is-out .lu-banner__flourish,
+.lu-banner.is-out .lu-banner__sub { opacity: 1; }
+.lu-banner.is-out .lu-banner__title { animation: lu-banner-title-out 1.1s var(--lu-ease) both; }
+
+@keyframes lu-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lu-rule-in { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes lu-sub-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes lu-banner-title-in {
+  0% { opacity: 0; letter-spacing: 0.62em; padding-left: 0.62em; filter: blur(5px); }
+  55% { filter: blur(0); }
+  100% { opacity: 1; letter-spacing: 0.2em; padding-left: 0.2em; filter: blur(0); }
+}
+@keyframes lu-banner-title-out {
+  /* a compositor-only drift outward (animating letter-spacing re-laid-out the title every frame) */
+  from { transform: scaleX(1); }
+  to { transform: scaleX(1.05); }
+}
+@keyframes lu-banner-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, -6px); }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Title screen                                                                                 */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-title {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 6vh;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  background:
+    radial-gradient(ellipse 50% 30% at 50% 43%, rgba(6, 8, 20, 0.62) 0%, rgba(6, 8, 20, 0.3) 55%, rgba(6, 8, 20, 0) 100%),
+    radial-gradient(ellipse 30% 9% at 50% 71%, rgba(4, 5, 14, 0.55) 0%, rgba(4, 5, 14, 0) 100%),
+    radial-gradient(ellipse 80% 78% at 50% 46%, rgba(4, 5, 12, 0) 30%, rgba(4, 5, 12, 0.62) 74%, rgba(2, 3, 8, 0.94) 100%),
+    linear-gradient(180deg, rgba(3, 4, 10, 0.6) 0%, rgba(3, 4, 10, 0.22) 30%, rgba(3, 4, 10, 0.22) 60%, rgba(3, 4, 10, 0.82) 100%);
+  transition: opacity 1.1s var(--lu-ease), visibility 0s linear 1.1s;
+}
+.lu-title.is-gone { display: none; }
+.lu-title.is-on { opacity: 1; visibility: visible; transition: opacity 1.4s var(--lu-ease), visibility 0s; }
+.lu-title.is-leaving { pointer-events: none; }
+.lu-title.is-leaving .lu-title__inner { transform: scale(1.025); filter: blur(2px); transition: transform 1.2s var(--lu-ease), filter 1.2s var(--lu-ease); }
+
+.lu-title__inner { position: relative; display: flex; flex-direction: column; align-items: center; }
+.lu-title__motes { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.lu-mote {
+  position: absolute;
+  left: var(--x);
+  bottom: -3%;
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 250, 230, 1) 0%, rgba(255, 220, 160, 0.75) 32%, rgba(255, 190, 110, 0) 70%);
+  box-shadow: 0 0 calc(var(--s) * 0.9) rgba(255, 200, 120, 0.45);
+  opacity: 0;
+  animation: lu-mote var(--d) linear var(--dl) infinite;
+  will-change: transform, opacity;
+}
+@keyframes lu-mote {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  14% { opacity: var(--a); }
+  50% { transform: translate3d(var(--sw), -56vh, 0); }
+  82% { opacity: var(--a); }
+  100% { transform: translate3d(calc(var(--sw) * -0.6), -112vh, 0); opacity: 0; }
+}
+.lu-title__crest {
+  width: clamp(44px, 3.9vw, 100px);
+  aspect-ratio: 1;
+  margin-bottom: clamp(6px, 0.9vh, 16px);
+  filter: drop-shadow(0 0 8px rgba(255, 205, 130, 0.45)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.7));
+  opacity: 0;
+}
+.lu-title__crest svg { display: block; width: 100%; height: 100%; }
+.lu-title__crest .lu-crest-spin { transform-origin: 32px 32px; animation: lu-spin 60s linear infinite; }
+.lu-title__namewrap { position: relative; }
+.lu-title__name,
+.lu-title__glow {
+  margin: 0;
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: clamp(56px, 7.2vw, 188px);
+  line-height: 1.04;
+  letter-spacing: 0.085em;
+  padding-left: 0.085em;
+  white-space: nowrap;
+}
+.lu-title__glow {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  text-shadow:
+    0 0 0.22em rgba(255, 205, 128, 0.5),
+    0 0 0.7em rgba(255, 170, 90, 0.28),
+    0 0.05em 0.06em rgba(0, 0, 0, 0.85),
+    0 0.08em 0.3em rgba(0, 0, 0, 0.6);
+  animation: lu-breathe 5.5s ease-in-out infinite;
+}
+.lu-title__name {
+  position: relative;
+  color: #e8cf8a;
+  background:
+    linear-gradient(105deg, rgba(255, 255, 240, 0) 42%, rgba(255, 252, 235, 0.95) 50%, rgba(255, 255, 240, 0) 58%) 0 0 / 280% 100% no-repeat,
+    linear-gradient(180deg, #fff7da 0%, #f6e1a1 26%, #e3be6c 50%, #b88a3f 74%, #8f6428 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: lu-shimmer 7s ease-in-out 2.4s infinite;
+  background-position: 130% 0, 0 0;
+}
+.lu-title__divider {
+  width: clamp(300px, 34vw, 860px);
+  aspect-ratio: 400 / 28;
+  margin-top: clamp(6px, 1.1vh, 22px);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 6px rgba(232, 190, 110, 0.35));
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+  transform: scaleX(0);
+}
+.lu-title__divider svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.lu-title__sub {
+  margin-top: clamp(6px, 1.1vh, 22px);
+  font-family: var(--lu-serif);
+  font-style: italic;
+  font-size: clamp(17px, 1.55vw, 40px);
+  letter-spacing: 0.12em;
+  color: var(--lu-cream);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 14px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+}
+.lu-title__sub:empty { display: none; }
+.lu-title__prompt {
+  margin-top: clamp(40px, 12vh, 200px);
+  display: flex;
+  align-items: center;
+  gap: 1.1em;
+  font-family: var(--lu-display);
+  font-weight: 600;
+  font-size: clamp(13px, 1.08vw, 27px);
+  letter-spacing: 0.34em;
+  padding-left: 0.34em;
+  text-transform: uppercase;
+  color: #fbf1d8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8), 0 0 22px rgba(255, 210, 140, 0.3);
+  opacity: 0;
+}
+.lu-title__prompt .lu-gem { width: 0.5em; height: 0.5em; }
+.lu-title__prompt-text { animation: lu-blink 2.6s ease-in-out infinite; }
+.lu-title__credit {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: clamp(14px, 3.4vh, 48px);
+  text-align: center;
+  font-family: var(--lu-display);
+  font-size: clamp(10px, 0.72vw, 18px);
+  letter-spacing: 0.24em;
+  color: rgba(243, 234, 215, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  opacity: 0;
+}
+.lu-title.is-on .lu-title__crest { animation: lu-crest-in 1.8s var(--lu-ease-out) 0.2s both; }
+.lu-title.is-on .lu-title__namewrap { animation: lu-title-name-in 2.2s var(--lu-ease-out) 0.1s both; }
+.lu-title.is-on .lu-title__divider { animation: lu-rule-in 1.6s var(--lu-ease-out) 0.8s both; }
+.lu-title.is-on .lu-title__sub { animation: lu-sub-in 1.4s var(--lu-ease-out) 1.15s both; }
+.lu-title.is-on .lu-title__prompt { animation: lu-fade-in 1.2s var(--lu-ease) 1.7s both; }
+.lu-title.is-on .lu-title__credit { animation: lu-fade-in 1.6s var(--lu-ease) 1.9s both; }
+
+@keyframes lu-title-name-in {
+  0% { opacity: 0; transform: translateY(10px) scale(0.985); filter: blur(8px); letter-spacing: 0.3em; }
+  60% { filter: blur(0); }
+  100% { opacity: 1; transform: none; filter: blur(0); letter-spacing: normal; }
+}
+@keyframes lu-crest-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.8); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes lu-breathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+@keyframes lu-shimmer {
+  0% { background-position: 130% 0, 0 0; }
+  38%, 100% { background-position: -30% 0, 0 0; }
+}
+@keyframes lu-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes lu-spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------------------------------------ */
+/* HUD                                                                                          */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transition: opacity 0.5s var(--lu-ease), visibility 0s;
+}
+.lu-hud.is-hidden { opacity: 0; visibility: hidden; transition: opacity 0.5s var(--lu-ease), visibility 0s linear 0.5s; }
+
+/* Location plate (top-left) */
+.lu-loc {
+  position: absolute;
+  left: var(--lu-gap);
+  top: var(--lu-gap);
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.5em 3.6em 0.52em 0.9em;
+  font-size: var(--lu-fs-md);
+  background: linear-gradient(90deg, rgba(8, 11, 26, 0.86) 0%, rgba(8, 11, 26, 0.72) 55%, rgba(8, 11, 26, 0) 100%);
+  transition: opacity 0.45s var(--lu-ease), transform 0.55s var(--lu-ease-out);
+}
+.lu-loc::before,
+.lu-loc::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 164, 92, 0.95), rgba(201, 164, 92, 0.55) 60%, rgba(201, 164, 92, 0));
+}
+.lu-loc::before { top: 0; }
+.lu-loc::after { bottom: 0; }
+.lu-loc.is-empty { opacity: 0; }
+.lu-loc.is-swap { opacity: 0; transform: translateX(-10px); transition: none; }
+.lu-loc__icon {
+  width: 1.45em;
+  height: 1.45em;
+  flex: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 5px rgba(232, 190, 110, 0.3));
+}
+.lu-loc__icon svg { display: block; width: 100%; height: 100%; }
+.lu-loc__text { display: flex; flex-direction: column; }
+.lu-loc__name {
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 1em;
+  letter-spacing: 0.12em;
+  line-height: 1.15;
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+  white-space: nowrap;
+}
+.lu-loc__sub {
+  font-family: var(--lu-serif);
+  font-style: italic;
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  color: var(--lu-gold-hi);
+  text-shadow: var(--lu-text-shadow);
+  white-space: nowrap;
+}
+.lu-loc__sub:empty { display: none; }
+
+/* Clock (top-right) */
+.lu-clock {
+  --lu-phase: #f2c262;
+  position: absolute;
+  right: var(--lu-gap);
+  top: var(--lu-gap);
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.55em 1.2em 0.62em 0.9em;
+  font-size: var(--lu-fs-md);
+}
+.lu-clock__icon {
+  position: relative;
+  width: 2.35em;
+  height: 2.35em;
+  flex: none;
+}
+.lu-clock__icon::before {
+  content: '';
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--lu-phase), rgba(0, 0, 0, 0) 100%);
+  opacity: 0.32;
+  transition: background 0.8s var(--lu-ease);
+}
+.lu-clock__icon svg { position: relative; display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)); }
+.lu-clock__icon .lu-rays { transform-origin: 16px 16px; animation: lu-spin 40s linear infinite; }
+.lu-clock__body { display: flex; flex-direction: column; align-items: flex-start; min-width: 5.2em; }
+.lu-clock__time {
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 1.3em;
+  line-height: 1.05;
+  letter-spacing: 0.06em;
+  color: var(--lu-gold-pale);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 10px rgba(240, 200, 120, 0.25);
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.lu-clock__colon { display: inline-block; margin: 0 0.04em; transform: translateY(-0.06em); animation: lu-colon 2s steps(1) infinite; }
+/* SVG transform animations repaint every frame: freeze them while the HUD is hidden */
+.lu-hud.is-hidden .lu-rays, .lu-hud.is-hidden .lu-clock__colon,
+.lu-root--title .lu-hud .lu-rays, .lu-root--title .lu-hud .lu-clock__colon { animation-play-state: paused; }
+@keyframes lu-colon { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0.35; } }
+.lu-clock__phase {
+  font-family: var(--lu-serif);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 0.82em;
+  letter-spacing: 0.08em;
+  color: var(--lu-phase);
+  text-shadow: var(--lu-text-shadow);
+  white-space: nowrap;
+  transition: color 0.8s var(--lu-ease);
+}
+.lu-clock__track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  margin-top: 0.36em;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    #25306a 0%, #2b3778 18%, #c98aa0 25%, #f3c989 30%, #f5e4b0 45%, #f5e4b0 58%,
+    #f2b45a 71%, #d07a55 78%, #6e4f8c 84%, #2b3778 90%, #25306a 100%);
+  box-shadow: 0 0 0 1px rgba(3, 4, 10, 0.8);
+  opacity: 0.8;
+}
+.lu-clock__mark {
+  position: absolute;
+  left: calc(var(--lu-t, 0.5) * 100%);
+  top: 50%;
+  width: 0.46em;
+  height: 0.46em;
+  margin: -0.23em 0 0 -0.23em;
+  transform: rotate(45deg);
+  background: #fff4d0;
+  box-shadow: 0 0 0 1px rgba(3, 4, 10, 0.9), 0 0 6px rgba(255, 230, 170, 0.9);
+}
+.lu-clock[data-phase='night'] { --lu-phase: #a9bff5; }
+.lu-clock[data-phase='dawn'] { --lu-phase: #f2a7a4; }
+.lu-clock[data-phase='morning'] { --lu-phase: #f5dc98; }
+.lu-clock[data-phase='midday'] { --lu-phase: #fbe7a6; }
+.lu-clock[data-phase='afternoon'] { --lu-phase: #f3cf7c; }
+.lu-clock[data-phase='golden'] { --lu-phase: #f6b25a; }
+.lu-clock[data-phase='dusk'] { --lu-phase: #d69ac0; }
+
+/* Controls legend (bottom-left) */
+.lu-help {
+  position: absolute;
+  left: var(--lu-gap);
+  bottom: var(--lu-gap);
+  padding: 0.85em 1.25em 0.9em 1.1em;
+  font-size: var(--lu-fs-sm);
+  transition: opacity 0.35s var(--lu-ease), transform 0.45s var(--lu-ease-out), visibility 0s;
+}
+.lu-help.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-14px);
+  transition: opacity 0.3s var(--lu-ease), transform 0.4s var(--lu-ease), visibility 0s linear 0.4s;
+}
+.lu-help.is-empty { display: none; }
+/* the legend is ~27em tall: on short windows it would cover the location plate */
+@media (max-height: 540px) { .lu-help { display: none; } }
+.lu-root--dialog .lu-help:not(.is-hidden) { opacity: 0; transform: translateX(-14px); }
+
+/* While the title screen is up the HUD and prompt stay hidden; during dialog the prompt hides. */
+.lu-root--title .lu-hud,
+.lu-root--title .lu-prompt,
+.lu-root--dialog .lu-prompt {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: opacity 0.35s var(--lu-ease), visibility 0s linear 0.35s;
+}
+.lu-help__title {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: -0.1em 0 0.6em;
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 0.8em;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--lu-gold-hi);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-help__title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  min-width: 2em;
+  background: linear-gradient(90deg, rgba(201, 164, 92, 0.8), rgba(201, 164, 92, 0));
+}
+.lu-help__grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 0.95em;
+  row-gap: 0.42em;
+}
+.lu-help__keys { justify-self: end; }
+.lu-help__label {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+  white-space: nowrap;
+}
+.lu-help__foot {
+  margin-top: 0.7em;
+  padding-top: 0.5em;
+  border-top: 1px solid rgba(201, 164, 92, 0.25);
+  font-style: italic;
+  font-size: 0.9em;
+  color: var(--lu-cream-faint);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-help__foot .lu-key { font-style: normal; font-size: 0.85em; }
+
+/* Toasts (top-centre) */
+.lu-toasts {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--lu-gap) + 0.2em);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+  transform: translateX(-50%);
+  font-size: var(--lu-fs-md);
+}
+.lu-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.42em 2.6em 0.46em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+  white-space: nowrap;
+  background: linear-gradient(90deg, rgba(8, 11, 26, 0) 0%, rgba(8, 11, 26, 0.92) 18%, rgba(8, 11, 26, 0.92) 82%, rgba(8, 11, 26, 0) 100%);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.35s var(--lu-ease), transform 0.45s var(--lu-ease-out);
+}
+.lu-toast::before,
+.lu-toast::after {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 164, 92, 0), rgba(201, 164, 92, 0.9) 30%, rgba(201, 164, 92, 0.9) 70%, rgba(201, 164, 92, 0));
+}
+.lu-toast::before { top: 0; }
+.lu-toast::after { bottom: 0; }
+.lu-toast.is-on { opacity: 1; transform: none; }
+.lu-toast.is-off { opacity: 0; transform: translateY(-6px); transition: opacity 0.45s var(--lu-ease), transform 0.5s var(--lu-ease); }
+.lu-toast .lu-gem { width: 0.4em; height: 0.4em; }
+
+/* ------------------------------------------------------------------------------------------ */
+/* Interaction prompt                                                                           */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-prompt {
+  --lu-px: 3;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  font-size: var(--lu-fs-sm);
+  will-change: transform;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s var(--lu-ease), visibility 0s linear 0.22s;
+}
+.lu-prompt.is-on.is-inview { opacity: 1; visibility: visible; transition: opacity 0.25s var(--lu-ease), visibility 0s; }
+.lu-prompt__anchor { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); }
+.lu-prompt__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25em;
+  padding-bottom: 0.3em;
+  transform-origin: 50% 100%;
+}
+.lu-prompt.is-on .lu-prompt__inner { animation: lu-prompt-pop 0.38s var(--lu-ease-out) both; }
+.lu-prompt__bubble {
+  width: calc(16px * var(--lu-px));
+  height: calc(12px * var(--lu-px));
+  filter: drop-shadow(0 calc(1px * var(--lu-px)) 0 rgba(10, 8, 16, 0.35)) drop-shadow(0 0 8px rgba(255, 230, 180, 0.35));
+}
+.lu-prompt__bubble svg { display: block; width: 100%; height: 100%; shape-rendering: crispEdges; }
+.lu-prompt__bubble { animation: lu-prompt-bob 1.5s ease-in-out infinite; }
+.lu-prompt__bubble .lu-dot { animation: lu-dot 1.5s steps(1) infinite; }
+.lu-prompt__bubble .lu-dot2 { animation-delay: 0.18s; }
+.lu-prompt__bubble .lu-dot3 { animation-delay: 0.36s; }
+/* idle loops freeze (no per-frame work, no jump during the fade) while the prompt is hidden */
+.lu-prompt:not(.is-on) .lu-prompt__bubble,
+.lu-prompt:not(.is-on) .lu-dot { animation-play-state: paused; }
+@keyframes lu-dot { 0%, 72% { opacity: 1; } 73%, 100% { opacity: 0.25; } }
+.lu-prompt__label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.2em 0.95em 0.24em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+  white-space: nowrap;
+  background: linear-gradient(180deg, rgba(26, 33, 64, 0.94), rgba(7, 9, 20, 0.94));
+  border: 1px solid var(--lu-gold-line);
+  box-shadow: 0 0 0 1px rgba(3, 4, 10, 0.7), inset 0 0 0 1px rgba(3, 4, 10, 0.6), 0 3px 8px rgba(0, 0, 0, 0.5);
+}
+.lu-prompt__label::before,
+.lu-prompt__label::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 0.42em;
+  height: 0.42em;
+  background: var(--lu-gold-hi);
+  box-shadow: 0 0 0 1px rgba(5, 6, 12, 0.9);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.lu-prompt__label::before { left: 0; }
+.lu-prompt__label::after { left: 100%; }
+.lu-prompt__label:empty { display: none; }
+.lu-prompt__label .lu-key { font-size: 0.78em; }
+@keyframes lu-prompt-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(calc(-2px * var(--lu-px))); }
+}
+@keyframes lu-prompt-pop {
+  0% { transform: scale(0.6) translateY(8px); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Fader                                                                                        */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-fader {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition-property: opacity;
+  transition-timing-function: cubic-bezier(0.45, 0.05, 0.4, 1);
+  transition-duration: 0.6s;
+}
+
+/* ------------------------------------------------------------------------------------------ */
+/* Debug panel (themed lil-gui) + stats                                                         */
+/* ------------------------------------------------------------------------------------------ */
+
+/* --lu-k scales the whole debug column on large screens (lil-gui is sized in px). */
+.lu-debug {
+  --lu-k: 1;
+  position: absolute;
+  right: var(--lu-gap);
+  top: var(--lu-debug-top, calc(var(--lu-gap) + 96px));
+  bottom: var(--lu-gap);
+  z-index: 9;
+  width: calc(292px * var(--lu-k));
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--lu-k));
+  pointer-events: none;
+  font-size: calc(13px * var(--lu-k));
+  transition: opacity 0.25s var(--lu-ease), transform 0.3s var(--lu-ease-out), visibility 0s;
+}
+@media (min-width: 1880px) { .lu-debug { --lu-k: 1.18; } }
+@media (min-width: 2300px) { .lu-debug { --lu-k: 1.4; } }
+.lu-debug > * { pointer-events: auto; }
+.lu-debug.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(14px);
+  transition: opacity 0.2s var(--lu-ease), transform 0.25s var(--lu-ease), visibility 0s linear 0.25s;
+}
+.lu-debug.is-hidden > * { pointer-events: none; }
+
+.lu-stats {
+  flex: none;
+  padding: calc(9px * var(--lu-k)) calc(12px * var(--lu-k)) calc(10px * var(--lu-k));
+  font-family: var(--lu-pixel);
+  font-size: calc(12px * var(--lu-k));
+  line-height: 1.25;
+  color: var(--lu-cream);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+  --lu-orn: calc(9px * var(--lu-k));
+}
+.lu-stats__head { display: flex; align-items: flex-end; gap: 0.65em; }
+.lu-stats__fps { font-size: 2.15em; line-height: 0.9; color: #bfe58f; min-width: 2.2em; }
+.lu-stats__fps.is-mid { color: #f2cf6d; }
+.lu-stats__fps.is-low { color: #f08a6a; }
+.lu-stats__unit { font-family: var(--lu-display); font-weight: 700; font-size: 0.84em; letter-spacing: 0.18em; color: var(--lu-gold-hi); padding-bottom: 0.15em; }
+.lu-stats__ms { margin-left: auto; color: var(--lu-cream-dim); padding-bottom: 0.1em; }
+.lu-stats__graph {
+  display: block;
+  width: 100%;
+  height: calc(30px * var(--lu-k));
+  margin: 0.6em 0;
+  image-rendering: pixelated;
+  border-top: 1px solid rgba(201, 164, 92, 0.25);
+  border-bottom: 1px solid rgba(201, 164, 92, 0.25);
+}
+.lu-stats__grid { display: grid; grid-template-columns: auto 1fr auto 1fr; column-gap: 0.65em; row-gap: 0.15em; }
+.lu-stats__k { font-family: var(--lu-serif); font-style: italic; font-size: 1.04em; color: var(--lu-gold-hi); }
+.lu-stats__v { text-align: right; padding-right: 0.5em; font-variant-numeric: tabular-nums; }
+
+.lu-debug .lil-gui {
+  --background-color: rgba(9, 12, 27, 0.95);
+  --text-color: #ebe1ca;
+  --title-background-color: #141a37;
+  --title-text-color: #ecd495;
+  --widget-color: #1e2545;
+  --hover-color: #293259;
+  --focus-color: #36416f;
+  --number-color: #f2d27f;
+  --string-color: #bcd98f;
+  --font-size: calc(13px * var(--lu-k));
+  --input-font-size: calc(12px * var(--lu-k));
+  --font-family: 'Crimson Pro', Georgia, serif;
+  --font-family-mono: 'Pixelify Sans', Consolas, monospace;
+  --padding: calc(6px * var(--lu-k));
+  --spacing: calc(5px * var(--lu-k));
+  --widget-height: calc(21px * var(--lu-k));
+  --name-width: 43%;
+  --slider-knob-width: 2px;
+  --slider-input-width: 30%;
+  --slider-input-min-width: calc(45px * var(--lu-k));
+  --color-input-min-width: calc(45px * var(--lu-k));
+  --widget-border-radius: 2px;
+  --folder-indent: calc(7px * var(--lu-k));
+  --scrollbar-width: calc(6px * var(--lu-k));
+  --checkbox-size: calc(0.75 * var(--widget-height));
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.lu-debug .lil-gui.lil-root {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  flex: 0 1 auto;
+  border: 1px solid var(--lu-gold-line);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(22, 29, 58, 0.95) 0%, rgba(8, 10, 22, 0.96) 100%);
+  box-shadow: 0 0 0 1px rgba(3, 4, 10, 0.7), inset 0 0 0 1px rgba(3, 4, 10, 0.6), 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+.lu-debug .lil-gui.lil-root > .lil-children { min-height: 0; }
+.lu-debug .lil-gui.lil-root > .lil-title {
+  height: calc(28px * var(--lu-k));
+  display: flex;
+  align-items: center;
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: calc(11.5px * var(--lu-k));
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--lu-gold-hi);
+  background: linear-gradient(180deg, #1e2650 0%, #11163a 100%);
+  border-bottom: 1px solid rgba(201, 164, 92, 0.55);
+}
+.lu-debug .lil-gui .lil-gui > .lil-title {
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: calc(11px * var(--lu-k));
+  letter-spacing: 0.12em;
+  color: var(--lu-gold-hi);
+}
+.lu-debug .lil-gui.lil-root > .lil-children > .lil-gui > .lil-title { border-color: rgba(201, 164, 92, 0.22); }
+.lu-debug .lil-gui .lil-gui .lil-gui > .lil-children { border-left-color: rgba(201, 164, 92, 0.3); }
+.lu-debug .lil-gui + .lil-controller { border-top-color: rgba(201, 164, 92, 0.22); }
+.lu-debug .lil-controller > .lil-name { color: rgba(235, 225, 202, 0.88); font-size: calc(13.5px * var(--lu-k)); }
+.lu-debug .lil-controller.lil-number input,
+.lu-debug .lil-controller.lil-color input[type=text] { font-family: var(--lu-pixel); font-size: calc(12px * var(--lu-k)); }
+.lu-debug .lil-controller.lil-number .lil-fill {
+  background: linear-gradient(90deg, rgba(201, 164, 92, 0.1), rgba(201, 164, 92, 0.42));
+  border-right-color: #f6dc97;
+}
+.lu-debug .lil-gui input[type=checkbox] { box-shadow: inset 0 0 0 1px rgba(201, 164, 92, 0.35); }
+.lu-debug .lil-gui input[type=checkbox]:checked { background: linear-gradient(180deg, #e9cf8a, #b8904a); color: #20170a; text-shadow: none; }
+.lu-debug .lil-gui .lil-controller button {
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: calc(11px * var(--lu-k));
+  letter-spacing: 0.1em;
+  color: var(--lu-gold-hi);
+  background: linear-gradient(180deg, #252d55, #181e3c);
+  box-shadow: inset 0 0 0 1px rgba(201, 164, 92, 0.45);
+}
+.lu-debug .lil-gui .lil-controller button:hover { background: linear-gradient(180deg, #2f3968, #1e2548); }
+.lu-debug .lil-controller.lil-option .lil-display { box-shadow: inset 0 0 0 1px rgba(201, 164, 92, 0.25); }
+
+/* ------------------------------------------------------------------------------------------ */
+/* Minimap (HUD, top-right under the clock) and world map overlay                              */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-minimap {
+  --lu-mm: clamp(150px, 11.9vw, 300px);
+  position: absolute;
+  right: var(--lu-gap);
+  /* below the clock plate (--lu-mm-top: its bottom edge, set from its live size) */
+  top: calc(var(--lu-mm-top, calc(var(--lu-gap) + var(--lu-fs-md) * 4.25)) + clamp(16px, 1.35vw, 34px));
+  width: var(--lu-mm);
+  height: var(--lu-mm);
+  padding: 6px;
+  transition: opacity 0.45s var(--lu-ease), visibility 0s;
+}
+.lu-minimap.is-empty { display: none; }
+.lu-minimap__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  box-shadow: 0 0 0 1px rgba(3, 4, 10, 0.85);
+}
+.lu-minimap__north {
+  position: absolute;
+  left: 50%;
+  top: 9px;
+  transform: translateX(-50%);
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: var(--lu-fs-xs);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: var(--lu-gold-pale);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+/* short windows: the minimap would crowd the controls legend */
+@media (max-height: 560px) { .lu-minimap { display: none; } }
+.lu-root--dialog .lu-minimap { opacity: 0.55; }
+
+.lu-worldmap {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 45%, rgba(10, 12, 26, 0.6) 0%, rgba(3, 4, 10, 0.88) 100%);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s var(--lu-ease), visibility 0s linear 0.35s;
+}
+.lu-worldmap.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.35s var(--lu-ease), visibility 0s;
+}
+.lu-worldmap__window {
+  display: flex;
+  flex-direction: column;
+  max-width: 96vw;
+  max-height: 94vh;
+  padding: 1em 1.35em 0.85em;
+  font-size: var(--lu-fs-md);
+  transform: translateY(10px) scale(0.985);
+  transition: transform 0.5s var(--lu-ease-out);
+}
+.lu-worldmap.is-open .lu-worldmap__window { transform: none; }
+.lu-worldmap__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85em;
+  margin: 0 0 0.7em;
+  padding-bottom: 0.5em;
+  border-bottom: 1px solid rgba(201, 164, 92, 0.35);
+}
+.lu-worldmap__kicker {
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 0.7em;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--lu-gold-hi);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-worldmap__title {
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 1.3em;
+  letter-spacing: 0.12em;
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-worldmap__sub {
+  font-style: italic;
+  font-size: 0.88em;
+  letter-spacing: 0.05em;
+  color: var(--lu-gold-hi);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-worldmap__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.3em;
+  min-height: 0;
+}
+.lu-worldmap__frame {
+  padding: 5px;
+  background: rgba(3, 4, 10, 0.75);
+  box-shadow: 0 0 0 1px var(--lu-gold-line), 0 0 0 4px rgba(3, 4, 10, 0.8), 0 0 0 5px rgba(201, 164, 92, 0.4), 0 12px 30px -8px rgba(0, 0, 0, 0.8);
+}
+.lu-worldmap__map {
+  --lu-wm-ar: 1;
+  position: relative;
+  width: min(66vw, calc(74vh * var(--lu-wm-ar)));
+  aspect-ratio: var(--lu-wm-ar);
+  background: #0c0e1a;
+}
+.lu-worldmap__canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lu-worldmap__labels { position: absolute; inset: 0; pointer-events: none; }
+.lu-worldmap__label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 0.1em 0.5em 0.18em;
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: clamp(10px, 0.78vw, 19px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #fff3d6;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.85), 0 0 14px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.25s var(--lu-ease);
+}
+.lu-worldmap__label--area {
+  font-weight: 600;
+  font-size: clamp(11px, 0.92vw, 22px);
+  letter-spacing: 0.3em;
+  color: rgba(255, 240, 205, 0.78);
+  font-style: normal;
+}
+.lu-worldmap__label--area::after { display: none; }
+/* an area name that found no free spot at full size: smaller, tighter, on two lines if need be */
+.lu-worldmap__label--compact {
+  max-width: 7.5em;
+  font-size: clamp(9px, 0.72vw, 17px);
+  letter-spacing: 0.08em;
+  line-height: 1.05;
+  text-align: center;
+  white-space: normal;
+}
+.lu-worldmap__label::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(232, 207, 138, 0), rgba(232, 207, 138, 0.8), rgba(232, 207, 138, 0));
+}
+.lu-worldmap__legend {
+  /* a fixed column: the map frame keeps its place whichever region name "You are in" shows */
+  flex: none;
+  width: 12.5em;
+  font-size: var(--lu-fs-sm);
+  color: var(--lu-cream);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-worldmap__legend-title {
+  margin-bottom: 0.6em;
+  font-family: var(--lu-display);
+  font-weight: 700;
+  font-size: 0.85em;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--lu-gold-hi);
+}
+.lu-worldmap__legend ul { list-style: none; margin: 0; padding: 0; display: grid; row-gap: 0.5em; }
+.lu-worldmap__legend li { display: flex; align-items: center; gap: 0.7em; white-space: nowrap; font-weight: 500; }
+.lu-wm-key { flex: none; display: inline-block; width: 1em; height: 1em; }
+.lu-wm-key--player { clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%); background: linear-gradient(90deg, #fff4d2 50%, #e0b85c 50%); filter: drop-shadow(0 0 1px #000); }
+.lu-wm-key--npc { border-radius: 50%; background: #8fd0ff; box-shadow: 0 0 0 2px rgba(20, 14, 6, 0.9); transform: scale(0.7); }
+.lu-wm-key--poi { background: #f2d27a; box-shadow: 0 0 0 2px #1a1206; transform: rotate(45deg) scale(0.62); }
+.lu-wm-key--fire { border-radius: 50%; background: #ff9a3c; box-shadow: 0 0 0 2px rgba(20, 14, 6, 0.9), 0 0 6px rgba(255, 150, 60, 0.7); transform: scale(0.66); }
+.lu-wm-key--house { background: #a4493b; box-shadow: inset 0 0 0 2px rgba(30, 18, 12, 0.9); height: 0.8em; }
+.lu-wm-key--road { background: #b18a5c; height: 0.42em; border-radius: 1px; }
+.lu-wm-key--water { background: linear-gradient(180deg, #5d9ec0, #3b7fa6); }
+.lu-wm-key--forest { background: radial-gradient(circle at 30% 30%, #3f7434 32%, transparent 34%) 0 0 / 0.5em 0.5em, #25432a; }
+.lu-worldmap__here {
+  margin-top: 1.1em;
+  padding-top: 0.6em;
+  border-top: 1px solid rgba(201, 164, 92, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+.lu-worldmap__here span { font-style: italic; font-size: 0.9em; color: var(--lu-cream-dim); }
+.lu-worldmap__here b { font-family: var(--lu-display); font-weight: 700; letter-spacing: 0.1em; color: var(--lu-gold-pale); overflow-wrap: anywhere; }
+.lu-worldmap__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4em;
+  margin-top: 0.75em;
+  font-style: italic;
+  font-size: var(--lu-fs-sm);
+  color: var(--lu-cream-faint);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-worldmap__foot .lu-key { font-style: normal; font-size: 0.85em; }
+@media (max-width: 900px) { .lu-worldmap__legend { display: none; } .lu-worldmap__map { width: min(88vw, calc(74vh * var(--lu-wm-ar))); } }
+
+/* ------------------------------------------------------------------------------------------ */
+/* Title screen: destination row (only when show() gets `destinations`)                         */
+/* ------------------------------------------------------------------------------------------ */
+
+.lu-title__dest {
+  margin-top: clamp(12px, 2.2vh, 34px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+  opacity: 0;
+}
+.lu-title.is-on .lu-title__dest { animation: lu-fade-in 1.2s var(--lu-ease) 1.9s both; }
+.lu-title__dest-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  font-family: var(--lu-display);
+  font-weight: 600;
+  font-size: clamp(13px, 1.02vw, 26px);
+  letter-spacing: 0.14em;
+  color: var(--lu-gold-hi);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8);
+}
+.lu-title__dest-arrow {
+  display: grid;
+  place-items: center;
+  width: 2.2em;
+  height: 2.2em;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s var(--lu-ease), transform 0.25s var(--lu-ease-out);
+}
+.lu-title__dest-arrow:hover { opacity: 1; transform: scale(1.15); }
+.lu-title__dest-arrow svg { display: block; width: 0.72em; height: 0.86em; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
+.lu-title__dest-label {
+  position: relative;
+  min-width: 13em;
+  padding: 0.32em 1.1em 0.36em;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  background: linear-gradient(90deg, rgba(8, 11, 26, 0) 0%, rgba(8, 11, 26, 0.72) 22%, rgba(8, 11, 26, 0.72) 78%, rgba(8, 11, 26, 0) 100%);
+  transition: color 0.25s var(--lu-ease);
+}
+.lu-title__dest-label::before,
+.lu-title__dest-label::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 164, 92, 0), rgba(201, 164, 92, 0.85) 30%, rgba(201, 164, 92, 0.85) 70%, rgba(201, 164, 92, 0));
+}
+.lu-title__dest-label::before { top: 0; }
+.lu-title__dest-label::after { bottom: 0; }
+.lu-title__dest.is-changed .lu-title__dest-label {
+  color: #fff6da;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 14px rgba(255, 210, 140, 0.6);
+}
+.lu-title__dest-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  font-style: italic;
+  font-size: clamp(11px, 0.82vw, 21px);
+  letter-spacing: 0.04em;
+  color: var(--lu-cream-faint);
+  text-shadow: var(--lu-text-shadow);
+}
+.lu-title__dest-hint .lu-key { font-style: normal; font-size: 0.8em; }
+
+/* ------------------------------------------------------------------------------------------ */
+/* Combat UI (COMBAT.md §13): combat.css — imported by the combat UI modules (combat levels only) */
+/* ------------------------------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------------------------------ */
+/* Reduced motion                                                                               */
+/* ------------------------------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .lu-root *, .lu-root *::before, .lu-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

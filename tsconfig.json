@@ -1,0 +1,21 @@
+{
+  // Type check of the plain JavaScript through its JSDoc (`npm run typecheck`). tsc only checks;
+  // Vite builds the code, and nothing here changes a bundle. tools/ has its own config (Node
+  // globals). Typing conventions: docs/development/CONVENTIONS.md §3.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["vite/client"],
+    "skipLibCheck": false,
+    // The root-absolute URLs the dev server serves ('/src/…', '/sandbox/…'), imported by the
+    // sandbox helpers that the harness loads into a page (sandbox/editor_perf.helpers.js).
+    "paths": { "/src/*": ["./src/*"], "/sandbox/*": ["./sandbox/*"] }
+  },
+  "include": ["src/**/*.js", "src/**/*.d.ts", "sandbox/**/*.js"]
+}
