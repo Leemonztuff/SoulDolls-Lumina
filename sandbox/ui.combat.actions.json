@@ -179,7 +179,7 @@
   {"wait": 250},
   {"eval": "(() => { const r = __sandbox.combat.panelOverlaps(); if (r.overlaps.length) console.error('[ui] labels under HUD panels: ' + JSON.stringify(r.overlaps)); return JSON.stringify({ case: 'labels and edge arrows right under the HUD panels keep out of them (COMBAT-07)', ...r }); })()"},
   {"shot": "c29b_panels"},
-  {"eval": "__ui.combat.labels.clear(); __sandbox.combat.openDrift().then((r) => { const d = r.drift; const bad = r.panels < 7 || !(d.number <= 2) || !(d.bar <= 2) || !(d.reticle <= 2); if (bad) console.error('[ui] a label in the open lower middle is pushed off its anchor: ' + JSON.stringify(r)); return JSON.stringify({ case: 'every panel shown (legend + boss bar): labels in the open lower middle stay at their anchor (COMBAT-07)', ...r }); })"},
+  {"eval": "__ui.combat.labels.clear(); __sandbox.combat.openDrift().then((r) => { const d = r.drift; const bad = r.panels < 6 || !(d.number <= 2) || !(d.bar <= 2) || !(d.reticle <= 2); if (bad) console.error('[ui] a label in the open lower middle is pushed off its anchor: ' + JSON.stringify(r)); return JSON.stringify({ case: 'every panel shown (legend + boss bar): labels in the open lower middle stay at their anchor (COMBAT-07)', ...r }); })"},
   {"shot": "c29d_open_middle"},
   {"eval": "__ui.combat.labels.clear(); 'cleared'"},
   {"eval": "__ui.hud.showHelp(false); 'legend hidden'"},

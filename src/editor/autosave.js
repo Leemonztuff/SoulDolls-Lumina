@@ -23,9 +23,9 @@ import { loadLocalLevel } from '../engine/level/LevelStorage.js';
  */
 
 export const AUTOSAVE_SLOT = '__autosave__';
-const KEY = `lumina.level.${AUTOSAVE_SLOT}`;
-const META = 'lumina.editor.autosave';
-const RECOVERED = 'lumina.editor.recovered';
+const KEY = `luminati.level.${AUTOSAVE_SLOT}`;
+const META = 'luminati.editor.autosave';
+const RECOVERED = 'luminati.editor.recovered';
 export const MAX_RECOVERED = 3;
 
 /** This editor session (a page load). */
@@ -125,7 +125,7 @@ export function archiveAutosave() {
   const id = `${(meta.savedAt ?? Date.now()).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
   const entry = { id, sid, savedAt: meta.savedAt ?? Date.now(), name: meta.name ?? 'Untitled', width: meta.width, depth: meta.depth, fileRef: meta.fileRef ?? null, exported: !!meta.exported };
   try {
-    localStorage.setItem(`lumina.level.${recoveredSlot(id)}`, text);
+    localStorage.setItem(`luminati.level.${recoveredSlot(id)}`, text);
   } catch {
     return null; // full: leave the copy where it is
   }
@@ -145,7 +145,7 @@ export function listRecovered() {
   const list = readJSON(RECOVERED, []);
   if (!Array.isArray(list)) return [];
   return list.filter((e) => {
-    try { return e && e.id && localStorage.getItem(`lumina.level.${recoveredSlot(e.id)}`); } catch { return false; }
+    try { return e && e.id && localStorage.getItem(`luminati.level.${recoveredSlot(e.id)}`); } catch { return false; }
   }).sort((a, b) => b.savedAt - a.savedAt);
 }
 
@@ -155,7 +155,7 @@ export function loadRecovered(id) {
 }
 
 function removeRecoveredData(id) {
-  try { localStorage.removeItem(`lumina.level.${recoveredSlot(id)}`); } catch { /* ignore */ }
+  try { localStorage.removeItem(`luminati.level.${recoveredSlot(id)}`); } catch { /* ignore */ }
 }
 
 export function deleteRecovered(id) {
@@ -166,5 +166,5 @@ export function deleteRecovered(id) {
 
 /** Stored size (characters) of a recovered copy. */
 export function recoveredSize(id) {
-  try { return localStorage.getItem(`lumina.level.${recoveredSlot(id)}`)?.length ?? 0; } catch { return 0; }
+  try { return localStorage.getItem(`luminati.level.${recoveredSlot(id)}`)?.length ?? 0; } catch { return 0; }
 }

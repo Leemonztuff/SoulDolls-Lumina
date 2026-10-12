@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { PPU, DIRECTIONS } from '../src/engine/constants.js';
 import { RNG, DEG2RAD, clamp, lerp, fbm2 } from '../src/engine/utils/math.js';
 import { globalUniforms } from '../src/engine/render/GlobalUniforms.js';
-import { PixelCanvas, makePixelTexture, shadeColor } from '../src/engine/pixel/PixelCanvas.js';
+import { PixelCanvas, makePixelTexture, shadeColor, parseColor, toCss } from '../src/engine/pixel/PixelCanvas.js';
 import { PALETTE } from '../src/engine/pixel/Palette.js';
 import { Sprite3D } from '../src/engine/sprite/Sprite3D.js';
 import { SpriteManager } from '../src/engine/sprite/SpriteManager.js';
@@ -796,6 +796,9 @@ const nextFrames = (n = 2) => new Promise((resolve) => {
  * @property {() => object} testDirectionPhase  setDirection keeps the frame phase
  * @property {() => object} testPlaySemantics  play() / setFrame() semantics, prop-sheet input,
  *   clone
+ * @property {() => { ok: boolean }} testRegistryAndWarnings  SpriteManager removals from inside
+ *   an update (SPR-06), one warning per unknown animation name (SPR-13), parseColor's numbers,
+ *   CSS names and warning (PROP-11)
  * @property {(n?: number) => Promise<object>} spawnSprites  create n sprites; report the GL
  *   texture uploads they caused (should be 0)
  */
@@ -859,6 +862,65 @@ window.__sb = {
     const c = walkers[2].sprite.clone();
     out.clone = { animation: c.animation, tint: c.tint.getHexString(), opacity: +c.opacity.toFixed(2), sameSheet: c.sheet === sheet };
     c.dispose();
+    return out;
+  },
+  testRegistryAndWarnings() {
+    const out = { ok: true, fails: [] };
+    const want = (cond, what) => { if (!cond) { out.ok = false; out.fails.push(what); } };
+    // SPR-06: removals from inside a sprite's update (a callback) skip no other sprite
+    const sm = new SpriteManager(camera);
+    const seen = [];
+    /** @type {Record<string, { update(): void }>} */
+    const S = {};
+    const mk = (name, fn = null) => (S[name] = { update() { seen.push(name); fn?.(); } });
+    for (const n of ['a', 'b', 'c', 'd', 'f', 'g', 'h', 'e']) mk(n);
+    S.b.update = () => { seen.push('b'); sm.remove(S.b); }; // itself
+    S.f.update = () => { seen.push('f'); sm.remove(S.a); }; // one already updated
+    S.g.update = () => { seen.push('g'); sm.remove(S.h); sm.add(S.x); }; // one not yet reached; add one
+    mk('x');
+    for (const n of ['a', 'b', 'c', 'd', 'f', 'g', 'h', 'e']) sm.add(S[n]);
+    sm.update(1 / 60);
+    out.frame1 = seen.join('');
+    seen.length = 0;
+    sm.update(1 / 60);
+    out.frame2 = seen.join('');
+    want(out.frame1 === 'abcdfgex', `SpriteManager frame 1 ${out.frame1} (want abcdfgex)`);
+    want(out.frame2 === 'cdfgex', `SpriteManager frame 2 ${out.frame2} (want cdfgex)`);
+    sm.dispose();
+    // SPR-13: one warning per unknown animation name, whatever sprite asks
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (...a) => { warned.push(a.map(String).join(' ')); };
+    try {
+      const s1 = new Sprite3D(sheet, { blobShadow: false, castShadow: false });
+      const s2 = new Sprite3D(sheet, { blobShadow: false, castShadow: false });
+      s1.play('spr13_nope_a'); s1.play('spr13_nope_b'); s2.play('spr13_nope_a'); s2.play('spr13_nope_c'); s1.play('spr13_nope_a');
+      s1.dispose();
+      s2.dispose();
+    } finally {
+      console.warn = warn;
+    }
+    out.animationWarnings = warned.slice();
+    want(JSON.stringify(warned) === JSON.stringify(['a', 'b', 'c'].map((k) => `Sprite3D: unknown animation "spr13_nope_${k}"`)), 'animation warnings');
+    // PROP-11: numbers, CSS names, hex as before, one warning for an unknown name (opaque black)
+    warned.length = 0;
+    console.warn = (...a) => { warned.push(a.map(String).join(' ')); };
+    try {
+      out.colors = {
+        number: [...parseColor(0xff8000)], name: [...parseColor('red')], upper: [...parseColor(' Beige ')],
+        hex: [...parseColor('#ff8000')], bare: [...parseColor('ff8000')], short: [...parseColor('#abc')],
+        unknown: [...parseColor('prop11-no-such-colour')], again: [...parseColor('prop11-no-such-colour')],
+        css: toCss(0x336699),
+      };
+    } finally {
+      console.warn = warn;
+    }
+    out.colorWarnings = warned.slice();
+    const C = out.colors;
+    want(JSON.stringify(C.number) === '[255,128,0,255]' && JSON.stringify(C.hex) === '[255,128,0,255]' && JSON.stringify(C.bare) === '[255,128,0,255]', 'parseColor number / hex');
+    want(JSON.stringify(C.name) === '[255,0,0,255]' && JSON.stringify(C.upper) === '[245,245,220,255]' && JSON.stringify(C.short) === '[170,187,204,255]', 'parseColor names / short hex');
+    want(JSON.stringify(C.unknown) === '[0,0,0,255]' && JSON.stringify(C.again) === '[0,0,0,255]' && C.css === 'rgba(51,102,153,1.000)', 'parseColor unknown / toCss');
+    want(JSON.stringify(warned) === '["[PixelCanvas] unknown colour \\"prop11-no-such-colour\\"; using black"]', 'parseColor warning');
     return out;
   },
   /** Create n sprites at runtime and report GL texture uploads caused by them (should be 0). */

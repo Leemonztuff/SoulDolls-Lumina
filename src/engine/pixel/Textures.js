@@ -3,9 +3,10 @@ import { PPU } from '../constants.js';
 import { clamp, smoothstep, RNG, hash2, hashString, bayer4 } from '../utils/math.js';
 import { PixelCanvas, parseColor, mixColor, shadeColor, makePixelTexture, normalMapFromHeight } from './PixelCanvas.js';
 import { PALETTE } from './Palette.js';
+import { isOwnKey, showValue } from '../utils/own.js';
 
 /**
- * Textures.js — Lumina's procedural world texture library (HD-2D / Octopath style).
+ * Textures.js — Luminati's procedural world texture library (2.5D pixel art, inspired by Square Enix's HD-2D games).
  *
  * Every texture is painted texel by texel at 16 px per world unit from the shared PALETTE
  * ramps, with a top-left key light baked subtly into the forms (highlights on upper-left
@@ -44,6 +45,12 @@ import { PALETTE } from './Palette.js';
  *  - fence_wood (1×1, alpha): two posts (x 2–4, 10–12) and two full-width rails → tiles along u.
  *  - flowerbox (1×1, alpha): planter box in the bottom 7 px, flowers above; tiles along u.
  *  - window / lantern_glass have emissive masks (white = glows) for night lighting.
+ *  - furniture (on demand): furniture_wood (2×2) boards 8 px wide along u; books / pantry (2 × 0.5)
+ *    one shelf compartment, items standing on canvas row 7, tile along u; quilt_* (2×2) 8 px
+ *    patches; rug_* (2×2) one diamond per unit; rug_border (1 × 0.5) outer edge on row 0, rows 0–5
+ *    used; window_inside (1 × 1.5) one casement, tiles along u; light_beam (1 × 2) a window's light
+ *    shaft (rows 0–23) and its floor patch (rows 24–31); embers / window_inside / light_beam are
+ *    emissive.
  */
 
 // ---------------------------------------------------------------------------
@@ -2331,6 +2338,400 @@ function genFlowerbox(s, ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Furniture (on demand — not in TEXTURE_NAMES: painted only when a room's furniture asks for
+// them, src/engine/world/props/Furniture.js; a level without furniture paints none of them)
+// ---------------------------------------------------------------------------
+
+/** Warm, planed furniture oak. */
+const FURN = extRamp(['#3a2316', '#5a3822', '#7a4f2e', '#9a6a3c', '#b8854c', '#d2a265'], 0.1, 0.05);
+/** Dark shelf back behind books and jars (darkest under the board above). */
+const SHELF_BACK = ['#0e0a09', '#18110e', '#221812'].map(parseColor);
+
+/**
+ * furniture_wood (32×32 = 2×2 u): smooth joined boards 8 px wide running along u, long grain
+ * streaks, a planed edge catching the light on each board and a butt joint on most — no nails.
+ */
+function genFurnitureWood(s, ctx) {
+  const { w, h } = s;
+  const { rng, seed } = ctx;
+  const G = field(w, h, 2, 16, seed + 3, { oct: 3 });
+  const rows = Array.from({ length: h / 8 }, () => ({ base: rng.pick([3, 3, 4, 4, 5]), joint: rng.chance(0.7) ? rng.int(0, w - 1) : -1 }));
+  s.each((x, y, i) => {
+    const r = y % 8;
+    const b = rows[(y / 8) | 0];
+    const seam = r === 7;
+    const joint = x === b.joint && !seam;
+    s.hf[i] = seam || joint ? 0.15 : 0.55 + (r === 0 ? 0.15 : 0) + (G[i] - 0.5) * 0.1;
+    let k = b.base;
+    if (G[i] < 0.14) k -= 1; else if (G[i] > 0.9) k += 1;
+    if (r === 0) k += 1;
+    if (r === 6) k -= 1;
+    if (seam) k = 1;
+    if (joint) k = 2;
+    s.set(x, y, ri(FURN, k));
+  });
+  return { normal: 1.1 };
+}
+
+/** Book cloth colours (spines). */
+const BOOK_RAMPS = [PALETTE.red, PALETTE.blue, PALETTE.green, PALETTE.brown, PALETTE.purple, PALETTE.cream,
+  ['#3a2410', '#6b4515', '#a5701f', '#c98a2e', '#e0a94a']].map((R) => extRamp(R, 0.1, 0.05));
+
+/**
+ * books (32×8 = 2 × 0.5 u, tiles along u): one shelf compartment — book spines 2–4 px wide and 4–7
+ * px tall standing on the bottom row (lit left edge, shaded right edge, gilt bands on some), a
+ * stack lying flat now and then, gaps; the dark shelf back above them.
+ */
+function genBooks(s, ctx) {
+  const { w, h } = s;
+  const { rng } = ctx;
+  const Gd = extRamp(PALETTE.gold, 0.1, 0.05);
+  s.each((x, y, i) => { s.set(x, y, SHELF_BACK[y <= 1 ? 0 : 1]); s.hf[i] = 0.05; });
+  const spine = (x0, bw, top, R, band) => {
+    for (let dx = 0; dx < bw; dx++) {
+      for (let y = top; y < h; y++) {
+        let k = dx === 0 ? 4 : dx === bw - 1 && bw > 1 ? 2 : 3;
+        if (y === top) k += 1;
+        let c = ri(R, k);
+        if (band && (y === top + 1 || y === h - 2) && h - top >= 5) c = ri(Gd, dx === 0 ? 5 : 3);
+        s.set(x0 + dx, y, c);
+        s.setH(x0 + dx, y, dx === 0 ? 0.9 : dx === bw - 1 ? 0.55 : 0.8);
+      }
+    }
+  };
+  let x = 0;
+  while (x < w) {
+    if (x > 0 && x < w - 2 && rng.chance(0.08)) { x += 1; continue; } // a gap
+    if (x <= w - 6 && rng.chance(0.1)) {
+      // a short stack of books lying flat, each 2 px thick
+      const bw = rng.int(5, 6);
+      const n = rng.int(1, 3);
+      for (let k = 0; k < n; k++) {
+        const R = rng.pick(BOOK_RAMPS);
+        const y0 = h - 2 * (k + 1);
+        const off = k === 0 ? 0 : rng.int(0, 1);
+        for (let dx = off; dx < bw - (k ? rng.int(0, 1) : 0); dx++) {
+          s.set(x + dx, y0, ri(R, 5)); s.set(x + dx, y0 + 1, ri(R, dx === off ? 3 : 2));
+          s.setH(x + dx, y0, 0.8); s.setH(x + dx, y0 + 1, 0.7);
+        }
+      }
+      x += bw;
+      continue;
+    }
+    const bw = Math.min(rng.pick([2, 2, 3, 3, 3, 4]), w - x);
+    spine(x, bw, h - rng.int(4, 7), rng.pick(BOOK_RAMPS), rng.chance(0.5));
+    x += bw;
+  }
+  return { normal: 1.6 };
+}
+
+/**
+ * pantry (32×8 = 2 × 0.5 u, tiles along u): a shelf of stores — glass jars of pickles, jam and honey
+ * with cloth or tin lids, bottles, a stoneware crock, a tied sack, a cheese wheel; the dark shelf
+ * back above them.
+ */
+function genPantry(s, ctx) {
+  const { w, h } = s;
+  const { rng } = ctx;
+  s.each((x, y, i) => { s.set(x, y, SHELF_BACK[y <= 1 ? 0 : 1]); s.hf[i] = 0.05; });
+  const P = (c) => parseColor(c);
+  const contents = [
+    ['#1d3a1c', '#2f5a28', '#4f7f34', '#7aa64a'], // pickles
+    ['#3a0c14', '#6e1522', '#a8283a', '#d65a5a'], // jam
+    ['#5a3008', '#9a5a10', '#d6921e', '#f2c45a'], // honey
+    ['#3a2a3a', '#5a3a5e', '#80507e', '#a878a6'], // plums
+  ].map((R) => R.map(P));
+  const M = PALETTE.metal;
+  const Rd = extRamp(PALETTE.red, 0.1, 0.05);
+  const Cr = extRamp(PALETTE.cream, 0.1, 0.03);
+  const put = (x, y, c, hh = 0.8) => { s.set(x, y, c); s.setH(x, y, hh); };
+  const jar = (x0, bw, bh) => {
+    const R = rng.pick(contents);
+    const top = h - bh;
+    for (let dx = 0; dx < bw; dx++) {
+      for (let y = top + 1; y < h; y++) put(x0 + dx, y, R[dx === 0 ? 3 : dx === bw - 1 ? 0 : y === top + 1 ? 1 : 2], dx === 0 ? 0.9 : 0.7);
+    }
+    // the glass: a glint on the shoulder, the lid (tin or a red-checked cloth)
+    put(x0, top + 1, P('#e8f4f0'));
+    const cloth = rng.chance(0.5);
+    for (let dx = -1; dx <= bw; dx++) {
+      if (!cloth && (dx < 0 || dx >= bw)) continue;
+      put(x0 + dx, top, cloth ? (dx & 1 ? ri(Rd, 4) : ri(Cr, 5)) : M[dx === 0 ? 4 : 3], 1);
+    }
+  };
+  const bottle = (x0, bh) => {
+    const glass = rng.pick([['#0c1e14', '#16361f', '#2a5a30'], ['#1e1006', '#3a2210', '#5e3a18']].map((R) => R.map(P)));
+    const top = h - bh;
+    for (let y = top; y < h; y++) {
+      const neck = y < top + 2;
+      put(x0, y, neck ? (y === top ? P('#c9a46a') : glass[2]) : glass[2]);
+      if (!neck) put(x0 + 1, y, glass[y === top + 2 ? 1 : 0], 0.6);
+    }
+    put(x0, top + 3, P('#9fd6b0'));
+  };
+  const crock = (x0) => {
+    const top = h - 5;
+    const C = ['#3a2a20', '#5e4636', '#86684e', '#ab8c6a'].map(P);
+    for (let dx = 0; dx < 4; dx++) {
+      for (let y = top; y < h; y++) {
+        let c = C[dx === 0 ? 3 : dx === 3 ? 0 : 2];
+        if (y === top + 2) c = P(dx === 0 ? '#5a7aa6' : '#3d5a86'); // blue band
+        if (y === top && (dx === 0 || dx === 3)) continue;
+        put(x0 + dx, y, c);
+      }
+    }
+  };
+  const sack = (x0) => {
+    const B = ['#4a3a26', '#6e5838', '#94784e', '#b89c6a', '#d6bf8e'].map(P);
+    const top = h - 6;
+    for (let dx = 0; dx < 5; dx++) {
+      for (let y = top; y < h; y++) {
+        const pinch = y <= top + 1 && (dx === 0 || dx === 4);
+        if (pinch || (y === top && dx !== 2)) continue;
+        let k = dx === 0 ? 4 : dx === 4 ? 1 : 3;
+        if (y === top + 2) k = 1; // the tie
+        if (((dx + y) & 1) && k > 1) k -= 1;
+        put(x0 + dx, y, B[k]);
+      }
+    }
+  };
+  const cheese = (x0) => {
+    const Y = extRamp(PALETTE.yellow, 0.1, 0.05);
+    for (let dx = 0; dx < 5; dx++) {
+      for (let y = h - 3; y < h; y++) put(x0 + dx, y, y === h - 3 ? ri(Y, 6) : dx === 0 ? ri(Y, 5) : dx === 4 ? ri(Y, 3) : ri(Y, 4));
+    }
+    put(x0 + 1, h - 2, ri(Y, 2));
+  };
+  let x = 0;
+  while (x < w) {
+    const kind = rng.pick(['jar', 'jar', 'jar', 'bottle', 'bottle', 'crock', 'sack', 'cheese']);
+    const need = { jar: 5, bottle: 3, crock: 5, sack: 6, cheese: 6 }[kind];
+    if (x + need > w) {
+      if (x + 3 <= w) bottle(x);
+      break;
+    }
+    if (kind === 'jar') { const bw = rng.int(3, 4); jar(x + 1, bw, rng.int(5, 6)); x += bw + 2; }
+    else if (kind === 'bottle') { bottle(x, rng.int(6, 7)); x += 3; }
+    else if (kind === 'crock') { crock(x); x += 5; }
+    else if (kind === 'sack') { sack(x); x += 6; }
+    else { cheese(x); x += 6; }
+  }
+  return { normal: 1.5 };
+}
+
+/** linen (16×16): off-white woven cloth with soft folds — sheets, pillows, table cloths. */
+function genLinen(s, ctx) {
+  const { w, h } = s;
+  const { seed } = ctx;
+  const R = ['#776d62', '#a39888', '#c7bcab', '#e0d8c8', '#efe9dc', '#faf6ee'].map(parseColor);
+  const G = field(w, h, 2, 2, seed + 1, { oct: 2 });
+  s.each((x, y, i) => { s.hf[i] = G[i] * 0.5 + ((x + y) & 1 ? 0.025 : 0); });
+  s.each((x, y) => {
+    let k = 4 + clamp(stepOf(s.slope(x, y), 0.1, 0.35), -1, 1);
+    if (hash2(x, y, seed) < 0.05) k -= 1;
+    s.set(x, y, ri(R, k));
+  });
+  return { normal: 1.2 };
+}
+
+/**
+ * quilt_<colour> (32×32 = 2×2 u): a patchwork of 8 px quilted squares — plain, lighter, checked,
+ * cream and diamond patches — puffed between dark seams with light stitches.
+ */
+function genQuilt(s, ctx, R0) {
+  const { w, h } = s;
+  const { rng, seed } = ctx;
+  const R = extRamp(R0, 0.1, 0.05);
+  const A = extRamp(PALETTE.cream, 0.1, 0.03);
+  const n = w / 8;
+  const pat = Array.from({ length: n * n }, () => rng.pick(['main', 'main', 'light', 'check', 'accent', 'diamond']));
+  s.each((x, y, i) => {
+    const d = Math.max(Math.abs((x % 8) - 3.5), Math.abs((y % 8) - 3.5)) / 4;
+    s.hf[i] = 0.75 - d * d * 0.5 + (hash2(x, y, seed) - 0.5) * 0.04;
+  });
+  s.each((x, y) => {
+    const px = x % 8;
+    const py = y % 8;
+    const p = pat[(y >> 3) * n + (x >> 3)];
+    let k = clamp(stepOf(s.slope(x, y), 0.12, 0.4), -1, 1);
+    let ramp = R;
+    let base = 4;
+    if (p === 'light') base = 5;
+    else if (p === 'accent') ramp = A;
+    else if (p === 'check' && (((px >> 1) + (py >> 1)) & 1)) ramp = A;
+    else if (p === 'diamond' && Math.abs(px - 3.5) + Math.abs(py - 3.5) < 3) ramp = A;
+    if (px === 7 || py === 7) {
+      ramp = R; base = 2; k = 0;
+      if ((x + y) % 3 === 0) { ramp = A; base = 3; }
+    }
+    s.set(x, y, ri(ramp, base + k));
+  });
+  return { normal: 1.6 };
+}
+
+/**
+ * rug_<colour> (32×32 = 2×2 u, tiles): the woven field of a rug — a gold-ringed diamond per unit
+ * with a dark heart and a cream eye, cream dots between, a fine weave.
+ */
+function genRug(s, ctx, R0) {
+  const { w, h } = s;
+  const { seed } = ctx;
+  const R = extRamp(R0, 0.1, 0.04);
+  const A = extRamp(PALETTE.cream, 0.1, 0.03);
+  const Gd = extRamp(PALETTE.gold, 0.1, 0.05);
+  s.each((x, y, i) => {
+    const px = x % 16;
+    const py = y % 16;
+    const d = Math.abs(px - 7.5) + Math.abs(py - 7.5);
+    const weave = (x + y) & 1;
+    s.hf[i] = 0.5 + weave * 0.05 + (d < 7.5 ? 0.08 : 0);
+    let c;
+    if (d >= 6 && d < 7.5) c = ri(Gd, weave ? 4 : 3);
+    else if (d < 1.5) c = ri(A, 5);
+    else if (d < 3.5) c = ri(R, 2 + weave);
+    else if (d < 6) c = ri(R, 5 - weave);
+    else if (d > 13.5) c = ri(A, 4);
+    else c = ri(R, 3 + (hash2(x >> 1, y, seed) < 0.15 ? -1 : weave));
+    s.set(x, y, c);
+  });
+  return { normal: 1 };
+}
+
+/**
+ * rug_border (16×8 = 1 × 0.5 u, tiles along u): the woven band around a rug, outer edge on canvas
+ * row 0 — dark edge, gold, a cream band with a red zigzag, gold, dark (rows 0–5; 6–7 repeat dark).
+ */
+function genRugBorder(s, ctx) {
+  const Gd = extRamp(PALETTE.gold, 0.1, 0.05);
+  const A = extRamp(PALETTE.cream, 0.1, 0.03);
+  const dark = ['#2a160f', '#3b2216'].map(parseColor);
+  s.each((x, y, i) => {
+    const weave = (x + y) & 1;
+    let c;
+    if (y === 0 || y >= 5) c = dark[weave];
+    else if (y === 1 || y === 4) c = ri(Gd, 3 + weave);
+    else {
+      const zig = (y === 2 && x % 4 === 1) || (y === 3 && x % 4 === 3);
+      c = zig ? parseColor('#8c2330') : ri(A, 4 + weave);
+    }
+    s.set(x, y, c);
+    s.hf[i] = y === 0 || y >= 5 ? 0.35 : 0.55 + weave * 0.05;
+  });
+  return { normal: 1 };
+}
+
+/**
+ * embers (16×16, emissive): a bed of charcoal lumps split by glowing cracks, a few coals still red
+ * hot — the emissive mask is white where it glows.
+ */
+function genEmbers(s, ctx) {
+  const { w, h } = s;
+  const { rng, seed } = ctx;
+  const v = voronoi(w, h, 4, 4, seed + 7, { jitter: 0.85, round: 0.8 });
+  const C = ['#0d0a0b', '#1a1314', '#29201f', '#3c302c', '#574740'].map(parseColor);
+  const F = PALETTE.fire.map(parseColor);
+  const hot = Array.from({ length: v.count }, () => rng.chance(0.3));
+  const em = s.emissive();
+  s.each((x, y, i) => { s.hf[i] = clamp(v.edge[i] / 3, 0, 1) * 0.8; });
+  s.each((x, y, i) => {
+    const e = v.edge[i];
+    if (e < 0.9) {
+      s.set(x, y, F[e < 0.45 ? 4 : 3]);
+      const g = e < 0.45 ? 255 : 200;
+      em.set(x, y, [g, g, g, 255]);
+    } else if (hot[v.id[i]]) {
+      const k = e < 1.8 ? 2 : 1;
+      s.set(x, y, F[k]);
+      const g = k === 2 ? 150 : 90;
+      em.set(x, y, [g, g, g, 255]);
+    } else {
+      const k = clamp(2 + stepOf(s.slope(x, y), 0.1, 0.3), 0, 4);
+      s.set(x, y, C[k]);
+    }
+  });
+  return { normal: 1.4 };
+}
+
+/**
+ * window_inside (16×24 = 1 × 1.5 u, tiles along u): a casement seen from inside a room — 2 × 3
+ * panes between dark muntins, a glint across them. The colour map is a dusky sky (the night); the
+ * emissive mask lights the panes by day (the window's material picks the colour: daylight or warm).
+ */
+function genWindowInside(s, ctx) {
+  const { w, h } = s;
+  const { seed } = ctx;
+  const F = extRamp(['#1f140e', '#34221a', '#4f3322', '#6b4a30', '#8a6440'], 0.1, 0.1);
+  // a dusky sky in the colour map (what shows at night); the emissive (daylight / warm) brightens it
+  const sky = ['#1d2f48', '#27405e', '#335274', '#43668a', '#587d9e', '#7397b3'].map(parseColor);
+  const em = s.emissive();
+  const muntinY = (y) => y === 0 || y === 7 || y === 15 || y === h - 1;
+  const muntinX = (x) => x === 0 || x === 7 || x === 8 || x === w - 1;
+  const G = field(w, h, 2, 3, seed + 5, { oct: 2 });
+  s.each((x, y, i) => {
+    if (muntinX(x) || muntinY(y)) {
+      let k = 3;
+      if (x === 0 || y === 0 || x === 7) k = 4;
+      if (x === w - 1 || y === h - 1 || x === 8) k = 2;
+      s.set(x, y, ri(F, k));
+      s.hf[i] = 0.9;
+      return;
+    }
+    // panes: lighter toward the top, a soft cloud, a recess shadow under the muntin above
+    const t = y / h;
+    let k = clamp(Math.round(4.6 - t * 3 + (G[i] - 0.5) * 1.6), 1, 5);
+    if (muntinY(y - 1) || muntinX(x - 1)) k = Math.max(1, k - 2);
+    const px = x <= 6 ? x - 1 : x - 9;
+    const py = y < 7 ? y - 1 : y < 15 ? y - 8 : y - 16;
+    if (px + py === 4 || px + py === 5) k = Math.min(5, k + 1); // glint
+    s.set(x, y, sky[k]);
+    s.hf[i] = 0.2;
+    const g = Math.round(clamp(0.78 + (1 - t) * 0.22 - (muntinY(y - 1) ? 0.15 : 0), 0, 1) * 255);
+    em.set(x, y, [g, g, g, 255]);
+  });
+  return { normal: 1.6 };
+}
+
+/**
+ * light_beam (16×32, emissive only — its material is black and additive): a shaft of window light.
+ * Rows 0–23 (v 1 → 0.25) the shaft, brightest at the window and fading toward the floor in a few
+ * flat steps, with faint rays and soft sides; rows 24–31 (v 0.25 → 0) the lit patch on the floor.
+ */
+function genLightBeam(s, ctx) {
+  const { w } = s;
+  const { seed } = ctx;
+  const em = s.emissive();
+  const ray = Array.from({ length: w }, (_, x) => 0.86 + 0.14 * hash2(x >> 1, 0, seed));
+  s.each((x, y, i) => {
+    s.set(x, y, '#ffffff');
+    s.hf[i] = 0.5;
+    const side = Math.min(1, (Math.min(x, w - 1 - x) + 0.5) / 3);
+    let e;
+    if (y < 24) e = (1 - (y / 23) * 0.78) * ray[x] * side;
+    else e = 0.32 * side * Math.min(1, (Math.min(y - 24, 31 - y) + 0.5) / 2.5);
+    // flat pixel-art steps (no dither: an ordered dither reads as a checkerboard at this size)
+    const g = Math.round(clamp(Math.round(e * 8) / 8, 0, 1) * 255);
+    em.set(x, y, [g, g, g, 255]);
+  });
+  return { normal: 0 };
+}
+
+/** burlap (16×16): sack cloth — pale oat, a fine weave, soft creases and a few darker flecks. */
+function genBurlap(s, ctx) {
+  const { w, h } = s;
+  const { seed } = ctx;
+  const B = ['#5e4c36', '#857055', '#a99270', '#c4ad86', '#d8c49c', '#e8dbb8'].map(parseColor);
+  const G = field(w, h, 2, 2, seed + 2, { oct: 2 });
+  s.each((x, y, i) => { s.hf[i] = G[i] * 0.7 + ((x + y) & 1 ? 0.03 : 0); });
+  s.each((x, y) => {
+    let k = 3 + clamp(stepOf(s.slope(x, y), 0.07, 0.25), -2, 1);
+    if (hash2(x, y, seed) < 0.05) k -= 1;
+    if ((x & 3) === 0 && (y & 1) === 0 && k > 1) k -= 1; // the weave's rows
+    s.set(x, y, ri(B, k));
+  });
+  return { normal: 1.2 };
+}
+
+// ---------------------------------------------------------------------------
 // Definitions
 // ---------------------------------------------------------------------------
 
@@ -2399,12 +2800,33 @@ const DEFS = {
   lantern_glass: { px: [16, 16], gen: genLanternGlass, normalScale: 0.5, emissive: true },
   sign_board: { px: [32, 16], gen: genSignBoard, normalScale: 0.8 },
   flowerbox: { px: [16, 16], gen: genFlowerbox, normalScale: 0.7, alpha: true, wrap: true },
+  // furniture — on demand only (not in TEXTURE_NAMES): props/Furniture.js asks for them by name
+  furniture_wood: { px: [32, 32], gen: genFurnitureWood, normalScale: 0.5 },
+  books: { px: [32, 8], gen: genBooks, normalScale: 0.6 },
+  pantry: { px: [32, 8], gen: genPantry, normalScale: 0.6 },
+  linen: { px: [16, 16], gen: genLinen, normalScale: 0.5 },
+  quilt_red: { px: [32, 32], gen: (s, c) => genQuilt(s, c, PALETTE.red), normalScale: 0.6 },
+  quilt_blue: { px: [32, 32], gen: (s, c) => genQuilt(s, c, PALETTE.blue), normalScale: 0.6 },
+  quilt_green: { px: [32, 32], gen: (s, c) => genQuilt(s, c, PALETTE.green), normalScale: 0.6 },
+  quilt_ochre: { px: [32, 32], gen: (s, c) => genQuilt(s, c, PALETTE.yellow), normalScale: 0.6 },
+  quilt_plum: { px: [32, 32], gen: (s, c) => genQuilt(s, c, PALETTE.purple), normalScale: 0.6 },
+  rug_red: { px: [32, 32], gen: (s, c) => genRug(s, c, PALETTE.red), normalScale: 0.4 },
+  rug_blue: { px: [32, 32], gen: (s, c) => genRug(s, c, PALETTE.blue), normalScale: 0.4 },
+  rug_green: { px: [32, 32], gen: (s, c) => genRug(s, c, PALETTE.green), normalScale: 0.4 },
+  rug_border: { px: [16, 8], gen: genRugBorder, normalScale: 0.4 },
+  embers: { px: [16, 16], gen: genEmbers, normalScale: 0.6, emissive: true },
+  window_inside: { px: [16, 24], gen: genWindowInside, normalScale: 0.6, emissive: true },
+  light_beam: { px: [16, 32], gen: genLightBeam, normalScale: 0, emissive: true },
+  burlap: { px: [16, 16], gen: genBurlap, normalScale: 0.6 },
 };
 
 /**
  * All texture names provided by the library (exactly the contract list; `preload()` paints these).
  * On-demand extras outside the list — painted only when something asks for them by name, so a level
- * that does not use them paints nothing new: `crag` (a fractured rock face; Cinderwatch Pass's ridge).
+ * that does not use them paints nothing new: `crag` (a fractured rock face; Cinderwatch Pass's ridge)
+ * and the furniture set (props/Furniture.js): `furniture_wood`, `books`, `pantry`, `linen`,
+ * `quilt_red|blue|green|ochre|plum`, `rug_red|blue|green`, `rug_border`, `embers` (emissive),
+ * `window_inside` (emissive), `light_beam` (emissive only), `burlap`.
  */
 export const TEXTURE_NAMES = [
   'grass', 'grass_dark', 'grass_flowers', 'dirt', 'dirt_path', 'cobblestone', 'stone_tiles', 'sand', 'farmland',
@@ -2467,7 +2889,7 @@ export class TextureLibrary {
   }
 
   /** @param {string} name */
-  has(name) { return Object.prototype.hasOwnProperty.call(DEFS, name); }
+  has(name) { return isOwnKey(DEFS, name); }
 
   /** @returns {string[]} all texture names */
   list() { return TEXTURE_NAMES.slice(); }
@@ -2523,10 +2945,10 @@ export class TextureLibrary {
     if (!p) return null;
     /** @type {{ wrap: 'repeat', mipmaps: boolean, anisotropy: number }} */
     const opt = { wrap: 'repeat', mipmaps: true, anisotropy: this.anisotropy };
-    const map = makePixelTexture(p.color.toCanvas(), { ...opt, srgb: true, name: `lumina:${name}` });
+    const map = makePixelTexture(p.color.toCanvas(), { ...opt, srgb: true, name: `luminati:${name}` });
     // Separate canvases: PixelCanvas#toCanvas caches one canvas per PixelCanvas.
-    const normal = p.normal ? makePixelTexture(p.normal.toCanvas(), { ...opt, srgb: false, name: `lumina:${name}:normal` }) : null;
-    const emissive = p.emissive ? makePixelTexture(p.emissive.toCanvas(), { ...opt, srgb: true, name: `lumina:${name}:emissive` }) : null;
+    const normal = p.normal ? makePixelTexture(p.normal.toCanvas(), { ...opt, srgb: false, name: `luminati:${name}:normal` }) : null;
+    const emissive = p.emissive ? makePixelTexture(p.emissive.toCanvas(), { ...opt, srgb: true, name: `luminati:${name}:emissive` }) : null;
     t = { map, normal, emissive };
     this._tex.set(name, t);
     return t;
@@ -2596,7 +3018,7 @@ export class TextureLibrary {
     if (typeof rest.normalScale === 'number') rest.normalScale = new THREE.Vector2(rest.normalScale, rest.normalScale);
     // rest.normalScale is a Vector2 by now (converted above); TS cannot see that through the spread
     m = new THREE.MeshLambertMaterial(/** @type {THREE.MeshLambertMaterialParameters} */ ({ ...params, ...rest }));
-    m.name = `lumina:${name}`;
+    m.name = `luminati:${name}`;
     if (rest.userData) m.userData = { ...rest.userData }; // never mutate the caller's object
     if (meta.alpha) m.userData.alpha = true;
     m.userData.texture = name;
@@ -2612,7 +3034,7 @@ export class TextureLibrary {
   _warn(name) {
     if (this._warned.has(name)) return;
     this._warned.add(name);
-    console.warn(`[TextureLibrary] unknown texture "${name}"`);
+    console.warn(`[TextureLibrary] unknown texture "${showValue(name)}"`);
   }
 
   _fallbackTexture() {

@@ -4,7 +4,7 @@ import { Sprite3D } from '../../engine/sprite/Sprite3D.js';
 import { COLORS, EMITTER_COLORS, fatSegments, pointsObject, boxEdges, disposeGeometry } from './Gizmos.js';
 import { drapedCircle, pathToSegments } from './Drape.js';
 import { ENEMY_COLORS, enemyKind, enemyHover } from './ActorPreview.js';
-import { addGroundSnowCover } from '../../demo/SnowCover.js';
+import { addGroundSnowCover } from '../../game/SnowCover.js';
 import { ownValue } from '../../engine/utils/own.js';
 
 /**

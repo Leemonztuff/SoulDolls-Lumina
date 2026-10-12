@@ -9,21 +9,30 @@
  *     --check  write nothing; exit 1 unless the output matches the file byte for byte
  *     --force  write the level even when checks fail (for inspection only; the exit code is still 1)
  *     --ascii  print the tile map          --quiet  no report
- *   play it: index.html?level=cinderwatch-pass   ·   edit it: editor.html?open=cinderwatch-pass
+ *   play it: game.html?level=cinderwatch-pass   ·   edit it: editor.html?open=cinderwatch-pass
+ *
+ * Every text carries its content-text key (`textKeys`, a `#line:` tag on the companions' and the
+ * events' script lines; docs/specs/I18N.md §4.10): carried from the current file at the default path
+ * (never --out), a new text's minted from the file and the text.
  *
  * The pass climbs south → north (up the screen, so the camera always looks ahead): the Waystone
  * Camp (spawn, drillmaster, dummies) → the Mossy Glade over the brook → the Crossroads under the
  * end of Cinder Ridge → either the Bramble Ruins (west: archers on the ledges, the keep, the ridge
  * pocket) or the Hollow Mire (east: boardwalks, the islet, the waterfall from the quarry lip) → the
- * Cinder Quarry (lip and upper terrace, boars) → the Caldera, Cinderheart's arena.
+ * Cinder Quarry (lip and upper terrace, boars) → the Caldera, Cinderheart's arena. Three villagers
+ * join the player's party when asked (docs/specs/PARTY.md §9): Sister Ilse (a mystic, the healer)
+ * and Rook (a ranger) at the Waystone Camp, Sela (a warden) at the Crossroads Waystone — their talk
+ * scripts and four background events are the level's story. The enemies are balanced for that full
+ * party of four (ADR-056): alone the pass is hard.
  *
  * Passes (each one function below, run in this order):
  *   relief → water → paths → stairs → ground → border → zones (camp, glade, crossroads, ruins,
  *   ridge, mire, quarry, caldera) → people → combat objects → sightlines → scatterTrees /
  *   scatterRocks (RNG 'cinderwatch:trees' / 'cinderwatch:rocks') → ridgeWoods → clearCrowns →
- *   ridgeRock → regions → environment → normalise → validate (the 18 rules of COMBAT.md §15.5,
- *   rule 19, zone separation, and rule 20, the chase / group-wake margins) → coverage (§15.6) →
- *   round trip → write.
+ *   ridgeRock → regions → story (the companions' events) → environment → normalise → validate (the 18 rules
+ *   of COMBAT.md §15.5, rule 19, zone separation, rule 20, the chase / group-wake margins, and the
+ *   story's checks — StoryChecks.storyIssues, as `npm run level:check` lists them) → coverage
+ *   (§15.6) → round trip → write.
  *
  * Custom legend chars: 'e' = the glade brook, flowing east (flow [0.45, 0]); 'q' = dressed stone
  * (the quarry's cut faces and blocks: stone tiles on top, stone-wall sides, blocked); 'r' = Cinder
@@ -42,11 +51,13 @@ import {
 } from '../src/engine/level/ObjectCatalog.js';
 import { RNG, fbm2, hash2, clamp } from '../src/engine/utils/math.js';
 // (pure data, node-safe: the aggro ranges of rules 5 and 19)
-import { ENEMY_DEFS } from '../src/demo/combat/defs.js';
+import { ENEMY_DEFS } from '../src/game/combat/defs.js';
+// (node-safe: the companions' talk scripts and the story events are checked before the level is written)
+import { storyIssues, formatStoryIssue } from '../src/engine/level/StoryChecks.js';
 import {
   parseArgs, createGrid, createPlacer, createWalkModel, createOcclusion, roofsOf, scatterTrees, scatterRocks, scatterForestTop,
   normalizedChanges, canonicalObject, hitShape, shapeBounds, rectDist,
-  WATER, STAIRS, CARDINAL, STAIR_DIR, S_, E_, W_, N_,
+  WATER, STAIRS, CARDINAL, STAIR_DIR, S_, E_, W_, N_, keyLevel, keyIssueLines,
 } from './lib/levelgen.mjs';
 
 /** @import { Rect, XZ, Level, LevelEnvironment } from '../src/engine/level/types.js' */
@@ -659,11 +670,13 @@ function people() {
     'Healing Draughts! Glade honey, cold spring water and something I promised my grandmother never to name.',
     'Whetstones, ironbark tonic, a warding charm or two — the watch pays me in stories, so the rest of you pay in gold.',
   ], { wander: 0.3, speed: 0.8, behaviour: 'post', facing: 'left', action: 'shop', item: 'Healing Draught', script: 'shopkeeper' });
+  // Ilse joins the party as its healer (a mystic: the cleric's staff); a `post` villager by the
+  // campfire square (wander 1.0 keeps her keep-clear disc, and so the scatter, as it was)
   npc('ilse', 'Sister Ilse', 'cleric', 50.5, 111.5, '#a7c7e7', [
     'The waystones remember the last traveller who came near. Walk close, and the crystal will know you.',
     'Should you fall, the stone you last woke calls you back to it — lighter in the purse, but whole.',
     'Rest at a stone and your wounds close. The creatures of the pass return to their haunts as well, mind. Nothing is free up here — not even sleep.',
-  ], { wander: 1.0, speed: 0.7 });
+  ], { wander: 1.0, speed: 0.7, behaviour: 'post', facing: 'down', talk: ILSE_TALK, title: 'Keeper of the Waystones' });
   npc('pip', 'Pip', 'hunter', 51.5, 75.5, '#78b35b', [
     'Two roads up to the quarry from here, and neither of them is a stroll.',
     'West, the ruins — archers on the walls, and a blade-smith\'s cache up on the ledge. Whoever carries that blade hits harder.',
@@ -675,14 +688,249 @@ function people() {
     'And the molten pools he leaves behind burn for as long as you stand in them. Step out, then step back in to swing.',
     'The watch keeps its last stores up here — draughts, whetstones, tonic. Coin for the cause, and they are yours.',
   ], { wander: 0.3, speed: 0.8, behaviour: 'post', facing: 'up', action: 'shop', item: 'Healing Draught', script: 'shopkeeper' });
+  // Sela keeps the Crossroads Waystone and joins the party when asked (docs/specs/PARTY.md §9): east
+  // of the stone, between it and the bench — off the bot's way in from the west glade, out of reach
+  // of a player resting at the stone (2.4 u; talk radius 1.6). Her `talk` script replaces the pages
+  // (the pages stay as the plain fallback the catalog wants). Her title beside the name plate is
+  // mockup G's (its renderings: docs/specs/I18N_GLOSSARY.md §6).
+  npc('sela', 'Sela', 'guard', SELA.x, SELA.z, '#e8873a', [
+    'Sela, of the Cinderwatch. The watch keeps this stone — and today the watch is me.',
+    'The old fire went out and the pass woke up. Mind the boars on the {quarry lip}: they only ever charge in straight lines.',
+  ], { wander: 0.3, speed: 0.8, behaviour: 'post', facing: 'down', spec: SELA_LOOK, talk: SELA_TALK, title: 'Warden of the Cinderwatch' });
+  // Rook, the camp's bowman, joins as a ranger: south of the sparring yard, facing the camp square
+  // (the pages stay as the plain fallback, as Sela's)
+  npc('rook', 'Rook', 'hunter', ROOK.x, ROOK.z, '#a58ad8', [
+    'Rook, scout of the Cinderwatch. The captain has me minding the camp.',
+    'Archers on every ledge up there. Takes one to know one.',
+  ], { wander: 0.3, speed: 0.8, behaviour: 'post', facing: 'right', spec: ROOK_LOOK, talk: ROOK_TALK, title: 'Scout of the Cinderwatch' });
 }
+
+/** Sela's post at the Crossroads Waystone (48.5, 77.5). */
+const SELA = { x: 50.8, z: 78.1 };
+/**
+ * Sela's look: the `guard` preset bare-headed — a silver ponytail, an ember-red tabard over mail, a
+ * short charcoal cape, the guard's spear (her class weapon: a warden).
+ */
+const SELA_LOOK = {
+  hat: 'none', female: true, hair: 'hairWhite', hairStyle: 'ponytail', eyes: 'gold',
+  outfit: { top: '#a8452c', bottom: '#3a3640', accent: 'gold', style: 'tabard', shirt: 'metal' },
+  cape: { color: '#2f2a30', style: 'short', lining: '#7a2a20' },
+  gear: { pauldrons: true, boots: 'black', gloves: 'brown' },
+};
+/**
+ * Sela's talk script (STORY_SCRIPT.md §7): who she is and the offer — shorter from the second talk
+ * (`visits`) —, `party join sela as warden balanced`; as a member (`party:sela`) her orders: the
+ * tactics panel, part ways (asked twice), lead on. (A `choice` after an `if` / `cycle` block asks
+ * its own question: only lines just before it in the same block carry its options.)
+ */
+const SELA_TALK = [
+  'if party:sela',
+  '  cycle sela-orders',
+  '    * Sela: Still on your feet? Good.',
+  '    * Sela: Every step up, the pass gets louder.',
+  '    * Sela: Your lead, traveller.',
+  '  choice How do you want this spear?',
+  '    > Tactics…',
+  '      party menu sela',
+  '    > Part ways',
+  "      Sela: Here? You're sure?",
+  '      choice',
+  '        > No — stay with me',
+  "          Sela: Good. I'd have followed you anyway.",
+  '        > Yes, part ways',
+  '          party leave sela',
+  // (her post from now on is where she stood: a villager put back far from home would walk there
+  // in a straight line — through the player, into the first cliff)
+  '          home sela',
+  '          Sela: Then this is where I keep watch. Come back for me if the pass gets too loud.',
+  '    > Lead on',
+  '      Sela: Lead on, then.',
+  '  stop',
+  'if visits = 0',
+  '  Sela: Easy, traveller. Sela, of the Cinderwatch — the watch keeps this stone, and today the watch is me.',
+  '  - Since the old fire went out, the pass has been waking one hollow at a time. Slimes in the glade, goblins in the keep, and something up in the {Caldera} that breathes like a forge.',
+  "  - A stone can keep itself. If you mean to climb to the {Caldera}, I'd rather be climbing with you.",
+  'else',
+  "  Sela: Back again. The {Caldera} hasn't come any closer.",
+  // (a full party hears no offer: Ilse and Rook leave her the third place, so only another villager
+  // holding one — the tests' Pip, joined by the hook — fills it)
+  'if party >= 3',
+  "  Sela: Your company's full, traveller. If one of them heads home, the stone and I will still be here.",
+  '  stop',
+  'choice Shall my spear walk with you?',
+  '  > Walk with me',
+  '    party join sela as warden balanced',
+  '    sfx chime',
+  // (Ilse and Rook may have joined at the camp already)
+  '    if party = 1',
+  "      Sela: Then it's the two of us. I'll keep to your heels — tell me how you want me fighting, and that's how I'll fight.",
+  '    else',
+  "      Sela: Then the watch marches with you. I'll keep to your heels — tell me how you want me fighting, and that's how I'll fight.",
+  '    toast Sela joined your party · G: Tactics',
+  '  > Not yet',
+  "    Sela: Then I'll keep the stone warm. You know where to find me.",
+];
+
+/**
+ * Sister Ilse's talk script (as Sela's): her three pages on the waystones and an offer — shorter
+ * from the second talk —, `party join ilse as mystic support` (the party's healer); as a member her
+ * orders: the tactics panel, part ways (asked twice), lead on. A full party hears no offer.
+ */
+const ILSE_TALK = [
+  'if party:ilse',
+  '  cycle ilse-orders',
+  '    * Ilse: The stones are listening. Walk on.',
+  '    * Ilse: Bruised? Stay where my light can reach you.',
+  '    * Ilse: I am with you, traveller.',
+  '  choice How shall I serve?',
+  '    > Tactics…',
+  '      party menu ilse',
+  '    > Part ways',
+  '      Ilse: Here? Are you certain?',
+  '      choice',
+  '        > No — stay with me',
+  '          Ilse: Then I stay.',
+  '        > Yes, part ways',
+  '          party leave ilse',
+  '          home ilse',
+  '          Ilse: The nearest stone will know where I am. Go gently.',
+  '    > Lead on',
+  '      Ilse: Lead on.',
+  '  stop',
+  'if visits = 0',
+  '  Ilse: The waystones remember the last traveller who came near. Walk close, and the crystal will know you.',
+  '  - Should you fall, the stone you last woke calls you back to it — lighter in the purse, but whole.',
+  '  - Rest at a stone and your wounds close. The creatures of the pass return to their haunts as well, mind. Nothing is free up here — not even sleep.',
+  '  - The pass has grown too loud for one blade. Let me walk with you, and I will mend what it breaks.',
+  'else',
+  '  Ilse: Back from the road? The pass will not wait for you to heal — but I can heal you as you go.',
+  'if party >= 3',
+  "  Ilse: Three already walk at your back. Go with the stones' blessing, and come for me if one of them turns home.",
+  '  stop',
+  'choice Shall I walk with you?',
+  '  > Walk with me',
+  '    party join ilse as mystic support',
+  '    sfx chime',
+  '    Ilse: Then I come. Keep close, and I will keep you whole.',
+  '    toast Sister Ilse joined your party · G: Tactics',
+  '  > Not yet',
+  '    Ilse: The stones will keep me. Come back when you need mending.',
+];
+
+/** Rook's post at the Waystone Camp: south of the sparring yard (the dummies), west of the square. */
+const ROOK = { x: 40.5, z: 112.5 };
+/**
+ * Rook's look: the `hunter` preset (its bow — his class weapon: a ranger — and quiver) in the
+ * watch's colours: an ember-red hood with a gold feather tuft, a leather tunic, Sela's short
+ * charcoal cape with the ember lining.
+ */
+const ROOK_LOOK = {
+  skin: 'skinDark', hair: 'hairBlack', hairStyle: 'short', eyes: 'brown',
+  hat: 'hood', hatColor: '#8f3b28', feather: 'gold',
+  outfit: { top: '#6b4a32', bottom: '#3a3640', accent: 'red', style: 'tunic', shirt: 'cream' },
+  cape: { color: '#2f2a30', style: 'short', lining: '#7a2a20' },
+  gear: { quiver: true, bracers: true, boots: 'black', belt: 'brown' },
+};
+/**
+ * Rook's talk script (as Sela's): who he is and the offer, `party join rook as ranger balanced`;
+ * as a member his orders. A full party hears no offer.
+ */
+const ROOK_TALK = [
+  'if party:rook',
+  '  cycle rook-orders',
+  "    * Rook: Quiver's full. Point me at something.",
+  '    * Rook: Anything with a bow is mine. Anything bigger is yours.',
+  '    * Rook: Your call, traveller.',
+  "  choice What's the plan?",
+  '    > Tactics…',
+  '      party menu rook',
+  '    > Part ways',
+  '      Rook: Here? You sure?',
+  '      choice',
+  '        > No — stay with me',
+  '          Rook: Good. I was just getting my eye in.',
+  '        > Yes, part ways',
+  '          party leave rook',
+  '          home rook',
+  "          Rook: Fair enough. I'll watch the road from here.",
+  '    > Lead on',
+  '      Rook: Lead on.',
+  '  stop',
+  'if visits = 0',
+  '  Rook: Rook, scout of the Cinderwatch. The captain has me minding the camp while the whole pass goes mad.',
+  '  - Goblins on the ruin walls, bats over the mire, archers on every ledge — and me down here, shooting straw.',
+  "  - Take me up the pass and I'll pick off whatever's shooting at you. Keep the big ones busy; I'll do the rest.",
+  'else',
+  '  Rook: Still here. Still shooting straw.',
+  'if party >= 3',
+  "  Rook: Your company's full. Come back for me if one of them heads home.",
+  '  stop',
+  'choice Want a bow at your back?',
+  '  > Walk with me',
+  '    party join rook as ranger balanced',
+  '    sfx chime',
+  "    Rook: About time! Keep them off me and I'll keep them off you.",
+  '    toast Rook joined your party · G: Tactics',
+  '  > Not yet',
+  "    Rook: Suit yourself. I'll be here, shooting straw.",
+];
+
+/**
+ * The level's story events (after the regions: markers, no collider, no scatter): with a companion
+ * in the party, the story sets its combat rule or has it speak — Sela: Guard Me on the quarry lip
+ * (the boars' charges), Support on the caldera stair (Cinderheart) unless Ilse heals already; Rook:
+ * Hunt Casters at the Bramble Ruins (the archers on the walls); Ilse: a word on the caldera stair.
+ * Background runs (`bark`: the player walks on), once each.
+ */
+function story() {
+  P.add('event', {
+    id: 'ev_sela_lip', ...SELA_LIP, on: 'enter', once: true, if: 'party:sela', background: true,
+    run: [
+      'emote sela !',
+      'bark sela Boars on the lip — they charge in straight lines. I\'ll stay at your shoulder.',
+      'party rule sela guardian',
+    ],
+  });
+  P.add('event', {
+    id: 'ev_sela_caldera', ...SELA_CALDERA, on: 'enter', once: true, if: 'party:sela and not party:ilse', background: true,
+    run: [
+      'bark sela That\'s Cinderheart up there. You break the rock — I\'ll keep you standing.',
+      'party rule sela support',
+    ],
+  });
+  P.add('event', {
+    id: 'ev_rook_ruins', ...ROOK_RUINS, on: 'enter', once: true, if: 'party:rook', background: true,
+    run: [
+      'emote rook !',
+      'bark rook Archers on the walls. The ones with bows are mine.',
+      'party rule rook hunter',
+    ],
+  });
+  P.add('event', {
+    id: 'ev_ilse_caldera', ...SELA_CALDERA, on: 'enter', once: true, if: 'party:ilse', background: true,
+    run: [
+      'bark ilse Cinderheart… Stay within my reach, and I will keep you whole.',
+    ],
+  });
+}
+/** The quarry lip (rows 37–43, where both branches come up: the Ruins east lane, the Mire stair). */
+const SELA_LIP = { minX: 3, maxX: 93, minZ: 37, maxZ: 44 };
+/** The caldera stair and its pad below the arena gate (x 46–51, z 23–27). */
+const SELA_CALDERA = { minX: 45.5, maxX: 51.5, minZ: 23.2, maxZ: 27 };
+/** The Bramble Ruins inside their outer wall (rows 44–71: the road from the crossroads comes in at x 34). */
+const ROOK_RUINS = { minX: 4, maxX: 41, minZ: 44, maxZ: 71.5 };
 
 // =============================================================================================
 // 2c. Combat objects (explicit ids, §15.3)
 // =============================================================================================
 
 /**
- * [id, kind, count, level, x, z, radius, extra] — positions are the design (§15.3).
+ * [id, kind, count, level, x, z, radius, extra] — positions are the design (§15.3). Counts and levels
+ * are balanced for the party of four (ADR-056: the player with Rook and Ilse from the camp, Sela from
+ * the crossroads): the glade for three, a pack more each and Lv 2; the Ruins (the harder branch) Lv
+ * 7–8 with a third goblin in the court, the Mire Lv 6–7, the quarry Lv 8 — measured with the
+ * play-through bot (`sandbox/combat_play.js`, its human model beside the party). More foes than these
+ * would break rule 15 (≤ 30 start spots within 28 u, at the crossroads); the levels carry the rest.
  * @type {[id: string, kind: string, count: number, level: number, x: number, z: number,
  *   radius: number, extra?: { spotOffsets?: XZ[], area?: Rect, elite?: boolean, name?: string,
  *   arena?: Rect, gate?: number[] }][]}
@@ -690,30 +938,30 @@ function people() {
 const ENEMIES = [
   ['dummies', 'dummy', 3, 1, 40.5, 106.5, 2, { spotOffsets: [[-2.5, 0], [0, 0], [2.5, 0]] }],
   // (their scatter square stops short of the brook: no start spot on the bank's edge)
-  ['glade_slimes_w', 'slime', 3, 1, 26.5, 90.5, 3, { area: { minX: -3, maxX: 3, minZ: -3, maxZ: 1.6 } }],
-  ['glade_slimes_n', 'slime', 4, 1, 38.5, 89.5, 3.5],
-  ['glade_slimes_e', 'slime', 3, 1, 70.5, 90.5, 3],
-  ['glade_goblins', 'goblin', 2, 1, 60.5, 86.5, 2.5],
-  ['ruins_gate_goblins', 'goblin', 3, 2, 30.5, 69.5, 2.5],
-  ['ruins_slimes', 'slime', 2, 2, 36.5, 62.5, 2],
-  ['ruins_court', 'goblin', 2, 3, 25.5, 58.5, 2.5],
-  ['ruins_shaman', 'shaman', 1, 3, 21.5, 60.5, 1.5],
-  ['ruins_archers_w', 'archer', 2, 2, 12.5, 54.5, 2],
-  ['ruins_archers_n', 'archer', 2, 3, 19.5, 49.5, 2],
-  ['mire_bats_s', 'bat', 3, 2, 66.5, 69.5, 3],
+  ['glade_slimes_w', 'slime', 4, 2, 26.5, 90.5, 3, { area: { minX: -3, maxX: 3, minZ: -3, maxZ: 1.6 } }],
+  ['glade_slimes_n', 'slime', 5, 2, 38.5, 89.5, 3.5],
+  ['glade_slimes_e', 'slime', 4, 2, 70.5, 90.5, 3],
+  ['glade_goblins', 'goblin', 3, 2, 60.5, 86.5, 2.5],
+  ['ruins_gate_goblins', 'goblin', 3, 7, 30.5, 69.5, 2.5],
+  ['ruins_slimes', 'slime', 2, 7, 36.5, 62.5, 2],
+  ['ruins_court', 'goblin', 3, 8, 25.5, 58.5, 2.5],
+  ['ruins_shaman', 'shaman', 1, 8, 21.5, 60.5, 1.5],
+  ['ruins_archers_w', 'archer', 2, 7, 12.5, 54.5, 2],
+  ['ruins_archers_n', 'archer', 2, 8, 19.5, 49.5, 2],
+  ['mire_bats_s', 'bat', 3, 6, 66.5, 69.5, 3],
   // (their scatter square stays off the still pond's bank and the west boardwalk)
-  ['mire_slimes', 'slime', 3, 2, 61.5, 61.5, 2.5, { area: { minX: -2.5, maxX: 0.5, minZ: -2.5, maxZ: 2.5 } }],
-  ['mire_bats_islet', 'bat', 3, 3, 77.5, 58.5, 3],
-  ['mire_bats_n', 'bat', 3, 3, 69.5, 50.5, 3],
-  ['mire_shaman', 'shaman', 1, 3, 84.5, 65.5, 1.5],
-  ['mire_goblins', 'goblin', 2, 3, 60.5, 53.5, 2.5],
-  ['quarry_boar_w', 'boar', 1, 4, 20.5, 40.5, 1.5],
-  ['quarry_boar_e', 'boar', 1, 4, 76.5, 40.5, 1.5],
+  ['mire_slimes', 'slime', 3, 6, 61.5, 61.5, 2.5, { area: { minX: -2.5, maxX: 0.5, minZ: -2.5, maxZ: 2.5 } }],
+  ['mire_bats_islet', 'bat', 3, 7, 77.5, 58.5, 3],
+  ['mire_bats_n', 'bat', 3, 7, 69.5, 50.5, 3],
+  ['mire_shaman', 'shaman', 1, 7, 84.5, 65.5, 1.5],
+  ['mire_goblins', 'goblin', 2, 7, 60.5, 53.5, 2.5],
+  ['quarry_boar_w', 'boar', 1, 8, 20.5, 40.5, 1.5],
+  ['quarry_boar_e', 'boar', 1, 8, 76.5, 40.5, 1.5],
   // (one spot, at home, roaming 1 u: a player resting at the Quarry Waystone stays out of its sight, rule 5)
-  ['quarry_boar_elite', 'boar', 1, 4, 56.5, 32.5, 1, { spotOffsets: [[0, 0]], elite: true, name: 'Old Ironhide' }],
-  ['quarry_goblins', 'goblin', 3, 4, 28.5, 31.5, 2.5],
-  ['quarry_archers', 'archer', 2, 4, 68.5, 30.5, 2],
-  ['quarry_bats', 'bat', 2, 4, 34.5, 34.5, 2.5],
+  ['quarry_boar_elite', 'boar', 1, 8, 56.5, 32.5, 1, { spotOffsets: [[0, 0]], elite: true, name: 'Old Ironhide' }],
+  ['quarry_goblins', 'goblin', 3, 8, 28.5, 31.5, 2.5],
+  ['quarry_archers', 'archer', 2, 8, 68.5, 30.5, 2],
+  ['quarry_bats', 'bat', 2, 8, 34.5, 34.5, 2.5],
   ['cinderheart', 'golem', 1, 6, BOSS.x, BOSS.z, 1, { name: 'Cinderheart', arena: { ...ARENA_REL }, gate: [...GATE_REL] }],
 ];
 /** The roads along Cinder Ridge (clearCrowns keeps their walkers in view at yaw ±60). */
@@ -827,10 +1075,10 @@ function regions() {
   R('region_camp', 'Waystone Camp', 'Cinderwatch Pass', 26, 70, 98.6, 120, { banner: 'Straw dummies and a warm fire · Safe' });
   R('region_crossroads', 'The Crossroads', 'Cinderwatch Pass', 36, 60, 70.5, 82);
   R('region_ridge', 'Cinder Ridge', 'Cinderwatch Pass', 40, 54, 44, 72);
-  R('region_glade', 'Mossy Glade', 'Cinderwatch Pass', 3, 93, 81.5, 105, { banner: 'Slimes and goblins · Lv 1' });
-  R('region_ruins', 'Bramble Ruins', 'Cinderwatch Pass', 3, 42, 44, 81.5, { banner: 'Goblins, archers and a shaman · Lv 2–3' });
-  R('region_mire', 'Hollow Mire', 'Cinderwatch Pass', 54, 93, 44, 81.5, { banner: 'Bats, slimes and a shaman · Lv 2–3' });
-  R('region_quarry', 'Cinder Quarry', 'Cinderwatch Pass', 3, 93, 23, 44, { banner: 'Ironhide boars and archers · Lv 4' });
+  R('region_glade', 'Mossy Glade', 'Cinderwatch Pass', 3, 93, 81.5, 105, { banner: 'Slimes and goblins · Lv 2' });
+  R('region_ruins', 'Bramble Ruins', 'Cinderwatch Pass', 3, 42, 44, 81.5, { banner: 'Goblins, archers and a shaman · Lv 7–8' });
+  R('region_mire', 'Hollow Mire', 'Cinderwatch Pass', 54, 93, 44, 81.5, { banner: 'Bats, slimes and a shaman · Lv 6–7' });
+  R('region_quarry', 'Cinder Quarry', 'Cinderwatch Pass', 3, 93, 23, 44, { banner: 'Ironhide boars and archers · Lv 8' });
   R('region_pass', 'Cinderwatch Pass', 'Where the Old Fires Wake', 0, W, 0, D);
 }
 
@@ -852,7 +1100,7 @@ function environment() {
     music: true,
     camera: { distance: 28, pitch: 34 },
     highGround: { minY: 3.4, pitch: 38 },
-    title: { title: 'CINDERWATCH PASS', subtitle: 'Where the Old Fires Wake', prompt: 'Press any key', credit: 'A Lumina HD-2D action demo · three.js' },
+    title: { title: 'CINDERWATCH PASS', subtitle: 'Where the Old Fires Wake', prompt: 'Press any key', credit: 'A Luminati 2.5D action demo · three.js' },
     // the title drifts over the Hollow Mire: the falls from the quarry lip, the ponds, boardwalks and reeds
     titleCamera: { x: 78, z: 52, y: 1, driftX: 4, driftZ: 2, distance: 34 },
     fogScale: 0.7,
@@ -1207,6 +1455,16 @@ function validate(level, occl) {
   if (regs.map((r) => r.id).join() !== REGIONS.join()) err(16, `regions ${regs.map((r) => r.id).join(', ')} (expected ${REGIONS.join(', ')}, in that order)`);
   for (const r of regs) {
     if (BANNERS.has(r.id) !== !!r.banner) err(16, `region ${r.id}: ${r.banner ? 'has a banner it should not' : 'has no banner'}`);
+    // a banner's "Lv a–b" is the level range of the packs at home in its zone (the first region
+    // holding a home is its zone, as in the game)
+    const lv = /· Lv (\d+)(?:–(\d+))?$/.exec(r.banner ?? '');
+    if (lv) {
+      const zoneOf = (o) => regs.find((q) => o.x >= q.minX && o.x <= q.maxX && o.z >= q.minZ && o.z <= q.maxZ);
+      const lvs = hostile.filter((o) => zoneOf(o) === r).map((o) => o.level);
+      const want = lvs.length ? (Math.min(...lvs) === Math.max(...lvs) ? `${Math.min(...lvs)}` : `${Math.min(...lvs)}–${Math.max(...lvs)}`) : '?';
+      const got = lv[2] ? `${lv[1]}–${lv[2]}` : lv[1];
+      if (got !== want) err(16, `region ${r.id}: the banner says Lv ${got}, its packs are Lv ${want}`);
+    }
     let ok = false;
     for (let z = Math.ceil(r.minZ * 4); z < r.maxZ * 4 && !ok; z++) for (let x = Math.ceil(r.minX * 4); x < r.maxX * 4; x++) if (walk.reachableAt(x / 4, z / 4)) { ok = true; break; }
     if (!ok) err(16, `region "${r.name}" has no reachable ground`);
@@ -1691,6 +1949,9 @@ function coverage(level) {
   const enemies = level.objects.filter((o) => o.type === 'enemy');
   const chests = level.objects.filter((o) => o.type === 'chest');
   const npcs = level.objects.filter((o) => o.type === 'npc');
+  const events = level.objects.filter((o) => o.type === 'event');
+  /** @param {unknown} v a script field */
+  const lines = (v) => (Array.isArray(v) ? v.filter((l) => typeof l === 'string') : []);
   const emitters = new Set(level.objects.filter((o) => o.type === 'emitter').map((o) => o.preset));
   const env = level.environment;
   const combatTypes = Object.keys(OBJECT_TYPES).filter((t) => OBJECT_TYPES[t].combat);
@@ -1716,6 +1977,16 @@ function coverage(level) {
     ['environment.clock === false', env.clock === false, String(env.clock)],
     ['environment.combat absent (auto)', !('combat' in env), 'combat' in env ? String(env.combat) : 'absent'],
     ['valid presets', npcs.every((n) => CHARACTER_PRESET_NAMES.includes(n.preset)) && level.objects.filter((o) => o.type === 'emitter').every((o) => EMITTER_PRESETS.includes(o.preset)), ''],
+    // the party demo (docs/specs/PARTY.md §9)
+    ['a villager who joins the party (a talk script with `party join` and `party menu`)', npcs.some((n) => lines(n.talk).some((l) => /^\s*party join /.test(l)) && lines(n.talk).some((l) => /^\s*party menu\b/.test(l))),
+      npcs.filter((n) => lines(n.talk).some((l) => /^\s*party join /.test(l))).map((n) => n.id).join(' ')],
+    ['a background event that sets a member\'s rule (`party rule`)', events.some((e) => e.background === true && lines(e.run).some((l) => /^\s*party rule /.test(l))),
+      events.filter((e) => lines(e.run).some((l) => /^\s*party rule /.test(l))).map((e) => e.id).join(' ')],
+    // the full party of four the enemies are balanced for (ADR-056): a villager joins as each class
+    ...['warden', 'ranger', 'mystic'].map((cls) => {
+      const joins = (n) => lines(n.talk).some((l) => new RegExp(`^\\s*party join \\S+ as ${cls}\\b`).test(l));
+      return [`a villager who joins as a ${cls} (\`party join … as ${cls}\`)`, npcs.some(joins), npcs.filter(joins).map((n) => n.id).join(' ')];
+    }),
   ];
 }
 
@@ -1748,6 +2019,7 @@ const ridgeScatter = ridgeWoods();
 const crownsCleared = clearCrowns();
 const ridgeTiles = ridgeRock();
 regions();
+story();
 
 const rows = g.rows(levelToChar);
 /** @type {Level} */
@@ -1756,8 +2028,8 @@ const raw = {
   version: LEVEL_VERSION,
   name: NAME,
   subtitle: 'Where the Old Fires Wake',
-  author: 'Lumina',
-  description: 'The Lumina action demo: a 96 × 120 mountain pass climbed from the Waystone Camp through the Mossy Glade, the Bramble Ruins or the Hollow Mire and the Cinder Quarry to Cinderheart\'s caldera — slimes, goblins, archers, shamans, bats, boars and a three-phase boss. Generated by tools/make-cinderwatch-pass.mjs.',
+  author: 'Luminati',
+  description: 'The Luminati action demo: recruit three party companions — Sister Ilse and Rook at the Waystone Camp, Sela, a warden of the watch, at the Crossroads Waystone — and climb a 96 × 120 mountain pass through the Mossy Glade, the Bramble Ruins or the Hollow Mire and the Cinder Quarry to Cinderheart\'s caldera: slimes, goblins, archers, shamans, bats, boars and a three-phase boss, balanced for a party of four. Generated by tools/make-cinderwatch-pass.mjs.',
   width: W,
   depth: D,
   waterLevel: 0.4,
@@ -1774,8 +2046,19 @@ const { level, warnings } = normalizeLevel(raw);
 level.objects = level.objects.map(canonicalObject);
 const errors = validateLevel(level);
 for (const p of normalizedChanges(raw, level)) errors.push(`normalizeLevel changed ${p}`);
+// the content-text keys (docs/specs/I18N.md §4.10): carried from the current file at the default
+// path (never --out), new ones seeded by the file and the text — the companions' talk and the events' lines
+// get their #line: tags
+keyLevel(level, { root, file: 'public/levels/cinderwatch-pass.json' });
+errors.push(...keyIssueLines(level));
 const occl = createOcclusion({ g, objects: P.objects, groundY: P.groundY, forestTop: FOREST_TOP });
 const report = validate(level, occl);
+// the story (the companions' talk scripts, their events): what `npm run level:check` lists as `story:` lines
+for (const i of storyIssues(level)) {
+  const m = `[story] ${formatStoryIssue(i, level)}`;
+  if (i.severity === 'error') report.errors.push(m);
+  else report.warnings.push(m);
+}
 const checks = coverage(level);
 const text = serializeLevel(level);
 if (serializeLevel(normalizeLevel(JSON.parse(text)).level) !== text) report.errors.push('[1] serializeLevel is not byte-stable for this level');

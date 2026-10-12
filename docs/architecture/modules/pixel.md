@@ -1,6 +1,6 @@
 # Pixel module: PixelCanvas, Palette, TextureLibrary, CharacterSprites, PropSprites, MonsterSprites, FxSprites
 
-> **Purpose.** This is the reference for the procedural pixel-art generators. Lumina ships no
+> **Purpose.** This is the reference for the procedural pixel-art generators. Luminati ships no
 > image files: every world texture, character and creature sprite sheet, and prop, flame and
 > particle sprite is painted at runtime, texel by texel, from one shared hue-shifted palette,
 > then uploaded as a NEAREST-magnified three.js texture. The page documents the drawing API, the
@@ -121,11 +121,13 @@ const tex = pc.toTexture({ wrap: 'repeat', mipmaps: true });   // SRGB, NEAREST 
 | `toDataURL()`, `toTexture(opts)` | `toTexture` = `makePixelTexture(this.toCanvas(), opts)`. |
 
 **Colours** accepted by `PixelCanvas` / `parseColor`: `'#rgb'`, `'#rgba'`, `'#rrggbb'`,
-`'#rrggbbaa'`, `[r,g,b]` / `[r,g,b,a]` (0–255), `{r,g,b,a?}`, and `null` / `'transparent'`.
-**Not** numbers, CSS names or palette names (CharacterSprites normalises those itself): a
-number throws a `TypeError` (`c.trim` is not a function), and a name is not rejected but parsed
-as broken hex, giving a wrong colour (`'red'` becomes opaque black).
-`parseColor` returns frozen, cached arrays for strings. Never mutate them.
+`'#rrggbbaa'` (the `#` optional: a string of hex digits parses as hex, as it always did), a
+`0xRRGGBB` number, a CSS colour name (`'red'`, `' Beige '` — trimmed, any case; an own key of
+`THREE.Color.NAMES`), `[r,g,b]` / `[r,g,b,a]` (0–255), `{r,g,b,a?}`, and `null` / `'transparent'`.
+**Not** palette names (CharacterSprites normalises those itself). Anything else — an unknown
+name, a non-finite number, a boolean — is opaque black after a console warning
+(`[PixelCanvas] unknown colour "…"; using black`, once per value; KNOWN_ISSUES PROP-11).
+`parseColor` returns frozen, cached arrays for strings and numbers. Never mutate them.
 
 | Helper | Signature → result |
 | --- | --- |
@@ -169,7 +171,7 @@ const [uw, uh] = tex.meta('cobblestone').units;                  // [4, 4] → u
 | Member | Description |
 | --- | --- |
 | `constructor({ seed = 1337, anisotropy = 4 } = {})` | Nothing is painted until first use. |
-| `get(name)` | Colour `CanvasTexture`: SRGB, `RepeatWrapping`, mipmaps (`LinearMipmapLinear` min, NEAREST mag), anisotropy. Named `lumina:<name>`. Cached and **shared**. |
+| `get(name)` | Colour `CanvasTexture`: SRGB, `RepeatWrapping`, mipmaps (`LinearMipmapLinear` min, NEAREST mag), anisotropy. Named `luminati:<name>`. Cached and **shared**. |
 | `normal(name)` | Tangent-space normal map (`NoColorSpace`, mipmapped). **Every** known texture has one. `null` for unknown names. |
 | `emissive(name)` | SRGB mask (white = glows) for `window` and `lantern_glass`. `null` otherwise. |
 | `meta(name)` | `{ px: [w, h], units: [w/16, h/16], alpha, emissive, normal }`. |
@@ -209,6 +211,19 @@ Sizes (\* = alpha cut-out, † = emissive mask):
 | 16×32 → 1×2 (2) | `door`, `bark` |
 | 32×16 → 2×1 (1) | `sign_board` |
 | 16×16 → 1×1 (11) | `cliff`, `grass_side`, `dirt_side`, `window`†, `metal`, `barrel`, `crate`, `fence_wood`\*, `rope`, `lantern_glass`†, `flowerbox`\* |
+
+**On demand, outside the list: the furniture set** (2026-10-07, [`props/Furniture.js`](../../../src/engine/world/props/Furniture.js)):
+`furniture_wood` (32 × 32, planed oak boards 8 px wide along u, no nails), `books` and `pantry`
+(32 × 8: one 0.5-high shelf compartment of book spines / jars, bottles, a crock, a sack and cheese
+standing on canvas row 7, tiling along u), `linen` (16 × 16), `quilt_red|blue|green|ochre|plum`
+(32 × 32 patchwork of 8 px quilted squares), `rug_red|blue|green` (32 × 32, a diamond per unit) and
+`rug_border` (16 × 8, the band's outer edge on row 0, rows 0–5 used), `embers` (16 × 16, glowing
+cracks between coals, **emissive**), `window_inside` (16 × 24, a casement seen from inside: a dusky
+sky in the colour map, the panes in the **emissive** mask), `light_beam` (16 × 32, emissive only: a
+window's light shaft on rows 0–23, its floor patch on rows 24–31), `burlap` (16 × 16). Like `crag`
+they are not in `TEXTURE_NAMES`: `preload()` and `list()` skip them, they are painted the first
+time a furniture builder asks for them (each from its own name's seed, so no other texture
+changes), and a level without furniture paints none.
 
 **On demand, outside the list.** `crag` (32 × 32 px → 2 × 2 u, `normalScale` 0.7; added
 2026-09-28, KNOWN_ISSUES COMBAT-20) is a fractured rock face for cliff sides: upright Voronoi rock
@@ -524,7 +539,7 @@ frameWidth, frameHeight, sheetWidth, columns, rows: 1, animations, kind, dispose
 
 Where they are used:
 
-- The demo's ground detail ([`src/demo/GroundDetail.js`](../../../src/demo/GroundDetail.js))
+- The demo's ground detail ([`src/game/GroundDetail.js`](../../../src/game/GroundDetail.js))
   packs plant sprites into strips for `Foliage`.
 - World flames (lamps, torches, campfire) are shader-based (`world/props/Flame.js`), not these
   strips. `Sprite3D` accepts animated prop sprites directly if you want a sprite flame.
@@ -559,7 +574,7 @@ Where they are used:
 
 - **Determinism:** generators use `RNG` / `hash2` / `fbm2` only. Keep it that way.
 - **Alpha foliage at distance:** canvas upload drops the colour under fully transparent texels,
-  so mip levels ≥ 1 darken leaf edges slightly. Invisible at the HD-2D zoom, where mip 0 is used.
+  so mip levels ≥ 1 darken leaf edges slightly. Invisible at the diorama zoom, where mip 0 is used.
 - **1×1 side textures repeat every unit** (`cliff`, `grass_side`, `dirt_side`). The strata are
   continuous, but some regularity shows on long faces.
 - **`grass_side` uses the `grass` ramp**, so it looks brighter than `grass_dark` tops above it.
@@ -574,9 +589,9 @@ Where they are used:
 - **The value-contrast check is on the whole sheet.** Darkening a goblin's skin share (dark hair,
   boots, trousers) drops its ratio toward the grass value (1.71 now, limit 1.6).
 
-## 9. History and decisions
+## 9. Design notes
 
-- **Textures (Phase 1).**
+- **Textures.**
   - The builder kept every size the contract states, and made unspecified large surfaces bigger
     (4×4-unit tops and plaster, 2×2 walls and roofs) so 20×20-tile fields don't visibly repeat.
     As a result, TileMap and Props **must** scale UVs by `meta(name).units`.
@@ -586,7 +601,7 @@ Where they are used:
     ramp step.
   - The auditor made the `material()` cache key robust (functions keyed by source, textures by
     uuid) and made `fence_wood` seed-dependent.
-- **Sprite art (Phase 1 audit).**
+- **Sprite art.**
   - Prop results gained `rows: 1` + `animations`, so animated flames play in `Sprite3D`.
   - The tear in long hair on walk frames was fixed, the cleric's staff gem made visible, and the
     side-view bun redrawn.
@@ -605,6 +620,6 @@ Where they are used:
     on-demand `crag` texture was added for Cinderwatch Pass's ridge instead of a new contract
     texture — outside `TEXTURE_NAMES`, so `preload()`, the texture sandbox and every other level
     paint exactly what they did.
-- **Phase 2:** a review asked for a slower idle cycle. It was done on the demo side (idle
-  playback speed, `IDLE_SPEED` in `src/demo/config.js`), so the engine's sheet defaults (idle
+- **Integration:** a review asked for a slower idle cycle. It was done on the demo side (idle
+  playback speed, `IDLE_SPEED` in `src/game/config.js`), so the engine's sheet defaults (idle
   2.5 fps) are unchanged.

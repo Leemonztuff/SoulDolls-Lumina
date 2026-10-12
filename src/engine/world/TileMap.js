@@ -4,6 +4,7 @@ import { LEVEL_HEIGHT, PPU } from '../constants.js';
 import { kdSplit, triangleCount } from './SpatialSplit.js';
 import { clamp, lerp, smoothstep, hash2, hashString, fbm2, valueNoise2 } from '../utils/math.js';
 import { isOwnKey } from '../utils/own.js';
+import { runSteps } from '../utils/steps.js';
 import { PixelCanvas } from '../pixel/PixelCanvas.js';
 import { globalUniforms } from '../render/GlobalUniforms.js';
 
@@ -14,7 +15,7 @@ import { globalUniforms } from '../render/GlobalUniforms.js';
  */
 
 /**
- * TileMap.js — HD-2D terrain for Lumina.
+ * TileMap.js — 2.5D pixel-art terrain for Luminati.
  *
  * Builds a floating "diorama chunk" of blocky terrain from a legend / tiles / heights map
  * description (ARCHITECTURE.md §4.7) and answers gameplay queries (height, walkability,
@@ -63,7 +64,11 @@ const STEP_H = LEVEL_HEIGHT / STAIR_STEPS;
 const LIP_HEIGHT = 1; // world height of the `lip` band at the top of vertical faces
 const SUB = 4; // lattice subdivisions per unit (tops, face columns)
 const AUTO_WATER_DEPTH = 0.35;
+/** `waterLevel` of a map without one: 0.4, as in a new level (createEmptyLevel) and normalizeLevel (LVL-06). */
+const DEFAULT_WATER_LEVEL = 0.4;
 const EPS = 1e-4;
+/** The terrain seed of a map without a name (a fixed value: the same terrain in every version). */
+const NAMELESS_MAP_SEED = 311573446;
 /** Collider grid: cell size (world units) and the collider count from which the grid is used. */
 const COLLIDER_CELL = 2;
 const COLLIDER_GRID_MIN = 16;
@@ -227,7 +232,7 @@ function parseLevel(ch) {
 /**
  * The map a TileMap builds (ARCHITECTURE.md §4.7; `toTileMapInput(level)` makes one from a
  * level, and a level itself fits): missing rows / characters are void, a character without a
- * legend entry is void (with a warning), `waterLevel` defaults to 0.35.
+ * legend entry is void (with a warning), `waterLevel` defaults to 0.4 (as in a new level).
  * @typedef {object} TileMapInput
  * @property {string} [name]
  * @property {Record<string, TileDef>} [legend]
@@ -441,7 +446,8 @@ export class TileMap {
    * @param {TileMapInput} map
    * @param {{ textures: TextureLibrary, seed?: number, baseDepth?: number,
    *           chunkSize?: number, uvVariation?: boolean, fringes?: boolean, overhangs?: boolean,
-   *           aoStrength?: number, tintStrength?: number, sideVariation?: boolean, wallBounce?: number }} opts
+   *           aoStrength?: number, tintStrength?: number, sideVariation?: boolean, wallBounce?: number,
+   *           deferBuild?: boolean }} opts
    *   - baseDepth (2): how far below the lowest tile the diorama edge faces extend
    *   - chunkSize (32): tiles per merged-mesh chunk (per material) for frustum culling on big maps
    *   - uvVariation (true): random 90° rotations / mirrors of organic tops (shader, per cell)
@@ -451,12 +457,14 @@ export class TileMap {
    *     repetition of cliff textures, at the cost of discontinuous joints between tiles)
    *   - wallBounce (1): sun-driven ground-bounce fill on vertical faces (keeps shaded,
    *     camera-facing cliffs readable); live-tweakable via `tileMap.wallBounce`
+   *   - deferBuild (false): make no meshes yet — the tiles answer every query at once, the caller
+   *     runs `buildSteps()` (in time slices) before the terrain is shown
    */
   // @ts-expect-error the `{}` default lacks `textures` on purpose: the constructor throws on it
   constructor(map, opts = {}) {
     const {
       textures,
-      seed = hashString(String(map?.name ?? 'lumina-map')),
+      seed = map?.name != null ? hashString(String(map.name)) : NAMELESS_MAP_SEED,
       baseDepth = 2,
       chunkSize = 32,
       uvVariation = true,
@@ -466,6 +474,7 @@ export class TileMap {
       tintStrength = 1,
       sideVariation = false,
       wallBounce = 1,
+      deferBuild = false,
     } = opts;
     if (!textures) throw new Error('TileMap: opts.textures (TextureLibrary) is required');
     this.textures = textures;
@@ -515,7 +524,7 @@ export class TileMap {
     /** World Y of the bottom of the diorama edge faces (void / out-of-bounds height). */
     this.baseY = minH - baseDepth;
     /** Global water surface level (map.waterLevel). */
-    this.waterLevel = map.waterLevel ?? 0.35;
+    this.waterLevel = map.waterLevel ?? DEFAULT_WATER_LEVEL;
     for (const t of this._tiles) {
       if (!t || !t.water) continue;
       const s = this._computeWaterSurface(t, this.waterLevel);
@@ -547,7 +556,7 @@ export class TileMap {
     this._tmpUV = { u: 0, v: 0 };
     this._tmpTint = [1, 1, 1];
 
-    this._build();
+    if (!deferBuild) this._build();
   }
 
   // -------------------------------------------------------------------------
@@ -1084,7 +1093,7 @@ export class TileMap {
       if (decal) fs = fs.replace('#include <alphamap_fragment>', DECAL_ALPHA);
       shader.fragmentShader = fs;
     };
-    m.customProgramCacheKey = () => `lumina-tilemap${variation ? '-var' : ''}${decal ? '-decal' : ''}`;
+    m.customProgramCacheKey = () => `luminati-tilemap${variation ? '-var' : ''}${decal ? '-decal' : ''}`;
   }
 
   /** Strength of the ground-bounce fill on vertical faces (0 = off, 1 = default). Live. */
@@ -1250,9 +1259,37 @@ export class TileMap {
   }
 
   _build() {
-    this.forEachTile((i, j, t) => this._emitTile(t));
-    if (this.options.fringes) this._emitFringes();
-    this._flushBuilders();
+    runSteps(this.buildSteps());
+  }
+
+  /**
+   * The terrain meshes as a step generator (src/engine/utils/steps.js): a step per tile emitted,
+   * per tile's fringes and per mesh made, in the order of a whole build — every tile row by row,
+   * then the fringes, then the meshes. The constructor runs it at once; a TileMap made with
+   * `deferBuild: true` has no meshes until the caller has run it to its end (once).
+   * @returns {Generator<undefined, void>}
+   */
+  * buildSteps() {
+    const W = this.width;
+    for (let j = 0; j < this.depth; j++) {
+      for (let i = 0; i < W; i++) {
+        const t = this._tiles[j * W + i];
+        if (!t) continue;
+        this._emitTile(t);
+        yield;
+      }
+    }
+    if (this.options.fringes) {
+      for (let j = 0; j < this.depth; j++) {
+        for (let i = 0; i < W; i++) {
+          const t = this._tiles[j * W + i];
+          if (!t) continue;
+          this._emitFringesAt(i, j, t);
+          yield;
+        }
+      }
+    }
+    yield* this._flushBuilderSteps();
   }
 
   /** Top (or stairs) and vertical faces of one tile. */
@@ -1264,6 +1301,14 @@ export class TileMap {
 
   /** Turn the pending MeshBuilders into meshes (tagged with their chunk) and add them. */
   _flushBuilders() {
+    return runSteps(this._flushBuilderSteps());
+  }
+
+  /**
+   * `_flushBuilders` as a step generator: a step per mesh made; the meshes are added at the end.
+   * @returns {Generator<undefined, THREE.Mesh[]>}
+   */
+  * _flushBuilderSteps() {
     const meshes = [];
     for (const b of this._builders.values()) {
       if (!b.count) continue;
@@ -1285,6 +1330,7 @@ export class TileMap {
       mesh.userData.chunk = b.chunk;
       if (decal) mesh.renderOrder = 1;
       meshes.push(mesh);
+      yield;
     }
     // Stable draw order: terrain first, decals last.
     meshes.sort((a, b) => a.renderOrder - b.renderOrder || (a.name < b.name ? -1 : 1));
@@ -1304,7 +1350,17 @@ export class TileMap {
    * @param {{ maxTriangles?: number, maxExtent?: number, minTriangles?: number }} [opts]
    * @returns {number} how many meshes fewer there are
    */
-  consolidateChunks({ maxTriangles = 48000, maxExtent = Infinity, minTriangles = 0 } = {}) {
+  consolidateChunks(opts = {}) {
+    return runSteps(this.consolidateChunkSteps(opts));
+  }
+
+  /**
+   * {@link consolidateChunks} as a step generator (src/engine/utils/steps.js): a step per batch
+   * merged.
+   * @param {{ maxTriangles?: number, maxExtent?: number, minTriangles?: number }} [opts]
+   * @returns {Generator<undefined, number>} how many meshes fewer there are
+   */
+  * consolidateChunkSteps({ maxTriangles = 48000, maxExtent = Infinity, minTriangles = 0 } = {}) {
     const cs = this.options.chunkSize;
     const groups = new Map();
     for (const m of /** @type {SolidMesh[]} */ (this.object.children)) {
@@ -1339,6 +1395,7 @@ export class TileMap {
           m.geometry.dispose();
         }
         this.object.add(mesh);
+        yield;
       }
     }
     // the stable draw order of _flushBuilders: terrain first, decals last
@@ -1396,7 +1453,7 @@ export class TileMap {
     const D = this.depth;
     const rows = map?.tiles ?? [];
     if (rows.length !== D || rows.reduce((m, r) => Math.max(m, r.length), 0) !== W) return null;
-    if ((map.waterLevel ?? 0.35) !== this.waterLevel) return null;
+    if ((map.waterLevel ?? DEFAULT_WATER_LEVEL) !== this.waterLevel) return null;
     const i0 = Math.max(0, Math.floor(rect.minI));
     const i1 = Math.min(W - 1, Math.floor(rect.maxI));
     const j0 = Math.max(0, Math.floor(rect.minJ));

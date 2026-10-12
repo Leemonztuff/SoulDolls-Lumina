@@ -35,7 +35,7 @@
  *   tables SCENES, GAME_VOL, ROLE, WINDOW, LIMIT }
  */
 import * as CUR_AUDIO from '../src/engine/audio/AudioSystem.js';
-import * as CUR_MUSIC from '../src/demo/combat/CombatMusic.js';
+import * as CUR_MUSIC from '../src/game/combat/CombatMusic.js';
 
 const SR = 44100;
 const DB = (x) => 20 * Math.log10(Math.max(1e-12, x));

@@ -1,6 +1,6 @@
 # FX module: Particles, GodRays, FxQuads and GroundMarkers
 
-> **Purpose.** This is the reference for Lumina's atmosphere effects. `Particles` is a GPU
+> **Purpose.** This is the reference for Luminati's atmosphere effects. `Particles` is a GPU
 > particle system: every continuous emitter is one instanced draw call whose particles are
 > computed statelessly in the vertex shader from the instance id, a seed and time, and one-shot
 > bursts use small GPU-animated ring buffers. It ships 12 presets (dust motes, fireflies, embers,
@@ -85,6 +85,8 @@ npm run check -- --page=sandbox/combat_fx.html --query= --out=cfx --fps=0 --scri
 | `createEmitter(config)` → `Emitter` | A continuous emitter (one draw call). See §2.2. |
 | `burst(preset, position, count = 12, overrides = {})` | One-shot particles from any preset. `count` is clamped to the pool capacity of 512. It keeps the contract default of 12 rather than the preset's own `count`, so pass small counts yourself (the demo uses 4 for running dust). |
 | `update(dt, camera?)` | Per frame: moves `followCamera` emitters, refreshes culling spheres, and hides burst pools whose particles are all dead. Call it after the camera moved. |
+| `burstPools()` → `BurstPool[]` | The burst pools created so far, in creation order (a copy; opaque handles for `releaseBurstPools`). |
+| `releaseBurstPools(pools)` | Disposes those pools: meshes out of the group, geometry and material freed (a program no other material uses goes with them), the cached configs that pointed at them forgotten — the next burst of such a preset creates its pool anew. The combat system releases the pools its warm-up made when it is disposed (a campaign's next, peaceful level keeps its own program count: KNOWN_ISSUES CMP-05). |
 | `emitters` | Live array of emitters. |
 | `dispose()` | Disposes every emitter, pool and internal texture, and removes the group. |
 
@@ -171,7 +173,7 @@ Defaults (`DEFAULTS`) apply wherever a preset doesn't set a key.
 | `windInfluence` | `0` | Multiplies `uWind × uWindStrength`. |
 | `turbulence` | `[0, 1]` | `[amplitude, frequency]`. |
 | `spin`, `tumble` | `[0, 0]`, `0` | rad/s, and 0..1 card flip. |
-| `color`, `colorEnd`, `colors` | `'#ffffff'`, `null`, `null` | Start and end colour, or a palette of up to 4. |
+| `color`, `colorEnd`, `colors` | `'#ffffff'`, `null`, `null` | Start and end colour, or a palette of up to 4. Any `THREE.Color` input; a name three.js would resolve through `Object.prototype` (`"constructor"`, `"__proto__"`, which gave black) acts like any unknown name — white — with a warning (`ownColor`, KNOWN_ISSUES LVL-19). |
 | `hdr` | `1` | Colour multiplier (> 1 blooms). |
 | `alpha`, `fade` | `1`, `[0.1, 0.3]` | Fade-in and fade-out as fractions of life. |
 | `twinkle`, `blink`, `pulse` | `0` | Sparkle peaks, firefly on/off, and size `sin(πt)`. |
@@ -217,8 +219,9 @@ reuse a cached resolved config, so footsteps allocate nothing.
 
 - Fog depth comes from three's standard `#include <fog_vertex>`, so a game that patches that
   chunk fogs particles the same way as every other material. The demo's
-  `installFogStart` ([`src/demo/AtmosphereFog.js`](../../../src/demo/AtmosphereFog.js)) starts
-  the fog a few units in front of the camera.
+  `installFogStart` ([`src/game/AtmosphereFog.js`](../../../src/game/AtmosphereFog.js)) starts
+  the fog a few units in front of the camera, at `globalUniforms.uFogStart`, which the particle
+  uniforms reference (as do GodRays, FxQuads and GroundMarkers).
 - Glow HDR values are tuned so the colour survives ACES and still crosses the demo's bloom
   threshold.
 - Dead or hidden particles are culled in the vertex shader (moved outside the clip volume).
@@ -254,7 +257,7 @@ new GodRays({ steepness = 0.45, color = 0xfff1d8, nightStrength = 0, nearFade = 
 
 | Option | Meaning |
 | --- | --- |
-| `steepness` | 0 = beams follow the true light elevation, 1 = vertical. It keeps the Octopath diagonal when the sun is low. |
+| `steepness` | 0 = beams follow the true light elevation, 1 = vertical. It keeps the slanted diagonal of Square Enix's HD-2D games when the sun is low. |
 | `color` | Tint multiplied with `uSunColor`. |
 | `nightStrength` | Fraction kept at full night (0 = no moonbeams). |
 | `nearFade` | Camera distance range over which shafts fade in, so they vanish when the camera is close. |
@@ -331,15 +334,14 @@ them. See [LEVEL_FORMAT.md](../../specs/LEVEL_FORMAT.md).
 - **Big levels** switch off the level's `emitter` areas and every prop emitter (chimney and
   campfire smoke, embers, waterfall mist) whose box is more than 34 units from the camera focus,
   through `Emitter.enabled` (`World._cullParticles`, `BIG_LEVEL_BATCHING.particleCull` in
-  [`src/demo/World.js`](../../../src/demo/World.js)). The ambient dust area (which the game moves
+  [`src/game/World.js`](../../../src/game/World.js)). The ambient dust area (which the game moves
   with the camera focus) and the rain and snow emitters are never culled.
 - **GodRays run on their own clock.** Pausing the Engine's `timeScale` doesn't pause them unless
   you scale the `dt` you pass to `update`.
 
-## 8. History and decisions
+## 8. Design notes
 
-- **Phase 1:** `Particles` came from the sprite-runtime builder and `GodRays` from the lighting
-  builder.
+- **Particle and god-ray robustness:**
   - *Particle audit fixes:*
     - The twinkle `pow()` is guarded against negative bases. A GPU `sin()` overshoot produced
       NaN, which spread through bloom as black and white blocks.
@@ -350,15 +352,15 @@ them. See [LEVEL_FORMAT.md](../../specs/LEVEL_FORMAT.md).
       near-white under ACES at night exposure.
   - *GodRays audit fix:* screen blending when drawing straight to the canvas (shafts were
     3–10× too bright with PostFX disabled).
-- **Phase 2 (Emberfall review):** particles wrote `vFogDepth` themselves and bypassed the demo's
+- **Emberfall review:** particles wrote `vFogDepth` themselves and bypassed the demo's
   fog-start patch, so leaves 25–30 units away were ~60 % fogged and looked like pale flakes.
   They now use three's `fog_vertex` chunk.
-- **Phase 4 (Starfall Vale):**
+- **Starfall Vale:**
   - Emitter culling radii follow the wind.
   - GodRays got sphere frustum culling (−10 to −15 draw calls per view on Starfall Vale).
   - The game culls distant particle areas and smoke (34 units) and primes the burst pools
     before the load-time compile, removing a 100–300 ms first-waterfall hitch.
-- **Combat (fx-audio-input package, COMBAT.md §11):** `FxQuads`, `GroundMarkers` (draped over a
+- **Combat ( COMBAT.md §11):** `FxQuads`, `GroundMarkers` (draped over a
   baked height texture) and the six combat burst presets (one new pool). All opt-in; peaceful
   levels keep their programs, pools and burst RNG sequence.
 - **Combat known-issues pass (2026-09-28):** the height bake runs in ≤ 6 ms slices and never drops
@@ -406,7 +408,7 @@ quads.update();   // once per frame
 | `r, g, b` | Linear HDR tint: colour = texel × (r, g, b); a max channel above ~1.4 blooms (threshold 1.05). |
 | `a` | < 1 dissolves the quad with a 4 × 4 Bayer threshold **in atlas-texel space** (art-sized pixels). |
 
-Rendering: unlit `ShaderMaterial` (`customProgramCacheKey` **`lumina-fxquads-v1`**), alpha test
+Rendering: unlit `ShaderMaterial` (`customProgramCacheKey` **`luminati-fxquads-v1`**), alpha test
 0.5, opaque and **depth-writing** (sharp in the DOF, sorted by depth), fog like every material,
 standard tone-mapping / colour-space chunks (no-ops into PostFX's HDR target). Two batches with
 different atlases share the one program.
@@ -478,7 +480,7 @@ markers.set(h, { shape: 'lane', style: 'enemy', x, z, dirX, dirZ, len: 9, width:
   The magma's smooth noise fill ((1.0, 0.27, 0.05) × 0.55–0.9 alpha 0.5 with a rare dark crust) then
   read as a flat orange disc at game zoom; since 2026-09-28 (COMBAT-16) it is the crust above, whose
   warm plate floor and 0.95 alpha keep it from reading as cold purple-grey stone at night.
-- **Rendering:** `customProgramCacheKey` **`lumina-groundmarkers-v1`**, `renderOrder`
+- **Rendering:** `customProgramCacheKey` **`luminati-groundmarkers-v1`**, `renderOrder`
   `RENDER_ORDER.DECALS + 1`, `polygonOffset` (−2, −4), transparent, no depth write (a marker
   takes the DOF blur of the ground under it), fog, double-sided. 48 instances ≈ 55 k triangles in
   one draw call.

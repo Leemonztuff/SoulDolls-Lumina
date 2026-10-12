@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FULLSCREEN_VERTEX, POST_COMMON_GLSL } from './PostCommon.js';
 
 /**
- * Depth-of-field shaders for the HD-2D look (used by PostFX).
+ * Depth-of-field shaders for the 2.5D pixel-art look (used by PostFX).
  *
  * Hybrid gather + scatter bokeh, all bokeh work at `dofScale` (½) resolution:
  *
@@ -112,7 +112,7 @@ float dofCoC(float rawDepth, float uvY) {
  * only (prevents halos when the blurred layer is spread around).
  */
 export const DofPrefilterShader = {
-  name: 'LuminaDofPrefilter',
+  name: 'LuminatiDofPrefilter',
   glslVersion: THREE.GLSL3,
   uniforms: {
     tColor: { value: null },
@@ -269,7 +269,7 @@ function kernelGLSL(n) {
  */
 export function createDofGatherShader(taps = 48) {
   return {
-    name: `LuminaDofGather${taps}`,
+    name: `LuminatiDofGather${taps}`,
     defines: { TAPS: taps },
     uniforms: {
       tColorCoc: { value: null },
@@ -337,7 +337,7 @@ export function createDofGatherShader(taps = 48) {
  * up colour from focused texels, while near-field coverage (alpha) is filtered freely.
  */
 export const DofTentShader = {
-  name: 'LuminaDofTent',
+  name: 'LuminatiDofTent',
   uniforms: {
     tBlur: { value: null },
     tColorCoc: { value: null },
@@ -389,7 +389,7 @@ export const DofTentShader = {
  * uMode 1 = near pass (own layer, composited on top).
  */
 export const DofBokehSpriteShader = {
-  name: 'LuminaDofBokehSprites',
+  name: 'LuminatiDofBokehSprites',
   uniforms: {
     tColorCoc: { value: null },
     tHighlight: { value: null },
@@ -496,7 +496,7 @@ export const DofBokehSpriteShader = {
  * (near = amber, far = blue, focus band = green, near-field spill = magenta).
  */
 export const DofCompositeShader = {
-  name: 'LuminaDofComposite',
+  name: 'LuminatiDofComposite',
   uniforms: {
     tColor: { value: null },
     tBlur: { value: null },

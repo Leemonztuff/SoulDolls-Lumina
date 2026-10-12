@@ -10,7 +10,7 @@ import { FULLSCREEN_VERTEX, POST_COMMON_GLSL } from './PostCommon.js';
  * film grain → ordered dither (removes banding in the dark vignette gradient).
  */
 export const GradeShader = {
-  name: 'LuminaGrade',
+  name: 'LuminatiGrade',
   uniforms: {
     tDiffuse: { value: null },
     uTexel: { value: new THREE.Vector2(1, 1) },

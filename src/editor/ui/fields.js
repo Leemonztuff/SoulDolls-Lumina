@@ -1,7 +1,10 @@
 /**
  * Form controls for the inspector and dialogs: number (slider + input), toggle, select, text,
  * textarea, colour and segmented controls, plus `createFieldEditor`, which builds the right
- * control for an ObjectCatalog field schema entry.
+ * control for an ObjectCatalog field schema entry — including the story fields: a script (the
+ * script keys, its first problems, the pop-out editor: ./scriptEditor.js) and a condition (what
+ * *Check for problems* says about it, under the field: the caller's `check`, else
+ * `conditionProblem` by the field's rule).
  *
  * Every control returns `{ el, set(value, mixed?) }`. `set` never overwrites a control the user is
  * currently typing in.
@@ -11,8 +14,14 @@ import { ICONS } from '../icons.js';
 import {
   parseDialogueText, dialogueToText, mergeDialogueText, mergeLinesText, linesToText, textToLines,
 } from '../../engine/level/ObjectCatalog.js';
+import { parseScript } from '../../engine/level/StoryScript.js';
+import { conditionError } from '../../engine/level/StoryChecks.js';
+import { attachScriptKeys, fillErrors, popOutButton, scriptEditorDialog, scriptText, scriptValue } from './scriptEditor.js';
 
-/** @import { FieldDef } from '../../engine/level/types.js' */
+/**
+ * @import { FieldDef } from '../../engine/level/types.js'
+ * @import { ConditionRule } from '../../engine/level/StoryChecks.js'
+ */
 
 const DEG = 180 / Math.PI;
 let uid = 0;
@@ -163,7 +172,16 @@ export function boolControl({ value, onChange, label = '', id = nextId() }) {
     if (e.detail === 0) return;
     setTimeout(() => { if (document.activeElement === input && !inDialog(el)) input.blur(); }, 0);
   });
-  const set = (v, mixed = false) => { input.checked = !!v; input.indeterminate = mixed; el.classList.toggle('is-mixed', mixed); };
+  const set = (v, mixed = false) => {
+    // a hand-edited value that is neither true nor false ("true", 1) shows neither: what it means
+    // is up to the field's reader (an event's `background` reads `=== true`, KNOWN_ISSUES STORY-17)
+    const odd = !mixed && v != null && typeof v !== 'boolean';
+    input.checked = v === true;
+    input.indeterminate = mixed || odd;
+    el.classList.toggle('is-mixed', mixed || odd);
+    if (odd) el.title = `Not true or false: ${JSON.stringify(v)} — a click sets it`;
+    else el.removeAttribute('title');
+  };
   set(value);
   return { el, input, set };
 }
@@ -224,7 +242,8 @@ export function textControl({ value, onChange, multiline = false, rows = 3, plac
     if (multiline && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) el.blur();
   });
   const set = (v, mixed = false) => {
-    last = v ?? '';
+    // (mixed: the field shows blank, and Esc puts the blank back — never the first object's value)
+    last = mixed ? '' : (v ?? '');
     if (document.activeElement === el) return;
     el.value = mixed ? '' : (v ?? '');
     el.placeholder = mixed ? 'mixed' : placeholder;
@@ -285,9 +304,12 @@ export function segmented({ options, value, onChange, small = false, className =
  *   { key, label, type, min, max, step, options, nullable, help } (plus `slider: false` from
  *   callers: a number field without its slider, e.g. a clamped 1..1 range)
  * @param {{ value: any, mixed?: boolean, apply: (v: any, live?: boolean) => void,
- *   begin?: () => void, end?: () => void }} ctx
+ *   begin?: () => void, end?: () => void, rule?: ConditionRule,
+ *   check?: (text: string) => string[] }} ctx
  *   `apply` writes the value (callers wrap it in an undoable edit); `begin`/`end` bracket slider
- *   drags, whose live values arrive as `apply(v, true)` in between.
+ *   drags, whose live values arrive as `apply(v, true)` in between. A condition field: `check`
+ *   gives the problems shown under it (what *Check for problems* says about that text); without
+ *   it, `conditionProblem` by `rule` ('flag' when not given).
  * @returns {{ el: HTMLElement, set(value:any, mixed?:boolean):void, key:string }}
  */
 export function createFieldEditor(field, ctx) {
@@ -295,6 +317,8 @@ export function createFieldEditor(field, ctx) {
   let ctl;
   let wide = false;
   let extra = null;
+  /** @type {HTMLElement|null} under the control (a script's problems, a condition's error) */
+  let below = null;
   switch (field.type) {
     case 'number':
     case 'int':
@@ -358,6 +382,71 @@ export function createFieldEditor(field, ctx) {
       ctl = { el: inner.el, set: (v, mixed) => { cur = v ?? []; mixedNow = !!mixed; inner.set(dialogueToText(v ?? []), mixed); if (document.activeElement !== inner.el) upd(dialogueToText(v ?? [])); } };
       break;
     }
+    case 'script': {
+      // a story script (src/engine/level/StoryScript.js): one line per array entry, parsed as
+      // typed; Tab / Shift+Tab indent at a line's start or on selected lines (elsewhere they move
+      // on), Enter keeps the indentation; the first problems are listed under it (a click selects
+      // the line); ⤢ opens the wide editor
+      wide = true;
+      const count = h('span', { class: 'le-field-meta' });
+      const issues = h('div', { class: 'le-script-errors is-inline', hidden: true });
+      let mixedNow = !!ctx.mixed;
+      // (the text the count and the problems show: a blur that changes nothing keeps the problem
+      // buttons — Tab may just have moved the focus onto one)
+      let shown = null;
+      const upd = (t) => {
+        if (t === shown) return;
+        shown = t;
+        const { errors } = parseScript(t);
+        const n = scriptValue(t).length;
+        count.textContent = `${n} line${n === 1 ? '' : 's'}${errors.length ? ` · ${errors.length} problem${errors.length === 1 ? '' : 's'}` : ''}`;
+        count.classList.toggle('is-warn', errors.length > 0);
+        fillErrors(issues, errors, () => /** @type {HTMLTextAreaElement} */ (inner.input), 3);
+      };
+      const inner = textControl({
+        id, value: scriptText(ctx.value), multiline: true, rows: 8, mono: true,
+        placeholder: 'Name: Hello, traveler!\nchoice Will you help?\n  > Yes\n    set helping',
+        onChange: (t) => ctx.apply(scriptValue(t)), onInput: upd,
+      });
+      attachScriptKeys(/** @type {HTMLTextAreaElement} */ (inner.input), { onSubmit: () => inner.input.blur() });
+      // (Esc puts the stored text back without an input event)
+      inner.input.addEventListener('blur', () => upd(inner.input.value));
+      upd(scriptText(ctx.value));
+      const pop = popOutButton(async () => {
+        const lines = await scriptEditorDialog({ title: field.label, text: inner.input.value, mixed: mixedNow && !inner.input.value });
+        if (lines) ctx.apply(lines);
+      });
+      extra = h('span', { class: 'le-field-extras' }, count, pop);
+      below = issues;
+      ctl = {
+        el: inner.el,
+        set: (v, mixed) => {
+          mixedNow = !!mixed;
+          inner.set(scriptText(v), mixed);
+          if (document.activeElement !== inner.input) upd(mixed ? '' : scriptText(v));
+        },
+      };
+      break;
+    }
+    case 'condition': {
+      // a story condition, read by its field's rule (the flag rule of `when` / `unless` /
+      // `requires`: a bare name is a flag, a reserved word there one that can never be set; the
+      // script rule of an event's `if`): what *Check for problems* says about it shows under the
+      // field, one problem per line, without blocking the edit
+      const issue = h('div', { class: 'le-field-issue', hidden: true });
+      const check = (t) => {
+        const msgs = ctx.check ? ctx.check(String(t ?? '')) : [conditionProblem(t, ctx.rule ?? 'flag')].filter(Boolean);
+        issue.hidden = !msgs.length;
+        issue.textContent = msgs.join('\n');
+      };
+      const inner = textControl({ id, value: ctx.value ?? '', onChange: (v) => ctx.apply(v), onInput: check, placeholder: 'flag, or e.g. "a and not b"' });
+      inner.input.setAttribute('spellcheck', 'false');
+      inner.input.addEventListener('blur', () => check(/** @type {HTMLInputElement} */ (inner.input).value));
+      check(ctx.value ?? '');
+      below = issue;
+      ctl = { el: inner.el, set: (v, mixed) => { inner.set(v, mixed); if (document.activeElement !== inner.input) check(mixed ? '' : (v ?? '')); } };
+      break;
+    }
     case 'text':
     default:
       ctl = textControl({ id, value: ctx.value ?? '', onChange: (v) => ctx.apply(v) });
@@ -367,8 +456,22 @@ export function createFieldEditor(field, ctx) {
   const label = h('span', null, field.label, extra);
   const el = h('div', { class: ['le-field', wide && 'is-wide', `is-${field.type}`], title: field.help ? `${field.label} — ${field.help}` : field.label },
     h('label', { class: 'le-field-label', htmlFor: id }, label),
-    h('div', { class: 'le-field-control' }, ctl.el),
+    h('div', { class: 'le-field-control' }, ctl.el, below),
     wide && field.help ? h('div', { class: 'le-field-help' }, field.help) : null,
   );
   return { el, set: ctl.set, key: field.key };
+}
+
+/**
+ * What is wrong with a story-condition field's text ('' when nothing) — the checks' own words
+ * (`StoryChecks.conditionError`, which *Check for problems* reports): under the flag rule (`when`,
+ * `unless`, an exit's `requires`) a bare name is a flag, so a reserved word alone (`gold`) is a
+ * flag that can never be set and a text that does not parse is read as one flag; under the script
+ * rule (an event's `if`) it must parse (`gold` reads the purse). Blank is fine.
+ * @param {unknown} text
+ * @param {ConditionRule} [rule]
+ * @returns {string}
+ */
+export function conditionProblem(text, rule = 'flag') {
+  return conditionError(text, rule);
 }

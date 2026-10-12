@@ -1,7 +1,7 @@
 # Render module: PostFX, post shaders, GlobalUniforms
 
-> **Purpose.** This is the reference for Lumina's post-processing stack and its shared shader
-> state. `PostFX` gives the HD-2D look its signature: an MSAA HDR scene target, tilt-shift depth
+> **Purpose.** This is the reference for Luminati's post-processing stack and its shared shader
+> state. `PostFX` gives the 2.5D pixel-art look its signature: an MSAA HDR scene target, tilt-shift depth
 > of field with bokeh highlight scatter, soft-knee bloom, ACES tone mapping and a display-space
 > colour grade (vignette, grain, chromatic aberration, sharpen, dither). `globalUniforms` is the
 > one set of uniform objects every custom shader reads for time, night, wind, camera yaw and sun.
@@ -47,7 +47,7 @@ renderer.setRenderTarget(null);
 postfx.warmup();
 ```
 
-**Sandbox:** [`sandbox/postfx.html`](../../../sandbox/postfx.html), an HD-2D test diorama with
+**Sandbox:** [`sandbox/postfx.html`](../../../sandbox/postfx.html), a 2.5D test diorama with
 lanterns, fireflies and two sprites.
 
 - URL flags: `?gui` (lil-gui controls), `?label` (timings label), `?freeze` (stop animation),
@@ -89,9 +89,18 @@ share these.
 | `uSunDirection` | `Vector3` normalised, **points from the scene toward the light**, `(0.4, 0.8, 0.45)` normalised | `LightingSystem` (the *current directional light*: sun by day, moon at night) | Sprite3D (shadow proxy, self-shadow skip), Foliage, GodRays, Water glints, TileMap, Wind |
 | `uSunColor` | `Color`, linear, `sunColor × intensity / 3.5`: about 1.0 at noon and up to about 1.7 at golden hour (sun intensity 6.0). Default `(1, 0.9, 0.75)` | `LightingSystem`; demo `Weather` and the editor preview grey it when overcast (`WeatherLook.applyOvercast`) | Particles (`lit` presets), GodRays, Water, TileMap |
 | `uFogColor` | `Color`, `(0.6, 0.65, 0.75)` | `LightingSystem` (the horizon colour); demo `Weather` and the editor preview when overcast | Water |
+| `uFogStart` | `Float32Array(2)`: `[0]` = distance from the camera (world units) where the fog starts, `[1]` unused; `(0, 0)` = three's own fog | the game: `setFogStart` ([`AtmosphereFog.js`](../../../src/game/AtmosphereFog.js)) from `Game._applyLevel` (camera distance − 7, per level) | every fogged program, but only once the game's fog-start patch is installed (it declares `uniform vec2 uFogStart` in `fog_pars_vertex`): three's built-in materials through `THREE.ShaderLib`, and Water (surface, waterfall sheet and pool), Flame (body and glow), Particles, GodRays, FxQuads, GroundMarkers, which reference it |
 
 Particles and GodRays take the fog colour and density from three's standard fog uniforms
 (`scene.fog`), not from `uFogColor`.
+
+`uFogStart` is a `vec2` holding a `Float32Array` because of three's built-in materials: each gets
+its own copy of its `ShaderLib` uniforms when it compiles (`UniformsUtils.clone`), and that copy
+takes a number by value but keeps a typed array by reference — so one write reaches every program,
+built-in or custom (a cloned `ShaderMaterial` too), and a change compiles nothing.
+`installFogStart` warns in the console if a three.js upgrade starts copying typed arrays. Without
+the patch (the editor, the sandboxes other than `combat_fx`) no program declares `uFogStart` and
+three skips it.
 
 The object is typed by the `GlobalUniforms` interface in
 [`render/types.d.ts`](../../../src/engine/render/types.d.ts) (the value type of each uniform), so
@@ -115,7 +124,7 @@ new PostFX(renderer, scene, camera, { samples = 4, dofScale = 0.5, maxTaps = 96 
 | --- | --- | --- |
 | `samples` | `4` | MSAA samples of the HDR scene target (`0` disables MSAA). The demo and editor use **2** when the drawing buffer exceeds 1.8 M pixels (4× costs ~0.9 ms at 1080p), otherwise 4. |
 | `dofScale` | `0.5` (clamped 0.25..1) | Resolution scale of the bokeh passes. **Keep 0.5.** At 0.25 the prefilter reads only a 2×2 footprint of each 4×4 block and aliases. |
-| `maxTaps` | `96` (min 48) | Upper bound for the gather tap count (buckets 48, 64, 96; see §5.1). The demo and editor pass **64**: 96 costs ~0.35 ms more at 1080p for no visible gain at their blur size. |
+| `maxTaps` | `96` (min 48) | Upper bound for the gather tap count (buckets 48, 64, 96; see §5.1). The demo and editor pass **64**: 96 cost 0.06–0.26 ms more at 1080p (DOF 1.94–2.14 vs 1.88 ms) for no visible gain at their blur size. |
 
 PostFX **does not set** `renderer.toneMapping` / `toneMappingExposure` / `outputColorSpace`.
 `OutputPass` reads them, so the renderer must stay on `ACESFilmicToneMapping` with SRGB output
@@ -177,7 +186,7 @@ renderer's own tone mapping. No DOF, bloom or grade.
 | `dither` *(extra)* | `1` | 8×8 Bayer dither amplitude in 8-bit LSBs (against banding in the vignette). |
 
 The demo game retunes these at load for every level (`Game._tunePost` in
-[`src/demo/Game.js`](../../../src/demo/Game.js)):
+[`src/game/Game.js`](../../../src/game/Game.js)):
 
 - `dof`: `focusRange 6, maxBlur 13, nearScale 1.5, farScale 1.15, tiltShift 0.42, tiltCenter 0.5, tiltWidth 0.3, bokehBoost 1.6`
 - `bloom`: `strength 0.5, radius 0.58, threshold 1.05`
@@ -356,7 +365,7 @@ The order is:
    write depth. Additive glows and particles that don't write depth take the CoC of whatever is
    behind them. The sky dome leaves depth at 1 and is maximally blurred, which is correct.
 4. **Debug stats:** read `postfx.sceneInfo` for draw calls and triangles.
-5. **Budgets** (GTX 1060, 1600×900 sandbox, per-stage minimum GPU ms): scene ≈ 1.1, DOF chain
+5. **Budgets** (reference desktop GPU, 1600×900 sandbox, per-stage minimum GPU ms): scene ≈ 1.1, DOF chain
    0.75–1.05 (bokeh sprites ≈ 0.25 of that), bloom 0.30, output + grade 0.25. In Emberfall, DOF
    off saves ≈ 1.25 ms, MSAA costs ≈ 0.9 ms at 1080p, and grade ≈ 0.15 ms. See
    [PERFORMANCE.md](../PERFORMANCE.md).
@@ -410,10 +419,9 @@ The order is:
   sample.
 - `renderer.info` is useless for scene stats while PostFX drives the frame. Use `sceneInfo`.
 
-## 10. History and decisions
+## 10. Design notes
 
-- **Phase 1 build** (postfx builder + auditor). No contract names or signatures changed. Design
-  choices recorded by the builder:
+- **Post-processing design:**
   - `bokehBoost` is the gain of a highlight **scatter** pass (point sprites), not a weight
     inside the gather average. Weight-boosting gave stippled, over-exposed discs and flickered
     (a tile luminance second-difference of 5.9 vs a 0.8 baseline).
@@ -422,7 +430,7 @@ The order is:
   - The bloom pass is sized to the full buffer. The gather tap count steps 48 → 64 → 96.
   - The composite adds a 12-tap full-res blur for small CoCs.
   - With DOF off and bloom on, the scene is copied out of the MSAA target first.
-- **Audit fixes** (Phase 1):
+- **Audit fixes**:
   - *Temporal bokeh flicker while panning.* Highlights are gated by `smoothstep(2, 4, |CoC|)`,
     the sprite energy is box-filtered (energy-conserving) and isolation is measured per pixel.
     The worst second-difference dropped from 5.9–7.2 to 2.29, matching the no-sprite baseline.
@@ -430,12 +438,12 @@ The order is:
     1/max(CoC, 2)², and CoC rejection relaxes where both sides are already blurred.
   - `warmup()` also compiles the bloom and OutputPass programs.
   - `sceneInfo` was added, because `renderer.info` showed ~1 call under PostFX.
-- **Phase 2 (Emberfall review, major finding):** the load-time warm-up compiled the wrong program
+- **Emberfall review, major finding:** the load-time warm-up compiled the wrong program
   variants. The game now compiles with `postfx.sceneTarget` bound, and `warmup()` draws grade and
   the debug view to the screen. Programs dropped from 84 to 57 and the first frame from 3.2 s to
   ~0.4 s. Measured per-feature costs at 1080p: DOF ≈ 1.25 ms, bokeh sprites 0.2 ms, grade
   0.15 ms, MSAA ≈ 0.9 ms. `renderScale` 0.75 cuts total GPU time by about 30 %. Hence the demo's
   `maxTaps: 64` and `samples: 2` above 1.8 MP.
-- **Phase 4:** the demo's `ResolutionGovernor` drives `engine.renderScale`. A no-reallocation
+- **Integration:** the demo's `ResolutionGovernor` drives `engine.renderScale`. A no-reallocation
   (viewport/scissor) PostFX redesign was considered and **not done**, so each scale step still
   reallocates the targets.

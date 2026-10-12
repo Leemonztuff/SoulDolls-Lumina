@@ -6,7 +6,7 @@ import { globalUniforms } from '../render/GlobalUniforms.js';
  * GroundMarkers — instanced, terrain-draped telegraph decals for combat (COMBAT.md §11.2): enemy
  * wind-up circles / sectors / lanes / rings, the player's skill areas, the lock-on ring, the boss
  * barrier outline and magma pools, in ONE draw call (`customProgramCacheKey`
- * `lumina-groundmarkers-v1`; renderOrder RENDER_ORDER.DECALS + 1, polygonOffset (−2, −4), no depth
+ * `luminati-groundmarkers-v1`; renderOrder RENDER_ORDER.DECALS + 1, polygonOffset (−2, −4), no depth
  * write, transparent, fog, no shadows, not frustum-culled; hidden while no marker is live).
  *
  * **Draped.** Every instance is one shared 24 × 24-segment grid (1 152 triangles) spanning the
@@ -70,7 +70,7 @@ const STYLES = { enemy: 0, player: 1, lock: 2, barrier: 3, magma: 4 };
 
 /**
  * What `GroundMarkers#set` reads: a MarkerSpec (COMBAT.md §9.5; the combat code's `MarkerSpec` in
- * src/demo/combat/types.d.ts is assignable to it) + optional `flash`. Every field but `shape` has a
+ * src/game/combat/types.d.ts is assignable to it) + optional `flash`. Every field but `shape` has a
  * default (see the class comment); `shape` is 'circle' | 'ring' | 'sector' | 'lane' | 'rect' and
  * `style` 'enemy' | 'player' | 'lock' | 'barrier' | 'magma' — any other value hides the marker
  * (one console.warn per name).
@@ -401,6 +401,7 @@ export class GroundMarkers {
       name: 'GroundMarkers',
       uniforms: {
         ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+        uFogStart: globalUniforms.uFogStart,
         uHeight: { value: this.heightTexture },
         uHeightRect: { value: new THREE.Vector4(...rect) },
         uHeightSize: { value: new THREE.Vector2(w, h) },
@@ -416,7 +417,7 @@ export class GroundMarkers {
       side: THREE.DoubleSide,
       fog: true,
     });
-    this.material.customProgramCacheKey = () => 'lumina-groundmarkers-v1';
+    this.material.customProgramCacheKey = () => 'luminati-groundmarkers-v1';
 
     /** Add to the scene: one draw call, hidden while no marker is live. */
     this.object = new THREE.InstancedMesh(geometry, this.material, cap);

@@ -4,9 +4,14 @@
  * "Where the Stars Come Home"** — deterministically (seeded RNG, no Math.random) with the
  * LevelFormat / ObjectCatalog helpers, then validates it and prints stats and a report.
  *
- *   node tools/make-starfall-vale.mjs [--out=public/levels/starfall-vale.json] [--ascii] [--quiet] [--force]
+ *   node tools/make-starfall-vale.mjs [--out=public/levels/starfall-vale.json] [--check] [--ascii] [--quiet] [--force]
+ *     --check  write nothing; exit 1 unless the output matches the --out file byte for byte (CRLF
+ *              line endings count as identical: the repository stores the file with LF)
  *     --force  write the level even when checks fail (for inspection only; the exit code is still 1)
- *   play it: index.html?level=starfall-vale   ·   edit it: editor.html?open=starfall-vale
+ *   play it: game.html?level=starfall-vale   ·   edit it: editor.html?open=starfall-vale
+ *
+ * Every text carries its content-text key (`textKeys`, docs/specs/I18N.md §4.10): carried from the
+ * current file at the default path (never --out), a new text's minted from the file and the text.
  *
  * Structure (each step is one function below, run in this order):
  *
@@ -26,8 +31,8 @@
  *        hearthwick(), goldenfield(), mountLumen(), oldQuarry(), mirrormere(), amberpine(),
  *        meadowlands(), emberwood()   hand-placed landmarks, buildings, bridges, falls, lights,
  *                                     props, critters and particle areas, area by area
- *        extras()        outlying homesteads, hedgerows, roadside lamps, milestones, pastures
  *        people()        the 29 villagers and their Starfall Festival dialogue
+ *        extras()        outlying homesteads, hedgerows, roadside lamps, milestones, pastures
  *        sightlines()    places the camera must see (villagers, doors, landmarks): no tall
  *                        scattered tree just south of them (the camera looks north)
  *        scatterTrees(), scatterRocks()   rule-based scatter per zone (density, kinds, heights)
@@ -71,9 +76,11 @@ import {
 } from '../src/engine/level/LevelFormat.js';
 import {
   OBJECT_TYPES, createObject, NPC_ACTIONS, NPC_BEHAVIOURS, CRITTER_KINDS, EMITTER_PRESETS, CHARACTER_PRESET_NAMES,
-  critterStartPoints,
+  critterStartPoints, isCombatType, isCampaignType, isStoryType, isInteriorType,
 } from '../src/engine/level/ObjectCatalog.js';
 import { RNG, fbm2, hash2, clamp, lerp } from '../src/engine/utils/math.js';
+// (only the content-text keys come from the shared helpers: the level itself stays this file's own)
+import { keyLevel, keyIssueLines } from './lib/levelgen.mjs';
 
 /** @import { LevelObject, ObjectType, XZ } from '../src/engine/level/types.js' */
 
@@ -1040,6 +1047,8 @@ function oldQuarry() {
   sign(22.8, 34.4, ['↑ {The Old Quarry} · ↖ the ruins of {Old Lumen}\nMind the edges. The edges do not mind you.'], { rotation: 0.2 });
   sign(31.6, 21, ['→ {Mount Lumen} terrace\n↓ {Goldenfield Farms}'], { rotation: -0.15 });
   emit('dust', 21, 17, [14, 3, 11], 34, 1.4);
+  // star-glass glinting in the quarry's stone (Dunstan's "glittery bits")
+  emit('sparkle', 22.5, 14.5, [9, 0.5, 7], 8, 0.3, { params: { life: [0.5, 1.2] } });
   // the ruins
   well('old_well', 7.5, 29.6, ['The well of {Old Lumen}. They say it never ran dry, even in the long drought.', 'Lean close and you can hear it: a low hum, like somebody far below practising a very old song.'], 'roof_slate');
   crates(5.2, 20.4, 2, 0.2, 0.7); bench(4.9, 25.6, E_, 1.4, false);
@@ -1532,18 +1541,21 @@ function pickKind(rng, kinds) {
  * clusters at 0.48–0.72 of a flattened ellipsoid; pine: cone tiers from 0.19 H to the top, base
  * radius 0.34 H). The sightline corridors above test trunks only, so a big crown whose trunk
  * stands just outside one can still hide a villager, a door, a sign, a well or a campfire.
+ * Per kind: [crown radius / H, horizontal radius / crown radius, vertical radius / crown radius] —
+ * Trees.js `KINDS[kind].crown` and its `radii`: [1, flat] for a broadleaf, the hard-coded
+ * [0.78, 1.05] for a birch (Trees.js does not read its birch `flat`, 1.25, either).
  */
-const CROWN_KINDS = { oak: [0.44, 0.8], autumn: [0.43, 0.78], birch: [0.3, 1.25] };
+const CROWN_KINDS = { oak: [0.44, 1, 0.8], autumn: [0.43, 1, 0.78], birch: [0.3, 0.78, 1.05] };
 function crownOf(t) {
   const H = t.opts?.height ?? 4.5;
   const kind = t.opts?.kind ?? 'oak';
   const y = groundY(t.x, t.z);
   if (kind === 'pine') return { t, pine: true, x: t.x, z: t.z, y, H };
-  const [k, flat] = CROWN_KINDS[kind] ?? CROWN_KINDS.oak;
+  const [k, fx, fy] = CROWN_KINDS[kind] ?? CROWN_KINDS.oak;
   const birch = kind === 'birch';
   const Rc = H * k;
-  const rx = birch ? Rc * 0.78 : Rc;
-  const ry = birch ? Rc * 1.05 : Rc * flat;
+  const rx = Rc * fx;
+  const ry = Rc * fy;
   return { t, x: t.x, z: t.z, cy: y + H - ry * 0.78 - (birch ? 0.35 : 0.2), rx: rx * 0.66 + 0.75, ry: ry * 0.66 + 0.75 };
 }
 function inCrown(c, px, py, pz) {
@@ -1763,7 +1775,7 @@ function environment() {
     music: true,
     camera: { distance: 30, pitch: 32 },
     highGround: { minY: 4.2, pitch: 40 },
-    title: { title: 'STARFALL VALE', subtitle: 'Where the Stars Come Home', prompt: 'Press any key', credit: 'A Lumina HD-2D showcase · three.js' },
+    title: { title: 'STARFALL VALE', subtitle: 'Where the Stars Come Home', prompt: 'Press any key', credit: 'A Luminati 2.5D showcase · three.js' },
     titleCamera: { x: 97, z: 62, y: 0.6, driftX: 5, driftZ: 3, distance: 42 },
     // thinner haze than the game default: the vale's far layers stay readable at dawn and dusk
     fogScale: 0.65,
@@ -2304,6 +2316,12 @@ function validate(level) {
 /** Particle-area presets the level must use: all of them but the camera-following weather ones. */
 const AREA_PRESETS = EMITTER_PRESETS.filter((p) => p !== 'rain' && p !== 'snow');
 
+/**
+ * The object types Starfall Vale must place: all but the combat (Cinderwatch Pass), campaign, story
+ * (the demo campaign) and interior ones (the furniture of rooms: the interiors demo).
+ */
+const PEACEFUL_TYPES = Object.keys(OBJECT_TYPES).filter((t) => !isCombatType(t) && !isCampaignType(t) && !isStoryType(t) && !isInteriorType(t));
+
 /** Feature coverage checklist. */
 function coverage(level) {
   const used = new Set(level.tiles.join(''));
@@ -2316,7 +2334,7 @@ function coverage(level) {
   const stairChars = ['^', 'v', '>', '<'].filter((c) => used.has(c));
   const checks = [
     ['every TILE_TYPES char', TILE_TYPES.every((t) => used.has(t.char)), TILE_TYPES.filter((t) => !used.has(t.char)).map((t) => JSON.stringify(t.char)).join(' ') || 'all'],
-    ['every non-combat OBJECT_TYPES type', Object.keys(OBJECT_TYPES).filter((t) => !OBJECT_TYPES[t].combat).every((t) => byType[t]), Object.keys(OBJECT_TYPES).filter((t) => !OBJECT_TYPES[t].combat && !byType[t]).join(' ') || `${Object.keys(OBJECT_TYPES).filter((t) => !OBJECT_TYPES[t].combat).length} types`],
+    ['every OBJECT_TYPES type but the combat, campaign, story and interior ones', PEACEFUL_TYPES.every((t) => byType[t]), PEACEFUL_TYPES.filter((t) => !byType[t]).join(' ') || `${PEACEFUL_TYPES.length} types`],
     ['NPC actions none/rest/shop/music', NPC_ACTIONS.every((a) => npcs.some((n) => n.action === a.value)), NPC_ACTIONS.map((a) => `${a.value}×${npcs.filter((n) => n.action === a.value).length}`).join(' ')],
     ['NPC behaviours wander/post/perform/chase', NPC_BEHAVIOURS.every((b) => npcs.some((n) => n.behaviour === b)), NPC_BEHAVIOURS.map((b) => `${b}×${npcs.filter((n) => n.behaviour === b).length}`).join(' ')],
     ['critter kinds', CRITTER_KINDS.every((k) => critterKinds.has(k)), [...critterKinds].join(' ')],
@@ -2383,8 +2401,8 @@ const raw = {
   version: LEVEL_VERSION,
   name: 'Starfall Vale',
   subtitle: 'Where the Stars Come Home',
-  author: 'Lumina',
-  description: 'The flagship Lumina showcase: a 128 × 128 vale on the night of the Starfall Festival — the market town of Hearthwick on the Silverrun, Mount Lumen with its observatory and the Three Sisters falls, Goldenfield Farms, Lake Mirrormere and its fishing hamlet, the Meadowlands, the autumn Emberwood and the Old Quarry. Generated by tools/make-starfall-vale.mjs.',
+  author: 'Luminati',
+  description: 'The flagship Luminati showcase: a 128 × 128 vale on the night of the Starfall Festival — the market town of Hearthwick on the Silverrun, Mount Lumen with its observatory and the Three Sisters falls, Goldenfield Farms, Lake Mirrormere and its fishing hamlet, the Meadowlands, the autumn Emberwood and the Old Quarry. Generated by tools/make-starfall-vale.mjs.',
   width: W,
   depth: D,
   waterLevel: 0.4,
@@ -2413,6 +2431,10 @@ function normalizedChanges(a, b, p = '', out = []) {
   return out;
 }
 for (const p of normalizedChanges(raw, level)) errors.push(`normalizeLevel changed ${p}`);
+// the content-text keys (docs/specs/I18N.md §4.10): carried from the current file at the default
+// path (never --out), new ones seeded by the file and the text
+keyLevel(level, { root, file: 'public/levels/starfall-vale.json' });
+errors.push(...keyIssueLines(level));
 const report = validate(level);
 const checks = coverage(level);
 // byte-stable round trip (what the editor relies on)
@@ -2442,6 +2464,14 @@ for (const m of report.errors) log(`  ✗ ${m}`);
 if (args.ascii) for (const r of level.tiles) console.log(r);
 
 const failed = warnings.length + errors.length + report.errors.length + checks.filter((c) => !c[1]).length;
+if (args.check) {
+  const rel = path.relative(root, OUT);
+  const old = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8').replace(/\r\n/g, '\n') : null;
+  if (failed) { console.error(`\n${failed} problem(s) in the generated level.`); process.exit(1); }
+  if (old === text) { console.log(`${rel} is up to date (byte-identical).`); process.exit(0); }
+  console.error(old == null ? `${rel} does not exist.` : `${rel} differs from the generator output. Re-run without --check to rewrite it.`);
+  process.exit(1);
+}
 if (failed && !args.force) {
   console.error(`\n${failed} problem(s): level NOT written (pass --force to write it anyway for inspection).`);
   process.exit(1);

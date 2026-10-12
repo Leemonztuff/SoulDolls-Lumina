@@ -1,73 +1,65 @@
 import * as THREE from 'three';
 import './ui.css';
+import './dialog.css';
+import { t, registerStrings, hasStrings } from '../i18n/I18n.js';
+import dialogStrings from '../i18n/strings/dialog.js';
+import { pal } from './art/palette.js';
+import { art } from './art/painter.js';
+import { bubble } from './art/pieces.js';
+import { grow, measure, txt, setOrigin } from './layout/type.js';
+import { put, win, key, capW, place } from './layout/layout.js';
+import { onScale, currentScale } from './UiScale.js';
+import { currentFonts } from './FontLoader.js';
+
+/** @import { FrameStyle } from './art/frames.js' */
 
 /**
- * Floating interaction icon: a pixel-art speech bubble (with animated "…" dots) and a small label
- * plate, anchored above a world position that is projected into CSS pixels every frame. Hidden
- * automatically when the point is behind the camera or off-screen.
+ * Floating interaction prompt after mockup G (docs/specs/PIXEL_UI.md §5, Prompt): today's pixel
+ * speech bubble (its three dots blinking in turn) over a small cartouche with the key's keycap and
+ * the action's label in the line role, anchored above a world position that is projected into CSS
+ * pixels every frame. Drawn in art px at the UI root's `--px` (canvases, `image-rendering:
+ * pixelated`). Hidden automatically when the point is behind the camera or off-screen.
  */
 
-// 16×12 pixel-art speech bubble. O outline · W paper · H highlight · S shade · 1-3 dots
-const BUBBLE = [
-  '..OOOOOOOOOOOO..',
-  '.OHHWWWWWWWWWWO.',
-  'OHWWWWWWWWWWWWSO',
-  'OWWWWWWWWWWWWWSO',
-  'OWW11WW22WW33WSO',
-  'OWW11WW22WW33WSO',
-  'OWWWWWWWWWWWWWSO',
-  'OSWWWWWWWWWWWSSO',
-  '.OSSSSSSSSSSSSO.',
-  '..OOOSSOOOOOOO..',
-  '....OSO.........',
-  '....OO..........',
-];
-const BUBBLE_COLORS = { O: '#1c1524', W: '#fbf5e6', H: '#ffffff', S: '#d9c49c', 1: '#4a3322', 2: '#4a3322', 3: '#4a3322' };
-
-function buildBubbleSvg() {
-  const groups = { base: '', 1: '', 2: '', 3: '' };
-  for (let y = 0; y < BUBBLE.length; y++) {
-    const row = BUBBLE[y];
-    let x = 0;
-    while (x < row.length) {
-      const ch = row[x];
-      let run = 1;
-      while (x + run < row.length && row[x + run] === ch) run++;
-      if (ch !== '.') {
-        const rect = `<rect x="${x}" y="${y}" width="${run}" height="1" fill="${BUBBLE_COLORS[ch]}"/>`;
-        if (ch === '1' || ch === '2' || ch === '3') {
-          groups[ch] += rect;
-          groups.base += `<rect x="${x}" y="${y}" width="${run}" height="1" fill="${BUBBLE_COLORS.W}"/>`;
-        } else groups.base += rect;
-      }
-      x += run;
-    }
-  }
-  return `<svg viewBox="0 0 16 12" aria-hidden="true">${groups.base}` +
-    `<g class="lu-dot">${groups[1]}</g><g class="lu-dot lu-dot2">${groups[2]}</g><g class="lu-dot lu-dot3">${groups[3]}</g></svg>`;
-}
-const SVG_BUBBLE = buildBubbleSvg();
+/** The cartouche: G's small plate (S, notch 3, studs on its ends, the plate bands). @returns {FrameStyle} */
+const PLATE = () => { const k = pal(); return { size: 'S', notch: 3, corners: null, ends: true, endR: 2, bands: [k.plate0, k.plate1], stops: [0, 0.5], sheen: false }; };
+/** Art px between the plate's bottom (or the lone bubble's) and the anchor point. */
+const GAP = 2;
+/** The bubble's three dots (art/pieces.js `bubble()`: 2 × 2 at rows 6–7). */
+const DOTS = [6, 12, 18];
 
 const _v = new THREE.Vector3();
 
 export class InteractPrompt {
   /** @param {HTMLElement} parent the UI root (the prompt is positioned in its coordinate space) */
   constructor(parent = document.body) {
+    if (!hasStrings('dialog')) registerStrings('dialog', dialogStrings);
     const el = document.createElement('div');
     el.className = 'lu-prompt';
     el.innerHTML = `
       <div class="lu-prompt__anchor">
         <div class="lu-prompt__inner">
-          <div class="lu-prompt__bubble">${SVG_BUBBLE}</div>
-          <div class="lu-prompt__label"></div>
+          <div class="lu-prompt__bubble g" aria-hidden="true"></div>
+          <div class="lu-prompt__label g"></div>
         </div>
       </div>`;
     parent.appendChild(el);
     this.element = el;
     /** @type {HTMLElement} */
     this._inner = el.querySelector('.lu-prompt__inner');
+    /** @type {HTMLElement} */
+    this._bubble = el.querySelector('.lu-prompt__bubble');
+    /** @type {HTMLElement} */
     this._label = el.querySelector('.lu-prompt__label');
     this._parent = parent;
+
+    // the bubble (24 × 18 art px) and a cover over each dot, blinking in turn (dialog.css)
+    const k = pal();
+    put(this._bubble, bubble(), 0, 0);
+    DOTS.forEach((x, i) => {
+      const cover = art(2, 2, (p) => p.rect(0, 0, 2, 2, k.kf1));
+      put(this._bubble, cover, x, 6, 1, `lu-prompt__dot lu-prompt__dot${i + 1}`);
+    });
 
     /**
      * Optional key hint shown as a keycap before the label (e.g. 'Space'); null for none.
@@ -81,23 +73,28 @@ export class InteractPrompt {
     this._target = null;
     this._pos = new THREE.Vector3();
     this._offsetY = 0;
+    /** @type {string|null} */
     this._labelText = null;
+    /** @type {string|null} */
     this._keyText = null;
     this._x = NaN;
     this._y = NaN;
     this._w = parent.clientWidth || window.innerWidth;
     this._h = parent.clientHeight || window.innerHeight;
-    this._applyPixelScale();
+    /** The fonts' ensure() of the label shown (a newer label drops an older answer). */
+    this._ensureSeq = 0;
+    this._layout();
 
     this._ro = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
         this._w = parent.clientWidth || window.innerWidth;
         this._h = parent.clientHeight || window.innerHeight;
         this._x = NaN;
-        this._applyPixelScale();
       })
       : null;
     if (this._ro) this._ro.observe(parent);
+    // the label is measured in the type of the root's scale: lay it out again on a change
+    this._offScale = onScale(parent, () => { this._x = NaN; this._layout(); });
   }
 
   /** True between show() and hide(). */
@@ -109,11 +106,11 @@ export class InteractPrompt {
    * automatically (its world position is re-read every update).
    * @param {(THREE.Vector3 & { isObject3D?: false })|THREE.Object3D} worldPos (a Vector3 has no
    *   `isObject3D`, which is how show() tells the two apart)
-   * @param {string} [label]
+   * @param {string} [label] (default: t('dialog.prompt.talk'), "Talk"; callers pass translated labels)
    * @param {{ offsetY?: number, key?: string|null }} [opts] `offsetY` world units added to y;
    *   `key` overrides `keyHint` for this prompt.
    */
-  show(worldPos, label = 'Talk', { offsetY = 0, key } = {}) {
+  show(worldPos, label = t('dialog.prompt.talk'), { offsetY = 0, key: keyName } = {}) {
     if (worldPos && worldPos.isObject3D) {
       if (this._target !== worldPos && this._shown) this._repop();
       this._target = worldPos;
@@ -122,18 +119,12 @@ export class InteractPrompt {
       if (worldPos) this._pos.copy(/** @type {THREE.Vector3} */ (worldPos)); // not an Object3D here
     }
     this._offsetY = offsetY;
-    const k = key === undefined ? this.keyHint : key;
+    const k = keyName === undefined ? this.keyHint : keyName;
     if (label !== this._labelText || k !== this._keyText) {
       this._labelText = label;
       this._keyText = k;
-      this._label.textContent = '';
-      if (k) {
-        const cap = document.createElement('kbd');
-        cap.className = 'lu-key';
-        cap.textContent = k;
-        this._label.appendChild(cap);
-      }
-      if (label) this._label.appendChild(document.createTextNode(label));
+      this._layout();
+      this._ensureFonts();
     }
     if (!this._shown) {
       this._shown = true;
@@ -171,8 +162,10 @@ export class InteractPrompt {
       this.element.classList.toggle('is-inview', inView);
     }
     if (!inView) return;
-    const x = Math.round((_v.x * 0.5 + 0.5) * this._w);
-    const y = Math.round((-_v.y * 0.5 + 0.5) * this._h);
+    // on a whole device pixel, so the art lands on the device grid at any device pixel ratio
+    const dpr = currentScale(this._parent)?.dpr || window.devicePixelRatio || 1;
+    const x = Math.round((_v.x * 0.5 + 0.5) * this._w * dpr) / dpr;
+    const y = Math.round((-_v.y * 0.5 + 0.5) * this._h * dpr) / dpr;
     if (x !== this._x || y !== this._y) {
       this._x = x;
       this._y = y;
@@ -182,6 +175,7 @@ export class InteractPrompt {
 
   dispose() {
     if (this._ro) this._ro.disconnect();
+    this._offScale();
     this.element.remove();
   }
 
@@ -193,9 +187,41 @@ export class InteractPrompt {
     inner.style.animation = '';
   }
 
-  _applyPixelScale() {
-    // integer pixel-art scale for the bubble so its pixels stay crisp and even
-    const px = Math.max(2, Math.round(this._w / 430));
-    this.element.style.setProperty('--lu-px', String(px));
+  /** Load the label's font slices (Japanese and Chinese come in slices), then lay it out again. */
+  _ensureFonts() {
+    const fonts = currentFonts();
+    const label = this._labelText;
+    if (!fonts || !label) return;
+    const seq = ++this._ensureSeq;
+    fonts.ensure(label).then(() => { if (seq === this._ensureSeq && this._labelText === label) this._layout(); });
+  }
+
+  /**
+   * G's `interact`, about the anchor point (0, 0): the cartouche's bottom GAP art px above it — 15
+   * art px tall round English (a CJK label's taller ink grows it, the key centred on it): 5 px, the
+   * keycap, 3 px, the label, 5 px — and the bubble centred over it, 2 px above. Without a label or a
+   * key, the bubble alone.
+   */
+  _layout() {
+    const k = pal();
+    const L = this._label;
+    L.replaceChildren();
+    const label = this._labelText || '';
+    const cap = this._keyText || '';
+    let top = -GAP;
+    if (label || cap) {
+      const kw = cap ? capW(cap) : 0;
+      const lw = label ? measure(label, 'line') : 0;
+      const gl = 2 * Math.ceil(grow('line') / 2);
+      const w = 5 + kw + (cap && label ? 3 : 0) + lw + 5, h = 15 + gl;
+      const x0 = -Math.floor(w / 2), y0 = -GAP - h;
+      place(L, x0, y0, w, h);
+      setOrigin(L, [x0, y0]);
+      win(L, PLATE(), x0, y0, w, h);
+      if (cap) key(L, cap, x0 + 5, y0 + 2 + gl / 2);
+      if (label) txt(L, label, x0 + 5 + (cap ? kw + 3 : 0), y0 + 3 + gl / 2, { font: 'line', color: k.tx1, drop: true, cls: 'lu-prompt__text' });
+      top = y0 - 2;
+    }
+    place(this._bubble, -12, top - 18, 24, 18);
   }
 }

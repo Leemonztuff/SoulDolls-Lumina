@@ -2,7 +2,7 @@
 
 > **Purpose.** Everything that happens between "the frame's state is updated" and "pixels are on
 > the canvas": the renderer setup, what the scene contains and how each part is shaded, the shader
-> patches Lumina injects into three.js materials, shadows, the 24-hour lighting model, the
+> patches Luminati injects into three.js materials, shadows, the 24-hour lighting model, the
 > post-processing chain with its real defaults and the values the game tunes, and the warm-up that
 > keeps shader compiles out of gameplay.
 >
@@ -16,9 +16,9 @@
 > [`LightPool.js`](../../src/engine/lighting/LightPool.js), [`Sky.js`](../../src/engine/lighting/Sky.js),
 > [`src/engine/sprite/`](../../src/engine/sprite/), [`src/engine/world/`](../../src/engine/world/),
 > [`src/engine/fx/`](../../src/engine/fx/), and the game's wiring in
-> [`src/demo/Game.js`](../../src/demo/Game.js), [`config.js`](../../src/demo/config.js),
-> [`Weather.js`](../../src/demo/Weather.js), [`WeatherLook.js`](../../src/demo/WeatherLook.js), [`SnowCover.js`](../../src/demo/SnowCover.js),
-> [`AtmosphereFog.js`](../../src/demo/AtmosphereFog.js).
+> [`src/game/Game.js`](../../src/game/Game.js), [`config.js`](../../src/game/config.js),
+> [`Weather.js`](../../src/game/Weather.js), [`WeatherLook.js`](../../src/game/WeatherLook.js), [`SnowCover.js`](../../src/game/SnowCover.js),
+> [`AtmosphereFog.js`](../../src/game/AtmosphereFog.js).
 >
 > **Related.** [OVERVIEW.md](OVERVIEW.md) (frame order, uniforms, colour management) ·
 > [PERFORMANCE.md](PERFORMANCE.md) (costs, batching, culling) ·
@@ -66,7 +66,7 @@ flowchart LR
   CO --> BL["UnrealBloomPass<br/>(soft-knee bright pass ½, 5 mips)"]
   BL --> OUT["OutputPass<br/>ACES × exposure, sRGB → ldrRT"]
   OUT --> GR["grade<br/>→ canvas"]
-  GR --> UI["DOM UI overlay<br/>(div lumina-ui)"]
+  GR --> UI["DOM UI overlay<br/>(div luminati-ui)"]
 ```
 
 The DOM UI (dialogs, HUD, minimap, banners) is HTML over the canvas; it is not part of the WebGL
@@ -85,11 +85,11 @@ frame.
 | Tone mapping | `ACESFilmicToneMapping`, `toneMappingExposure = 1` at start | Applied **once** by PostFX's `OutputPass`; `LightingSystem` owns the exposure from then on. |
 | Output | `outputColorSpace = SRGBColorSpace` | |
 | Clear colour | `0x0b0e1a` (engine default; the editor uses `0x0d1018`) | Rarely visible: the sky dome covers the background. |
-| Camera | `PerspectiveCamera(28, aspect, 0.5, 400)` | The rig sets fov 28°, pitch 32°, distance 30 in the game ([`config.js`](../../src/demo/config.js) `CAMERA`, overridable by `environment.camera`). |
+| Camera | `PerspectiveCamera(28, aspect, 0.5, 400)` | The rig sets fov 28°, pitch 32°, distance 30 in the game ([`config.js`](../../src/game/config.js) `CAMERA`, overridable by `environment.camera`). |
 | Pixel ratio | `min(devicePixelRatio, maxPixelRatio) × renderScale` | `maxPixelRatio` defaults to 1.5; the game and the editor pass 1.25. `renderScale` is 0.25 … 1. |
 | Resize | `ResizeObserver` on a container (or window resize for a full-window canvas); `resizeThrottleMs` for splitter drags | Emits `'resize'` `{ width, height, pixelRatio }`. |
 
-The game adds a [`ResolutionGovernor`](../../src/demo/ResolutionGovernor.js): it caps the drawing
+The game adds a [`ResolutionGovernor`](../../src/game/ResolutionGovernor.js): it caps the drawing
 buffer at 2.1 MP by lowering `engine.maxPixelRatio` on big windows and steps `renderScale`
 between 0.7 and 1 on the median GPU time (details in [PERFORMANCE.md](PERFORMANCE.md#39-resolutiongovernor)).
 
@@ -115,15 +115,15 @@ in [`constants.js`](../../src/engine/constants.js): `WATER 10`, `DECALS 20`, `GO
 | Characters, critters | [`Sprite3D`](../../src/engine/sprite/Sprite3D.js) | Lambert + sprite-lighting patch, `alphaTest 0.5`, double-sided | opaque · 0 | Receive; cast through a sun-facing proxy quad |
 | Sprite shadow proxy | `Sprite3D.shadowProxy` | `MeshBasicMaterial { colorWrite: false, depthWrite: false }` + sprite depth material | draws nothing in colour (on small game levels it still costs an empty colour-pass draw call) | Casts (shadow-pass only via `makeShadowOnly` on big game levels and on every editor level) |
 | Contact shadows ("blobs") | `Sprite3D.blob`, or one [`BlobBatch`](../../src/engine/sprite/BlobBatch.js) on big levels | `MeshBasicMaterial`, transparent, polygon offset | transparent · 20 | No |
-| Player x-ray silhouette | [`Player`](../../src/demo/Player.js) | `MeshBasicMaterial`, transparent, `depthFunc: GreaterDepth`, **depthWrite on** | transparent · 60 | No |
+| Player x-ray silhouette | [`Player`](../../src/game/Player.js) | `MeshBasicMaterial`, transparent, `depthFunc: GreaterDepth`, **depthWrite on** | transparent · 60 | No |
 | Ground foliage (grass, flowers, reeds, shrubs …) | [`Foliage`](../../src/engine/sprite/Foliage.js) via `GroundDetail` | Instanced Lambert + foliage patch | opaque · 0, one draw per field | Shrubs cast; all receive |
-| Outer ground, border forest | [`Scenery`](../../src/demo/Scenery.js) | Lambert heightfield / merged trees | opaque · 0 | Ground receives only; border trees are merged with the map's trees and cast |
+| Outer ground, border forest | [`Scenery`](../../src/game/Scenery.js) | Lambert heightfield / merged trees | opaque · 0 | Ground receives only; border trees are merged with the map's trees and cast |
 | Particles | [`Particles`](../../src/engine/fx/Particles.js) | `ShaderMaterial` per emitter / burst pool; additive (no depth write), normal (alpha blend) or cut-out (alpha test, writes depth) | transparent · 50–53 (cut-out: opaque) | No |
 | God rays | [`GodRays`](../../src/engine/fx/GodRays.js) | `ShaderMaterial`, additive, no depth write | transparent · 40 | No |
 | Sky dome | [`Sky`](../../src/engine/lighting/Sky.js) | `ShaderMaterial`, `BackSide`, no depth write, depth test on (`earlyZ`), `fog: false` | opaque · 1e6 (after every opaque object) | No |
 | Shadow-caster proxies (big levels) | [`ShadowCasters`](../../src/engine/world/ShadowCasters.js) | position-only merged geometry, `MeshBasicMaterial { colorWrite: false, depthWrite: false }` | never drawn in colour | Cast only |
 | Lights | `LightingSystem` | 1 `DirectionalLight` (sun / moon), 1 `HemisphereLight`, ≤ 12 `PointLight`s (count fixed at load, [§6.3](#63-point-lights-the-pool-and-emissives)) | — | Only the sun casts |
-| *Combat levels only:* enemies, boss, the player | `Sprite3D` with `combatFx` ([COMBAT.md §10.1](../contracts/COMBAT.md#101-sprite3d-option-combatfx-sprites)) | the sprite patch plus per-sprite `uFlash` / `uGlow` / `uHighlight`, key `lumina-sprite3d-lit-fx-v1` | opaque · 0 | as other sprites (bats cast no shadow) |
+| *Combat levels only:* enemies, boss, the player | `Sprite3D` with `combatFx` ([COMBAT.md §10.1](../contracts/COMBAT.md#101-sprite3d-option-combatfx-sprites)) | the sprite patch plus per-sprite `uFlash` / `uGlow` / `uHighlight`, key `luminati-sprite3d-lit-fx-v1` | opaque · 0 | as other sprites (bats cast no shadow) |
 | *Combat levels only:* telegraph markers | [`GroundMarkers`](../../src/engine/fx/GroundMarkers.js), one instanced mesh draped over a height texture | `ShaderMaterial`, transparent, no depth write, polygon offset (−2, −4), fog | transparent · 21 (`DECALS + 1`) | No |
 | *Combat levels only:* slashes, stars, pickups, projectiles, the ember wall | [`FxQuads`](../../src/engine/fx/FxQuads.js), one instanced mesh of atlas quads | `ShaderMaterial`, unlit, alpha-tested with a Bayer dither for fades, depth-writing (sharp in the DOF), HDR colours (bloom), fog | opaque · 0, one draw call | No |
 
@@ -137,28 +137,29 @@ transparent would be painted over by the sky — give such effects `transparent:
 ## 4. Materials and shader patches
 
 World geometry uses `MeshLambertMaterial` (per-fragment in r186, supports `map`, `normalMap`,
-`emissiveMap`). Instead of custom shaders, Lumina patches the built-in shaders in
+`emissiveMap`). Instead of custom shaders, Luminati patches the built-in shaders in
 `onBeforeCompile` and gives every patched material a **constant `customProgramCacheKey`**, so all
 instances of a kind share one program. Patches replace `#include <chunk>` lines; if you upgrade
 three.js, these chunk names are the first thing to check.
 
 | Patch | Where | Applied to | Program key | What it does |
 | --- | --- | --- | --- | --- |
-| Sprite lighting (`patchSpriteLighting`) | [`Sprite3D.js`](../../src/engine/sprite/Sprite3D.js) | Sprite3D lit material, Foliage | `lumina-sprite3d-lit-v1`, `lumina-foliage-lit-v1` | **Bent normal** (after `normal_fragment_maps`): `normalize(mix(toCamera, worldUp, uNormalUp))` plus a horizontal `uRoundness` bend across the quad, so side lights rim one edge. **Wrap diffuse** (replaces `lights_lambert_pars_fragment`): `saturate((N·L + uWrap) / (1 + uWrap))` — backlit sprites never go black. **Self-shadow-free lookup** (wraps `shadowmap_vertex`): the receiver position is pushed toward the sun just past the sprite's own sun-facing proxy plane. |
-| Dithered opacity | `Sprite3D` | lit, unlit and depth materials | `…-lit-v1`, `lumina-sprite3d-unlit-v1`, `lumina-sprite3d-depth-v1` | 4 × 4 Bayer discard after `alphatest_fragment` (`uDitherOpacity`; screen or texel space) — fades that stay compatible with alpha test and shadows. |
+| Sprite lighting (`patchSpriteLighting`) | [`Sprite3D.js`](../../src/engine/sprite/Sprite3D.js) | Sprite3D lit material, Foliage | `luminati-sprite3d-lit-v1`, `luminati-foliage-lit-v1` | **Bent normal** (after `normal_fragment_maps`): `normalize(mix(toCamera, worldUp, uNormalUp))` plus a horizontal `uRoundness` bend across the quad, so side lights rim one edge. **Wrap diffuse** (replaces `lights_lambert_pars_fragment`): `saturate((N·L + uWrap) / (1 + uWrap))` — backlit sprites never go black. **Self-shadow-free lookup** (wraps `shadowmap_vertex`): the receiver position is pushed toward the sun just past the sprite's own sun-facing proxy plane. |
+| Dithered opacity | `Sprite3D` | lit, unlit and depth materials | `…-lit-v1`, `luminati-sprite3d-unlit-v1`, `luminati-sprite3d-depth-v1` | 4 × 4 Bayer discard after `alphatest_fragment` (`uDitherOpacity`; screen or texel space) — fades that stay compatible with alpha test and shadows. |
 | Emissive × albedo | `Sprite3D` lit | characters | (same) | `totalEmissiveRadiance *= diffuseColor.rgb` after `emissivemap_fragment`: the warm fill (`SPRITE_FILL`) glows in the sprite's own colours. |
-| Foliage billboard + sway | [`Foliage.js`](../../src/engine/sprite/Foliage.js) | ground-foliage InstancedMesh | `lumina-foliage-lit-v1`, depth `lumina-foliage-depth-v1` | Per instance: rotate the quad to `uCameraYaw` (the depth material to the sun azimuth, `LUMINA_FACE_SUN`, so shadows are full silhouettes); sway top vertices with `uTime` / `uWind` / `uWindStrength`; per-instance frame of a sprite strip (`aFrame × uFrameU`); root darkening. |
-| Wind (`applyWind`) | [`props/Wind.js`](../../src/engine/world/props/Wind.js) | tree bark (`windMaterial`), broadleaf canopy cards (`foliageMaterial(…, { billboard: true })`), pine needle tiers (`foliageMaterial('pine')`, not billboarded) | `lumina-wind-solid`, `lumina-wind-foliage-<wrap>`, suffix `-bb` for billboard cards; depth `lumina-wind-depth[-bb]` | World-space sway from `aSway` (0 rooted … 1 tip) and `aPhase`, gusts travelling across the map, converted back to object space. `FOLIAGE_BILLBOARD` turns 2 × 2 leaf cards toward `uCameraYaw` (tilt 0.42) in colour and toward the sun (tilt 0.15) in the shadow pass. Foliage lighting: no back-face normal flip, wrap diffuse (`FOLIAGE_WRAP`). |
-| TileMap (`_patchMaterial`) | [`TileMap.js`](../../src/engine/world/TileMap.js) | every terrain material | `lumina-tilemap`, `-var`, `-decal` | **Wall bounce** (at `lights_fragment_maps`): a sun-coloured ground-bounce fill on vertical faces (`uLmBounce` = `tileMap.wallBounce`, `uSunColor`, `uSunDirection`). **Organic variation** on grass / dirt / sand / riverbed / moss: random quarter turns and mirrors per ~1-unit cell with pixel-jittered borders (map and normal map, `textureGrad`). **Decal** mask shading for fringes and brims. |
-| Snow cover | [`src/demo/SnowCover.js`](../../src/demo/SnowCover.js) (game and editor preview) | terrain, outer ground, foliage fields, roofs | `<previous key>\|lumina-snow-ground` or `…-foliage` | Chained after the material's own patch, before `emissivemap_fragment`: whitens up-facing surfaces (world normal) or sprite tops by the shared `snowCover` uniform. The uniform is always there (0 = no snow), so snowfall never compiles anything. |
-| Fog start | [`src/demo/AtmosphereFog.js`](../../src/demo/AtmosphereFog.js) (game only) | **every** material using the standard fog chunks | global — replaces `THREE.ShaderChunk.fog_vertex` | `vFogDepth = max(0, −mvPosition.z − start)` with `start = camera distance − 7` (23 at the default 30): the diorama around the player stays crisp and saturated, the distance melts into the horizon colour. Must be installed before the first material compiles (`Game.init` does it first). |
-| Player x-ray | [`src/demo/Player.js`](../../src/demo/Player.js) | the player's silhouette mesh | `emberfall-player-silhouette-v2` | Pulls each vertex 1.3 units toward the camera (only real occluders reveal it), pale tint from the texel luminance. It writes its own depth so the DOF keeps the hidden player sharp. `setSilhouetteEnabled` only toggles `colorWrite` / `depthWrite` — no recompile. |
-| Instanced blobs | [`BlobBatch.js`](../../src/engine/sprite/BlobBatch.js) | the big-level contact-shadow InstancedMesh | `lumina-blob-batch` | Per-instance opacity attribute (`aBlobAlpha`). |
+| Foliage billboard + sway | [`Foliage.js`](../../src/engine/sprite/Foliage.js) | ground-foliage InstancedMesh | `luminati-foliage-lit-v1`, depth `luminati-foliage-depth-v1` | Per instance: rotate the quad to `uCameraYaw` (the depth material to the sun azimuth, `LUMINATI_FACE_SUN`, so shadows are full silhouettes); sway top vertices with `uTime` / `uWind` / `uWindStrength`; per-instance frame of a sprite strip (`aFrame × uFrameU`); root darkening. |
+| Wind (`applyWind`) | [`props/Wind.js`](../../src/engine/world/props/Wind.js) | tree bark (`windMaterial`), broadleaf canopy cards (`foliageMaterial(…, { billboard: true })`), pine needle tiers (`foliageMaterial('pine')`, not billboarded) | `luminati-wind-solid`, `luminati-wind-foliage-<wrap>`, suffix `-bb` for billboard cards; depth `luminati-wind-depth[-bb]` | World-space sway from `aSway` (0 rooted … 1 tip) and `aPhase`, gusts travelling across the map, converted back to object space. `FOLIAGE_BILLBOARD` turns 2 × 2 leaf cards toward `uCameraYaw` (tilt 0.42) in colour and toward the sun (tilt 0.15) in the shadow pass. Foliage lighting: no back-face normal flip, wrap diffuse (`FOLIAGE_WRAP`). |
+| TileMap (`_patchMaterial`) | [`TileMap.js`](../../src/engine/world/TileMap.js) | every terrain material | `luminati-tilemap`, `-var`, `-decal` | **Wall bounce** (at `lights_fragment_maps`): a sun-coloured ground-bounce fill on vertical faces (`uLmBounce` = `tileMap.wallBounce`, `uSunColor`, `uSunDirection`). **Organic variation** on grass / dirt / sand / riverbed / moss: random quarter turns and mirrors per ~1-unit cell with pixel-jittered borders (map and normal map, `textureGrad`). **Decal** mask shading for fringes and brims. |
+| Snow cover | [`src/game/SnowCover.js`](../../src/game/SnowCover.js) (game and editor preview) | terrain, outer ground, foliage fields, roofs | `<previous key>\|luminati-snow-ground` or `…-foliage` | Chained after the material's own patch, before `emissivemap_fragment`: whitens up-facing surfaces (world normal) or sprite tops by the shared `snowCover` uniform. The uniform is always there (0 = no snow), so snowfall never compiles anything. |
+| Fog start | [`src/game/AtmosphereFog.js`](../../src/game/AtmosphereFog.js) (game only) | **every** material using the standard fog chunks | global — extends `THREE.ShaderChunk.fog_pars_vertex`, replaces `fog_vertex` | `vFogDepth = max(0, −mvPosition.z − uFogStart.x)`: the diorama around the player stays crisp and saturated, the distance melts into the horizon colour. The start is the uniform `globalUniforms.uFogStart` = the level's camera distance − 7 (23 at the default 30), set per level by `Game._applyLevel` (`setFogStart`) — a campaign's levels each get their own, and a change compiles nothing. Built-in materials get the uniform through `THREE.ShaderLib`, the engine's fogged `ShaderMaterial`s reference it themselves (see [render.md §2](modules/render.md#2-globaluniforms) for why it is a `vec2` holding a `Float32Array`). Must be installed before the first material compiles (`Game.init` does it first). |
+| Player x-ray | [`src/game/Player.js`](../../src/game/Player.js) | the player's silhouette mesh | `emberfall-player-silhouette-v2` | Pulls each vertex 1.3 units toward the camera (only real occluders reveal it), pale tint from the texel luminance. It writes its own depth so the DOF keeps the hidden player sharp. `setSilhouetteEnabled` only toggles `colorWrite` / `depthWrite` — no recompile. |
+| Instanced blobs | [`BlobBatch.js`](../../src/engine/sprite/BlobBatch.js) | the big-level contact-shadow InstancedMesh | `luminati-blob-batch` | Per-instance opacity attribute (`aBlobAlpha`). |
 
 Custom `ShaderMaterial`s (no patching): `Water` surface, waterfall sheet and pool, flame body and
 glow (`props/Flame.js`, billboarded to `uCameraYaw`), `Particles`, `GodRays`, `Sky`, and every
-PostFX pass. Fogged custom shaders set `fog: true` and include three's fog chunks — which is why
-the fog-start patch reaches them too.
+PostFX pass. Fogged custom shaders set `fog: true`, include three's fog chunks and put
+`uFogStart: globalUniforms.uFogStart` into their uniforms — which is why the fog-start patch
+reaches them too (without the patch no program declares `uFogStart` and three skips it).
 
 ---
 
@@ -218,7 +219,7 @@ never overshooting, wrapping at midnight. Each keyframe drives the sky gradient 
 | 20.05 | blue hour | `#7090f4` · 0.38 | 1.08 | 0.0125 | 1.28 | 0.92 | 1 |
 | 21.4 | night | `#7294ff` · 0.82 | 1.12 | 0.011 | 1.30 | 1 | 1 |
 
-The game (and the editor preview) merge [`KEYFRAME_OVERRIDES`](../../src/demo/config.js) by
+The game (and the editor preview) merge [`KEYFRAME_OVERRIDES`](../../src/game/config.js) by
 keyframe name: brighter, bluer nights (`night` / `late night`: `hemiI` 1.6 / 1.55, `sunI` 1.0 /
 0.9, `exp` 1.36; `blue hour` `hemiI` 1.5, `exp` 1.36), more light in the dusk trough (`sunset`
 `hemiI` 1.45, `exp` 1.2; `purple dusk` `sunI` 0.85, `hemiI` 1.62, `exp` 1.46), and a cooler golden
@@ -261,14 +262,14 @@ front-right (camera side) and faces the camera sees are moonlit.
   `emissiveIntensity = lerp(day, night, nightFactor)`, optionally × `lerp(1, flickerFactor, 0.6)`
   so lantern glass flickers with its light. Windows and lantern glass are registered by `World`;
   every character / critter sprite gets a small warm fill (`SPRITE_FILL` day 0.05 → night 0.03,
-  emissive `#ffe9d2`, [`config.js`](../../src/demo/config.js)).
+  emissive `#ffe9d2`, [`config.js`](../../src/game/config.js)).
 - The lantern-glass material's albedo is dimmed to 0.5 while lamps are unlit (`Weather.update`).
 
 ### 6.4 Weather on top of the palette
 
-[`Weather.update`](../../src/demo/Weather.js) runs after `LightingSystem.update`, so it can
+[`Weather.update`](../../src/game/Weather.js) runs after `LightingSystem.update`, so it can
 modify what the palette produced without accumulating (the per-weather values and the functions
-that apply them live in [`WeatherLook.js`](../../src/demo/WeatherLook.js), which the editor preview
+that apply them live in [`WeatherLook.js`](../../src/game/WeatherLook.js), which the editor preview
 uses too — [§10](#10-how-the-editor-renders)): it blends per-weather multipliers
 (`clear`, `rain`, `snow`) into `lighting.settings` (`sunMul`, `ambientMul`, `fogMul`,
 `exposureMul`), writes `uWind` / `uWindStrength`, shifts the grade temperature and saturation,
@@ -287,7 +288,8 @@ between presets (dawn 6.5, midday 12.5, golden hour 17.2, dusk 18.9, night 22.5)
   where `zoomFog = clamp(((30 − 7) / (rigDistance − 7))², 0.4, 1)` thins the fog when zoomed out
   (with the level's camera distance in place of 30) and `levelFog = environment.fogScale` (default
   1). The fog-start patch ([§4](#4-materials-and-shader-patches)) keeps the first `distance − 7`
-  units fog-free. The editor has no fog-start patch; it sets density ≈ `0.2 / camera distance`
+  units fog-free (the level's camera distance; in a campaign each level's own — the `uFogStart`
+  uniform is set on every travel). The editor has no fog-start patch; it sets density ≈ `0.2 / camera distance`
   (× 0.55 in game-camera mode).
 - **Sky** (`Sky`, radius 180, follows the camera): gradient, HDR sun halo and pixel sun disc
   (`sunIntensity 9` so it blooms), pixel moon, twinkling stars at night, sun-tinted pixel clouds
@@ -334,7 +336,7 @@ All are `HalfFloatType` RGBA with linear filtering (`makeTarget`).
 | 4 | Tent (½) | `dof` | 3 × 3 CoC-aware tent hides the sparse sampling pattern. |
 | 5 | Bokeh sprites (½) | `dof` | One point sprite per 2 × 2 reduced-res block; each highlight texel is scattered as an anti-aliased disc of its own CoC (`bokehBoost` gain): far discs into the blurred layer, near discs into their own layer. `dof.bokehSprites = false` → pure gather. |
 | 6 | Composite (full) | `dof` | Full-res CoC; bilateral upsample of the blurred layer mixed over the untouched scene by a smooth function of the CoC — **in-focus pixels stay pixel-exact**; a 12-tap full-res disc blur for small CoCs (≈ 0.3–4 px) keeps the focus falloff gradual; near bokeh on top. |
-| 7 | Bloom | `bloom` | `UnrealBloomPass` with Lumina's bright pass swapped in (`BloomBrightPassShader`): subtractive quadratic soft knee (`knee`), NaN-scrubbed, clamped at `maxBrightness 24` so single hot pixels cannot flicker. Only energy above `threshold` blooms. `warmth` tints the wider mips warm. The result is blended additively back into the HDR buffer. If DOF is off, the resolved scene is first copied to `_hdrRT` (an MSAA buffer cannot be blended into after its resolve). |
+| 7 | Bloom | `bloom` | `UnrealBloomPass` with Luminati's bright pass swapped in (`BloomBrightPassShader`): subtractive quadratic soft knee (`knee`), NaN-scrubbed, clamped at `maxBrightness 24` so single hot pixels cannot flicker. Only energy above `threshold` blooms. `warmth` tints the wider mips warm. The result is blended additively back into the HDR buffer. If DOF is off, the resolved scene is first copied to `_hdrRT` (an MSAA buffer cannot be blended into after its resolve). |
 | 8 | Output | `output` | three's `OutputPass`: ACES tone mapping with `toneMappingExposure`, sRGB encode → `_ldrRT` (or straight to the canvas when the grade is off). |
 | 9 | Grade (display space) | `output` | Radial chromatic aberration + unsharp-mask sharpen → exposure multiply → white balance (temperature / tint, luma-preserving) → contrast around 0.5 → saturation → split toning (shadows / highlights tints by luminance) → aspect-aware elliptical vignette toward a warm brown → luminance-weighted film grain (pattern changes at 24 fps) → 8 × 8 ordered dither against banding → canvas. |
 
@@ -406,13 +408,14 @@ sandbox ([`sandbox/postfx.html?gui`](../../sandbox/postfx.html)):
 three.js compiles a program the first time a material is drawn with a given set of **program
 parameters** — including the render target it draws into (canvas = sRGB output variant, render
 target = linear variant), the number of lights, fog, and `customProgramCacheKey`. A synchronous
-compile is a 50–300 ms hitch. Lumina's rules and the load sequence that follows them:
+compile is a 50–300 ms hitch. Luminati's rules and the load sequence that follows them:
 
 1. **Stable parameters.** The point-light count is fixed before the first frame (≤ 12, see
    [§6.3](#63-point-lights-the-pool-and-emissives)); shadow toggles, silhouettes and weather
    effects change uniforms or render states, never defines; the snow patch is always compiled in;
    constant cache keys for patched materials.
-2. **Fog start first.** `installFogStart` rewrites `ShaderChunk.fog_vertex` before any compile.
+2. **Fog start first.** `installFogStart` rewrites the fog chunks before any compile; the start
+   itself is a uniform (`setFogStart`), so a level with another camera distance compiles nothing.
 3. **Compile against the real target.** `Game._compileScene()` calls
    `renderer.compileAsync(scene, camera)` with `postfx.sceneTarget` bound. Compiling with no
    target bound (the canvas) builds the sRGB screen variants, which the HDR pipeline never uses,
@@ -435,6 +438,14 @@ compile is a 50–300 ms hitch. Lumina's rules and the load sequence that follow
    and snow forced on while the loading screen is still up — ANGLE finishes some programs only at
    their first real draw, and the shadow-depth variants are only built by the shadow pass.
    `src/main.js` awaits `game.warmedUp` before fading the loader.
+8. **Every shadow-depth program, not only the spawn's.** `compileAsync` builds no shadow-pass
+   programs, and the shadow pass builds a caster kind's depth program only when a caster of that
+   kind is inside the sun's shadow frustum — on a level whose spawn has none of a kind nearby, a
+   mid-game compile (KNOWN_ISSUES REN-13: Gildhaven's pines). Before the warm-up frames
+   `Game._primeShadows()` adds one proxy per depth-program variant of the level's casters
+   (`ShadowCasters.primeShadowPrograms`: the smallest caster of each variant, sharing its geometry
+   and materials, far below the world, drawn by the shadow pass only) and disposes them once the
+   frames are drawn; `swapLevel` does the same behind the fader.
 
 Result (review measurements): 57 programs for Emberfall (54 for sample-hamlet, 57 for Brightwater
 Crossing in a re-check for this page) and 59 for Starfall Vale (56 before its waterfall-spray
@@ -445,8 +456,12 @@ and dialogs; no frame over 45 ms on Emberfall's first rain, snow or dialog. Comb
 (adds hidden), one `FxQuads` and one `GroundMarkers` instance are drawn at y = −1000 through the
 warm frames, every sheet and the marker height texture are uploaded and every combat burst is
 primed — Cinderwatch Pass has 63 programs at load and exactly 63 after a full fight
-(`sandbox/combat.programs.json`). When you add a material that first appears mid-game, create it (or a
-twin with the same parameters) during `init`, or prime it the way the burst pools are primed.
+(`sandbox/combat.programs.json`). With the shadow primer (rule 8) every level's count at load equals
+the count after visiting every part of it: Emberfall 57, sample-hamlet 54, Brightwater 57, Starfall
+59 and Gildhaven 59 — also with its two spawn-side pines removed (`sandbox/gildhaven.shadows.json`;
+58 → 59 on the first walk into High Town without the primer). When you add a material that first
+appears mid-game, create it (or a twin with the same parameters) during `init`, or prime it the way
+the burst pools are primed; a new shadow caster kind present at load is primed automatically.
 
 ---
 
@@ -457,7 +472,7 @@ The editor's [`Viewport3D`](../../src/editor/viewport3d/Viewport3D.js) uses the 
 time from the level or the sun slider) and, optionally, the same `PostFX`. Differences:
 
 - **Render function** (`_render`): `lighting.lateUpdate()`, shadow planning, then either
-  `postfx.render(dt)` (menu *View › 3D: HD-2D post effects*, `state.view.postfx`; created on first
+  `postfx.render(dt)` (menu *View › 3D: diorama post effects*, `state.view.postfx`; created on first
   use and compiled in the background — the view renders directly until it is ready) or `renderer.render(scene, camera)`
   to the canvas. Then an **overlay pass**: when PostFX ran, the scene depth is copied into the
   canvas depth buffer with a full-screen quad (`DEPTH_COPY`), the selection outlines render,
@@ -474,7 +489,7 @@ time from the level or the sun slider) and, optionally, the same `PostFX`. Diffe
   crossfades. For the same focus and view the preview lights the same lamps as the game, with
   the weather's overcast `nightDayIntensity` too.
 - **Weather**: the level's `environment.weather` at its settled look, through the game's
-  [`WeatherLook.js`](../../src/demo/WeatherLook.js) — lighting multipliers, overcast colours, grade
+  [`WeatherLook.js`](../../src/game/WeatherLook.js) — lighting multipliers, overcast colours, grade
   offsets (on the preview's own grade base), wind, lamp and window day glow and the lantern-glass
   level always; rain / snow, the extra haze, god rays × the weather factor and settled snow cover
   with the atmosphere preview. The terrain, outer ground, foliage and roofs carry the game's
@@ -513,7 +528,9 @@ time from the level or the sun slider) and, optionally, the same `PostFX`. Diffe
   patch the way `addSnowCover` does (call the previous `onBeforeCompile`, extend its key).
 - Opaque or alpha-tested geometry must write depth (DOF reads the depth buffer); additive glows
   must not. An opaque effect that writes no depth needs `transparent: true` (or the sky covers it).
-- Fogged custom shaders: `fog: true` + three's fog chunks (then the fog-start patch applies).
+- Fogged custom shaders: `fog: true` + three's fog chunks + `uFogStart: globalUniforms.uFogStart`
+  in the uniforms (then the fog-start patch applies; a copy of `THREE.UniformsLib.fog` made after
+  the install carries it too, a fogged program with neither would fog from the camera).
 - Make it cast shadows only if it changes a shadow; alpha-tested casters need a depth material with
   the same map / alpha test.
 - Never add, remove or hide point lights after the first frame; add light descriptors to a level

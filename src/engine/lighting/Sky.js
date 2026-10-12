@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * Sky — gradient sky dome for the HD-2D diorama.
+ * Sky — gradient sky dome for the 2.5D diorama.
  *
  * A large BackSide sphere that follows the rendering camera (so it never clips) and draws:
  *  - a top / horizon / bottom gradient (the lower hemisphere is a soft haze so a floating

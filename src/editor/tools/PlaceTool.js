@@ -2,10 +2,12 @@ import { ICONS } from '../icons.js';
 import { snapStep, snapTo, tidy, normalizeAngle } from './common.js';
 import { OBJECT_TYPES, createObject } from '../../engine/level/ObjectCatalog.js';
 import { isOwnKey } from '../../engine/utils/own.js';
+import { hiddenMessage, notifyHidden } from '../visibility.js';
 
 /**
  * @import { ObjectType, ObjectTypeDef } from '../../engine/level/types.js'
  * @import { RotatableTool, ToolPreview } from './index.js'
+ * @import { EditorState } from '../EditorState.js'
  */
 
 const DEG = Math.PI / 180;
@@ -58,12 +60,27 @@ function placementOverrides(type) {
   return o;
 }
 
+/**
+ * The placement's status message (the Place tool's, and the context menu's *Place ‹type› here*);
+ * an object the views hide — a type hidden with the outliner's eye, *View › Show objects* /
+ * *Show markers* off — is placed but not drawn or selected (a hidden object is never selected:
+ * ../visibility.js), and the message says so.
+ * @param {EditorState} state
+ * @param {string} text
+ * @param {string} id the placed object
+ */
+export function notifyPlaced(state, text, id) {
+  const why = hiddenMessage(state, id);
+  if (why) notifyHidden(state, `${text} · ${why}`, [id]);
+  else state.notify(text);
+}
+
 function finishLine(state, type, x1, z1) {
   const { x0, z0 } = line;
   line = null;
   if (Math.hypot(x1 - x0, z1 - z0) < 0.25) { state.notify('Line too short — click two different points'); return; }
-  state.addObject(type, x0, z0, { ...placementOverrides(type), x1, z1 });
-  state.notify(`${OBJECT_TYPES[type].label} placed (${Math.hypot(x1 - x0, z1 - z0).toFixed(1)} long)`);
+  const obj = state.addObject(type, x0, z0, { ...placementOverrides(type), x1, z1 });
+  notifyPlaced(state, `${OBJECT_TYPES[type].label} placed (${Math.hypot(x1 - x0, z1 - z0).toFixed(1)} long)`, obj.id);
 }
 
 /** @type {RotatableTool} */
@@ -84,7 +101,7 @@ export const PlaceTool = {
     const p = snapped(state, ev, type);
     if (def.placement === 'point') {
       const obj = state.addObject(type, p.x, p.z, placementOverrides(type));
-      state.notify(`Placed ${def.label} (${obj.id})`);
+      notifyPlaced(state, `Placed ${def.label} (${obj.id})`, obj.id);
     } else if (def.placement === 'line') {
       if (!line) line = { x0: p.x, z0: p.z, downX: p.x, downZ: p.z, dragging: true };
       else finishLine(state, type, p.x, p.z);
@@ -126,7 +143,7 @@ export const PlaceTool = {
         minX = r.x0 - 2; maxX = r.x0 + 2; minZ = r.z0 - 2; maxZ = r.z0 + 2;
       }
       const obj = state.addObject(type, (minX + maxX) / 2, (minZ + maxZ) / 2, { minX: tidy(minX), maxX: tidy(maxX), minZ: tidy(minZ), maxZ: tidy(maxZ) });
-      state.notify(`Placed ${def.label} (${obj.id})`);
+      notifyPlaced(state, `Placed ${def.label} (${obj.id})`, obj.id);
     }
     state.emit('preview');
   },

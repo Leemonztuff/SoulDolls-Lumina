@@ -1204,7 +1204,7 @@ function teardown() {
   for (const d of disposables) d.dispose?.();
   engine.dispose();
   return {
-    canvasRemoved: !document.querySelector('canvas.lumina-canvas'),
+    canvasRemoved: !document.querySelector('canvas.luminati-canvas'),
     engineGlobalCleared: window.__engine === undefined,
     audioClosed: audio.ctx === null,
   };

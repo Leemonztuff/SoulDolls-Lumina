@@ -1,6 +1,6 @@
-# Lumina Level Editor — Design & Contracts
+# Luminati Level Editor — Design & Contracts
 
-> **Status.** **Binding contract** for the `lumina-level` format, the object catalog, the level
+> **Status.** **Binding contract** for the `luminati-level` format, the object catalog, the level
 > builder, level storage and the editor's internal interfaces — change it only additively
 > ([contracts/README.md](README.md)). This box is a reading aid added by the documentation pass;
 > it is not part of the contract.
@@ -15,13 +15,13 @@
 > [architecture/EDITOR.md](../architecture/EDITOR.md) (editor architecture) ·
 > [user/LEVEL_EDITOR_GUIDE.md](../user/LEVEL_EDITOR_GUIDE.md) (using the editor).
 > Known differences between this text and the code: [ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md#documentation-discrepancies)
-> (DOC-05, DOC-08, DOC-13). **Typed copies** the code is checked against (`npm run typecheck`):
+> (DOC-05 and DOC-13 are corrected in the text since 2026-10-07). **Typed copies** the code is checked against (`npm run typecheck`):
 > the level document and object catalog in [`src/engine/level/types.d.ts`](../../src/engine/level/types.d.ts)
 > (§1–§2), the tool interface in [`src/editor/tools/index.js`](../../src/editor/tools/index.js) (§7),
 > the `EditorState` events in [`src/editor/types.d.ts`](../../src/editor/types.d.ts); where this text
 > and the code differ they follow the code.
 
-Goal: a **visual map / level editor** for the Lumina HD-2D engine. The user paints terrain,
+Goal: a **visual map / level editor** for the Luminati 2.5D pixel-art engine. The user paints terrain,
 sculpts heights, places buildings / trees / lights / props / characters, edits their properties,
 **saves** the map (to the project folder, the browser, or a file), reopens it, and **play-tests**
 it in the real game. The Emberfall demo village itself becomes a level file the editor can open.
@@ -33,11 +33,11 @@ everything under `src/engine/level/`, `src/editor/`, and the game's level loadin
 
 ## 1. Level format (v1) — `src/engine/level/LevelFormat.js` (written, use it)
 
-A level is plain JSON (`format: "lumina-level"`, `version: 1`):
+A level is plain JSON (`format: "luminati-level"`, `version: 1`):
 
 ```jsonc
 {
-  "format": "lumina-level", "version": 1,
+  "format": "luminati-level", "version": 1,
   "name": "Emberfall", "subtitle": "Riverside Village", "author": "", "description": "",
   "width": 48, "depth": 40,
   "waterLevel": 0.4,
@@ -64,11 +64,12 @@ A level is plain JSON (`format: "lumina-level"`, `version: 1`):
   levelStats, TILE_TYPES, TILE_BY_CHAR, defaultLegend, DEFAULT_ENVIRONMENT, MAX_LEVEL` (additions:
   `SPAWN_ID`, `onBridgeDeck(level, x, z)`, `isWalkablePoint(level, x, z)` — a walkable tile or a
   bridge deck, the rule the game walks by).
-- `normalizeLevel` throws "Not a Lumina level" for JSON with neither `format` nor `tiles` / `heights`
+- `normalizeLevel` throws "Not a Luminati level" for JSON with neither `format` nor `tiles` / `heights`
   (a `package.json` never opens as a blank map). Duplicate object ids and the reserved id `'spawn'`
   (`SPAWN_ID`, the editor's selection token of the player start) are renamed **with a warning**.
   Top-level fields this engine does not know, and extra keys of `spawn`, are kept and written back
-  (`serializeLevel` puts unknown top-level fields after `objects`). (Added 2026-10-01, KNOWN_ISSUES
+  (`serializeLevel` puts unknown top-level fields after `objects`, with the level's `textKeys`, in
+  the file's own order). (Added 2026-10-01, KNOWN_ISSUES
   LVL-17:) an object `type` counts only when it is a string naming an own key of `OBJECT_TYPES`
   — an `Object.prototype` name such as `"constructor"` is skipped with the usual *Unknown object
   type* warning — and names read from level data elsewhere are matched as own keys too; a legend
@@ -76,6 +77,14 @@ A level is plain JSON (`format: "lumina-level"`, `version: 1`):
 - **Byte-stable**: `parseLevel` → `serializeLevel` of a saved level reproduces the file exactly
   (`normalizeObject` keeps each object's key order; `createObject` writes id, type, position, then
   the defaults). `validateLevel` accepts a player start on a bridge deck.
+- **Text keys** (*added October 2026, additive*): every translatable text carries its text key in
+  the data, a GUID ([I18N.md §4.2](../specs/I18N.md#42-keys-and-lookup)): an object's optional
+  `textKeys` (parallel to its translatable fields), `#line:<GUID>` tags on its script lines, and the
+  level's own optional `textKeys` (`subtitle`, `title.*`). `normalizeLevel` cleans them —
+  malformed keys, unknown fields and keys past their texts are dropped and lower-case keys
+  upper-cased, with a warning — and keeps well-formed keys byte for byte. The level's `textKeys`
+  is written on one line after `objects`, in its place among the unknown top-level fields
+  ([LEVEL_FORMAT.md §14](../specs/LEVEL_FORMAT.md#14-serialisation-byte-stable-writing)).
 - `environment.camera`: `null` (auto from the walkable area) or
   `{ distance?, pitch?, bounds?: rect | { near: rect, mid: rect, far: rect } }` (rect = {minX,maxX,minZ,maxZ}).
 - `environment.highGround`: `null` or `{ minY, pitch }` — the camera tilts to `pitch` while the
@@ -99,6 +108,8 @@ A level is plain JSON (`format: "lumina-level"`, `version: 1`):
 | `minimap` | `false` hides the HUD minimap under the clock (default: shown). The world map (N / Tab) is available either way. Level settings › Environment › Minimap edits it; the default is never written into a file that did not have it. |
 | `combat` | combat on this level (**optional, never written by default**): absent = **Auto** — combat is on exactly when the level has an `enemy` object; `true` = **On** (the player's sword kit, chests and waystones work even without enemies); `false` = **Off** (a peaceful level: enemies are not spawned, chests and waystones are only examined). `levelHasCombat(level)` ([ObjectCatalog](../../src/engine/level/ObjectCatalog.js)) is the one test; the game evaluates it once at load ([COMBAT.md §3](COMBAT.md#3-enabling-combat-per-level)). **Level settings › Combat: Auto / On / Off** edits it: *Auto* removes the key (so a level saved with Auto stays byte-identical), *On* / *Off* write `true` / `false`. Check for problems warns about `false` with enemies placed. |
 | `forest` `{ areas: [{ minX, maxX, minZ, maxZ, kinds: { oak?, pine?, birch?, autumn? } }] }` | the tree kinds of the forest border (`T` tiles), deep-forest patches and outer scenery by area, in **world** units (a tree at (x, z) is inside when minX ≤ x < maxX and minZ ≤ z < maxZ; rects may reach past the map for the outer woods; first match wins). `kinds` are relative weights. Positions, the random sequence and every tree outside the areas are unchanged; default: the automatic mix (pines in the north rows, an autumn-heavy east third). `Scenery.forestKindAreas(env)` reads it; the editor's scenery preview follows it. |
+| `interior` | `true` makes the level a **room** (*added 2026-10-07*; never written by default): no forest border, outer scenery, god rays or weather inside, whatever those fields say, and a campaign keeps the level the player came from while they are in it and the last room after they leave ([LEVEL_FORMAT.md §9](../specs/LEVEL_FORMAT.md), [CAMPAIGN_FORMAT.md §6.3](../specs/CAMPAIGN_FORMAT.md#rooms-the-levels-set-aside)). Level settings › Environment › *Interior (room)* writes `true` and removes the key when switched off; File › New › *Room (interior)* starts one. |
+| `backdrop` | `"void"` or `"#rrggbb"`: an interior's surround instead of the sky (*added 2026-10-07*; absent = the sky). Level settings › Environment › *Backdrop* writes it only when changed and removes it again for the sky. |
 
 `LevelFormat.resizeLevel` / `shiftLevelContent` move every absolute position with the content:
 spawn, objects (including the legacy absolute `bounds` / `spots` / `talkPoint`), camera bounds,
@@ -108,9 +119,11 @@ shrinking back is an exact identity.
 ## 2. Object catalog — `src/engine/level/ObjectCatalog.js` (written, use it)
 
 `OBJECT_TYPES[type]` = `{ label, category, placement: 'point'|'line'|'rect', kind: 'prop'|'actor'|'marker',
-glyph, color, radius, rotatable?, snap?, help?, combat?, defaults, fields }` (`combat: true` marks the
-combat-only types, COMBAT.md §14; the entry shape is `ObjectTypeDef` in `level/types.d.ts`, checked with
-`@satisfies`, and the level object types are derived from the entries). Types:
+glyph, color, radius, rotatable?, snap?, help?, combat?, campaign?, story?, interior?, defaults, fields }`
+(`combat: true` marks the combat-only types, COMBAT.md §14; `campaign: true` / `story: true` the
+campaign and story markers; `interior: true` the furniture of rooms — additive, 2026-10-07; the entry
+shape is `ObjectTypeDef` in `level/types.d.ts`, checked with `@satisfies`, and the level object types
+are derived from the entries). Types:
 
 | category | types |
 | --- | --- |
@@ -118,15 +131,26 @@ combat-only types, COMBAT.md §14; the entry shape is `ObjectTypeDef` in `level/
 | Nature | `tree`, `rock`, `haystack` |
 | Lights | `lamppost`, `wallTorch`, `campfire`, `light` |
 | Props | `bench`, `barrel`, `crate`, `crateStack`, `flowerbox`, `signpost` |
+| Interior (`interior: true`) | `bed`, `table`, `chair`, `shelf`, `hearth`, `counter`, `rug`, `staircase`, `wallWindow`, `wardrobe`, `sacks` — props made for rooms (`environment.interior`), [OBJECT_CATALOG.md § Interior](../specs/OBJECT_CATALOG.md#interior) |
 | Structures (line) | `fence`, `bridge` |
 | Water | `waterfall` |
 | Characters (actors) | `npc`, `critters` |
 | Markers | `emitter` (particle area), `region` (rect, HUD location name) |
 | Combat (`combat: true`) | `enemy` (actor: a group of hostile creatures, the training dummies or the boss), `chest` (prop), `waystone` (prop, checkpoint) — [COMBAT.md §14](COMBAT.md#14-level-data) |
+| Campaign (`campaign: true`) | `exit` (rect: `to`, `entrance`, `mode` walk / use, `label`, `requires`, `locked`), `entrance` (marker: `name`, `facing`) — markers that build nothing; only a campaign reads them ([CAMPAIGN_FORMAT.md](../specs/CAMPAIGN_FORMAT.md)) |
 
 The player start is `level.spawn` (editors show it as `SPAWN_MARKER`). `fields` is the inspector
 schema (`key` = dotted path, `type` ∈ number | int | angle | bool | select | text | textarea | lines |
-dialogue | color; `nullable` numbers may be blank = null). Helpers: `createObject, normalizeObject,
+dialogue | color; `nullable` numbers may be blank = null; `i18n: true` — added 2026-10-09, additive —
+marks a field players read, which the content-text tools extract for translation and the game shows
+translated: names as terms (`term`), texts, dialogue, talk scripts, labels and the npc `title` by
+the text keys the data holds beside them (`loc`); identity fields never carry it,
+[I18N.md §4.6](../specs/I18N.md#46-what-is-extracted)). The level file is the same in every
+language: translations live in `public/i18n/`, never in the level, and the editor stays English.
+The keys are GUIDs kept through every edit, so inserting a page, reordering lines or renaming an
+object's id keeps every translation; an edited text keeps its key and shows English until it is
+reviewed ([OBJECT_CATALOG.md §13.3](../specs/OBJECT_CATALOG.md#133-translations)). The editor
+shows the keys read-only and keeps them itself (§6, *Text keys*). Helpers: `createObject, normalizeObject,
 getField, setField, objectCenter, objectBounds, hitTestObject, parseDialogueText, dialogueToText,
 critterYard, critterStartPoints, OBJECT_CATEGORIES, NPC_ACTIONS, NPC_BEHAVIOURS, NPC_SCRIPTS,
 CHARACTER_PRESET_NAMES, …` (additions for combat: `ENEMY_KINDS`, `ENEMY_INFO`, `CHEST_UPGRADES`,
@@ -134,7 +158,26 @@ CHARACTER_PRESET_NAMES, …` (additions for combat: `ENEMY_KINDS`, `ENEMY_INFO`,
 group holds 0–1 —, `isCombatType(type)`, `levelHasCombat(level)`; `NPC_SCRIPTS` gains
 `'drillmaster'`, the combat tutor, and `'shopkeeper'`, the combat shop's menu (additive,
 2026-09-28; both play the NPC's own `dialogue` and `action` on a peaceful level);
-`OBJECT_CATEGORIES` gains `'Combat'` last).
+`OBJECT_CATEGORIES` gains `'Combat'` last; additions for campaigns: `EXIT_MODES`, `STORY_FIELDS` —
+the optional `when` / `unless` flag fields every type's `fields` end with, absent by default —,
+the npc field `flag`, `isCampaignType(type)`; exits and entrances sit in `'Markers'`; additions for
+rooms: `OBJECT_CATEGORIES` gains `'Interior'` after `'Props'`, `BLANKET_COLORS`, `RUG_COLORS`,
+`isInteriorType(type)`, `interiorFootprint(obj)` — a piece's local footprint rectangle (`solid`,
+`round`), which `objectBounds` turns by the rotation — and `staircaseFoot(obj)`, where the player
+stands to use a staircase's exit).
+
+Interior types (`interior: true`; defaults in file order; every one rotatable, snap 0.25):
+`bed { rotation 0, opts { width 1.2, length 2.2, blanket 'red' } }`, `table { rotation 0, opts
+{ shape 'rect', width 1.6, depth 0.9, cloth false, items true, candle false } }`, `chair { rotation 0,
+opts { style 'chair' } }`, `shelf { rotation 0, opts { kind 'books', width 1.6, height 2.2 } }`,
+`hearth { rotation 0, opts { width 2.2, height 2.6, lit true, embers true, pot false } }`, `counter
+{ rotation 0, opts { style 'bar', width 2.6, items true } }`, `rug { rotation 0, opts { color 'red',
+width 2, length 3 } }`, `staircase { rotation 0, opts { dir 'up', width 1.2, steps 7, height 2.5, flip
+false, rail true } }`, `wardrobe { rotation 0, opts { kind 'wardrobe', width 1.4 } }`, `wallWindow
+{ rotation 0, opts { panes 1, sill 0.9, glow 'daylight', curtains 'red', beam true } }`, `sacks
+{ rotation 0, opts { count 3 } }`. (x, z) is the footprint's centre (a wall window: the wall face),
+rotation 0 turns the front toward +Z and a wall piece's back to the north. A lit hearth carries one
+point light (`LIGHT_PRIORITY` 0).
 
 Combat types (`combat: true`; defaults in file order): `enemy { kind: 'slime' (ENEMY_KINDS), count 3
 (1–8), radius 3 (home radius), level 1 (1–10), elite false, name '' }`, `chest { rotation 0, gold 20,
@@ -152,20 +195,22 @@ where `dialogue` = `(string | { text, choices: string[] })[]`, `action` ∈ none
 page; picking any option but the first runs the action — a closing choice page with a single
 option: that option runs it), `item` = what a `shop` NPC hands
 out (default "Crisp Apple"), `behaviour` ∈ `NPC_BEHAVIOURS` (wander|post|perform|chase), `script` =
-id of a hand-written Emberfall conversation in `src/demo/dialogue.js` (overrides `dialogue` when
+id of a hand-written Emberfall conversation in `src/game/dialogue.js` (overrides `dialogue` when
 set). Markup `{word}` renders gold.
 
 **Optional object fields** the game reads (no inspector field unless noted; keep them when editing):
 
 | type | field | meaning |
 | --- | --- | --- |
+| `npc` | `title` | *(added 2026-10-10, additive; an inspector field "Title" after Name)* the small title beside the name plate when this villager speaks (Sela's "Warden of the Cinderwatch"); a translatable text (`i18n: true`, extracted as kind `title`, shown by the key the object holds for it, `textKeyOf(obj, 'title')`, I18N.md §4.8); absent by default, so no saved level changes; blank = none ([PIXEL_UI.md §8.1](../specs/PIXEL_UI.md#81-component-interfaces)). |
 | npc | `talkOffset: [dx, dz]` | where the player talks to the NPC, **relative** to its x / z (the absolute legacy `talkPoint: [x, z]` is still read) |
 | npc | `area: { minX, maxX, minZ, maxZ }` | the rect a `chase` NPC roams, **relative** to x / z (legacy absolute `bounds`) |
 | npc | `talkRadius` | talk distance (default 1.6) |
+| npc | `spec: { … }` | sprite overrides merged over the preset (`createCharacterSheet` spec fields); drawn by the editor preview and, since 2026-10-07, by the game (additive, KNOWN_ISSUES GAME-17) |
 | critters | `area: { minX, maxX, minZ, maxZ }` | the chicken yard, **relative** to x / z (legacy absolute `bounds`); default the square of `radius` |
 | critters | `spotOffsets: [[dx, dz], …]` | exact start spots, **relative** to x / z (legacy absolute `spots`); `count` (inspector) wins: the first animals take the spots, extra ones are scattered over the yard |
 | critters | `seed`, `seedBase`, `speed` | placement RNG seed (default: a hash of the id), per-animal behaviour seeds (`seedBase + i`), walk speed |
-| emitter | `params: { … }` | extra `Particles.createEmitter` config (it cannot override `preset`, the box or `count`) |
+| emitter | `params: { … }` | extra `Particles.createEmitter` config (it cannot override `preset`, the box or `count`) — *correction 2026-10-07, following the code (KNOWN_ISSUES GAME-20, DOC-13): a `params.rate` still changes the particle count, because `Particles` derives `count = ceil(rate × mean life)` from it (except for the precipitation presets `rain` / `snow`)* |
 | region | `banner` (inspector) | arrival banner subtitle shown once when the player first enters (blank = none) |
 | waterfall | `mist: { count?, alpha? }`, `splash` | spray particles (default 8 per unit of width, alpha 0.07); `splash: false` = no splash sound / ambience anchor |
 | well | `sfx` | sound played when examined (default `splash`) |
@@ -175,6 +220,10 @@ set). Markup `{word}` renders gold.
 | enemy | `arena: { minX, maxX, minZ, maxZ }`, `gate: [dx0, dz0, dx1, dz1]` | the boss arena and its gate segment, **relative** to x / z — **required for a `golem`** |
 
 Relative offsets move with the object when it is dragged, duplicated or rotated in the editor.
+A quarter turn (Ctrl+R; R on a single object) also turns them about the object's point — NPC
+`talkOffset` / `area`, critter `area` / `spotOffsets`, enemy `spotOffsets` / `area` / `arena` /
+`gate`; rects stay axis-aligned, their extents swap — while an object of a group turned by another
+angle keeps them as they were (a notice says so; `rotateSelection` in `editor/tools/common.js`).
 `normalizeObject` converts the legacy absolute forms of npc / critters objects (`talkPoint`,
 `bounds`, `spots`) to the relative ones when a level is loaded (the game reads both; the shipped
 levels already use the relative forms).
@@ -193,7 +242,7 @@ one-choice page (it never stops a song).
 House doors are interactive only with a non-empty `text` ("Text when knocking"); Level › Check
 for problems lists houses without one.
 `critterYard(obj)` and `critterStartPoints(obj, isWalkable)` (ObjectCatalog) compute the yard and
-the start positions exactly like the game (`src/demo/Critters.js`); the editor's 2D map and 3D
+the start positions exactly like the game (`src/game/Critters.js`); the editor's 2D map and 3D
 preview draw them.
 
 ## 3. Building a level — `src/engine/level/ObjectBuilder.js` (written, use it)
@@ -214,14 +263,17 @@ preview draw them.
   (n = one segment per half unit), so a bank one level (0.5) below the deck is just too high a step
   (> 0.55) to get on or off — Level › Check for problems lists such bridge ends (with the bank's
   position) so they can be levelled, or the deck height / arch set.
-- `LIGHT_PRIORITY`, `bridgeDeckHeight(tileMap, obj)` (the bank height, never below the highest water
+- `LIGHT_PRIORITY` (`campfire` / `hearth` 0, `wallTorch` / `light` 1, `lamppost` 2, `house` 3),
+  `bridgeDeckHeight(tileMap, obj)` (the bank height, never below the highest water
   surface under the span + 0.1; with no bank at either end, the water surface + 0.3), `buildWaterfall(tileMap, obj)`,
   `computeCameraBounds(level, margin)`.
 - The engine budget is **12 point lights**, all created before the first frame (changing the
   light count recompiles every shader). A level may have any number of light descriptors: the
   game hands them to `LightPool` (`src/engine/lighting/LightPool.js`). With ≤ 12 descriptors each
   gets a permanent light (highest `LIGHT_PRIORITY` first, ties by level object order — exactly
-  the lights of a hand-wired level); with more, the 12 lights are re-assigned every ~0.2 s to the
+  the lights of a hand-wired level; *clarified 2026-10-07 (KNOWN_ISSUES DOC-05): "highest" means
+  the most important, which is the numerically **lowest** value — `campfire` 0, `wallTorch` and
+  `light` 1, `lamppost` 2, `house` 3 and any other type 3*); with more, the 12 lights are re-assigned every ~0.2 s to the
   descriptors whose range touches the camera view, nearest the camera focus first (+ 1.5 units per
   priority step — `priorityWeight`: a lantern a few units away outranks a torch across the
   square; a lantern that is dark by day yields to torches and campfires; a small bonus for
@@ -256,12 +308,14 @@ preview draw them.
 
 ## 4. Saving & loading — `src/engine/level/LevelStorage.js` + `tools/vite-level-api.js` (written)
 
-- Project folder: `public/levels/<slug>.json` via the dev-server API (`GET/PUT/DELETE /api/levels[/name]`,
-  only under `npm run dev`; registered in `vite.config.js`). Published levels load in dev and in
-  production builds from `levels/<slug>.json`.
+- Project folder: `public/levels/<slug>.json` via the dev-server API (`GET/PUT/DELETE /api/levels[/name]`
+  under the dev server's base, only under `npm run dev`; registered in `vite.config.js`). Published
+  levels load in dev and in production builds from `<BASE_URL>levels/<slug>.json` (the build is
+  relative, `base: './'`: it works under any sub-path).
 - Browser: `listLocalLevels, saveLocalLevel, loadLocalLevel, deleteLocalLevel` (localStorage).
 - Files: `downloadLevel`, `readLevelFile`, `openLevelFileDialog`.
-- `hasProjectApi, listProjectLevels, saveProjectLevel, deleteProjectLevel, loadProjectLevel, slugify`.
+- `hasProjectApi, listProjectLevels, saveProjectLevel, deleteProjectLevel, loadProjectLevel, slugify`;
+  `levelsApi(campaign?)` is the API folder they call (`<BASE_URL>api/levels` or a campaign's).
   `slugify` of a name without Latin letters / digits ("村の広場") is a stable `level-<hash>` (never
   the shared "untitled"); Windows device names (`con`, `nul`, `com1`…) get a `-level` suffix and
   the API refuses them. A failed PUT answers a short message (`{ error }`, shown as is) and never
@@ -274,9 +328,8 @@ preview draw them.
 - `public/levels/emberfall.json` is the **single source of truth** for the Emberfall demo: every
   tile, height, house, tree, lamppost, torch, prop, fence, bridge, waterfall, NPC (with `script`
   ids for the hand-written conversations), critter group, particle area, region and camera tuning
-  of the demo. It was converted once from the former hand-written `src/demo/maps/emberfall.js` by
-  `tools/convert-emberfall.mjs` (which reads those old constants from git, `--rev=<revision>`);
-  that module no longer exists — edit the JSON (or open it in the editor). `tools/make-sample-hamlet.mjs`
+  of the demo. It was converted once from the former hand-written `src/demo/maps/emberfall.js`;
+  that module and the converter no longer exist — edit the JSON (or open it in the editor). `tools/make-sample-hamlet.mjs`
   builds `public/levels/sample-hamlet.json`. `public/levels/brightwater-crossing.json` (36 × 28,
   68 objects) is the editor showcase, built only through the editor UI (File › New, terrain
   tools, the Place tool and the inspector, Save as › Project folder).
@@ -317,8 +370,11 @@ preview draw them.
   shows two custom legend chars: `e` (a river flowing east, `flow: [0.45, 0]`) and `:` (the road
   beyond the border: a dirt path that is not walkable). Edit the generator and re-run it rather
   than hand-editing the JSON (or copy the JSON to a new name to continue in the editor).
-- `index.html` (no query) loads Emberfall from that file; `?level=…` loads any other level.
+- `game.html` (no query) loads Emberfall from that file; `?level=…` loads any other level.
   Loading errors are shown on the loading screen (never a blank page).
+- *Added 2026-10-11:* `index.html` is the launcher, a plain page listing every project
+  level and campaign with Play (`game.html?…`) and Edit (`editor.html?open=…`) links, written by
+  `tools/vite-launcher.js` (dev server: every request; build: once); it ignores a query.
 - `World` builds from a level object only (terrain via `buildLevelTerrain`, props via
   `LevelObjectBuilder`, then the existing tuning: static merging, tree merging, smoke look, light
   budget by priority, snow cover, forest border + outer scenery per `environment`). NPCs,
@@ -377,12 +433,13 @@ editor.html                        entry page (Vite multi-page; already listed i
 src/editor/main.js                 boot: new EditorApp(document.getElementById('editor'))
 src/editor/EditorState.js          (written) level document, selection, tools, view, undo/redo
 src/editor/EditorApp.js            layout, menus, dialogs, shortcuts, storage & play-test flows
+src/editor/textKeys.js             the text keys through edits: carry, fill, copy-on-write, shown / found
 src/editor/tools/*.js              view-agnostic tools (see §7) + tools/index.js registry
 src/editor/ui/*.js, editor.css     panels: toolbar, tool options & palettes, inspector,
                                    outliner, status bar, dialogs (new / open / save as / settings /
                                    resize / shortcuts / confirm)
 src/editor/map2d/Map2DView.js      top-down 2D map view (canvas)
-src/editor/viewport3d/*.js         live 3D HD-2D preview & 3D editing (Viewport3D)
+src/editor/viewport3d/*.js         live 3D diorama preview & 3D editing (Viewport3D)
 ```
 
 `EditorState` (written — read it): transactions (`begin/commit/cancel`), `editTiles`, `setTile`,
@@ -405,6 +462,35 @@ the document is not saved anywhere (a restored autosave, a pasted level). Consec
 share their JSON snapshot (one copy per step). `view.timeFollow` (default true): the 3D preview's
 `view.timeOfDay` follows `environment.timeOfDay` (the app sets it on load / settings edits);
 dragging the preview's sun slider unlinks it.
+
+**Text keys** (additions, October 2026;
+[I18N.md §4.10](../specs/I18N.md#410-keys-through-edits-the-editor-the-generators-the-tools)): the
+editor keeps every text's key without the user ever typing one (`src/editor/textKeys.js` over the
+engine's `TextKeys.js`), inside the edit's own transaction, so undo and redo restore keys too.
+- `addObject` gives every text of the new object a key (the catalog defaults too); `insertObjects`
+  (paste, duplicate) replaces a key the level already holds and keys a keyless text, so a duplicate
+  gets fresh keys and a cut-and-paste keeps its own.
+- `updateObject` carries keys only for the fields the edit changed; an untouched field keeps its
+  keys exactly, and a keyless text the edit left as it was stays keyless. A field cleared and typed
+  again gets its old keys back (an id rename takes that memory along); an unchanged text keeps a
+  key the document had at load over one minted since. A key the edit brought in that another text
+  of the level holds (a script line pasted with its tag, a patch's `textKeys`) is not kept.
+- `setLevelProps` does the same for the level's own texts; a `textKeys` patch is merged.
+- **Copy-on-write**: an edit that changes the English of a text whose key another file holds with
+  other English gives the text a new key. The other files are the campaign's other level, story
+  and campaign files (`state.otherTexts`, from the campaign's story context) and the file a *Save
+  As* left (`addCopiedTexts`, read back through the level API). A split is remembered, so typing
+  the old English back takes the shared key back.
+- `assignTextKeys(label, { sources })` (Level › Assign text keys) keys every keyless text, drops
+  keys on no text and gives the later text of a repeated key a new one, sharing a chapter
+  variant's base's or a campaign copy's shipped level's keys first. `seedTextKeys(prefix)` makes
+  new keys deterministic for scripted checks.
+- `origin` is the content table the document's keys come from (the project file it was opened
+  from; a *Save As* keeps it): the play-test of a level outside a campaign passes it as
+  `&i18n=<origin>`.
+- Opening, saving, *Save As*, autosave and export never add or change a key: a file opened and
+  saved unchanged stays byte for byte. A script field and its pop-out show and compare scripts
+  without tags; Apply retags against the old lines.
 
 Views are **dumb about editing**: they translate pointer input into map coordinates and forward
 it to the active tool; they render the level and the tool preview. All edits go through tools →
@@ -491,8 +577,10 @@ already existed in the code):
  *                     closed); a change made on release is skipped (Rectangle, Place's region /
  *                     dragged line, Select's box selection and click-narrowing, Player start's
  *                     selecting the marker). True for a pointercancel, a lost pointer capture,
- *                     hiding the view; 2D also a window blur; 3D also a lost release, a tool
- *                     switch, disposing the view (2D since 2026-10-01, KNOWN_ISSUES ED-16)
+ *                     hiding the view, a lost release (a mouse move without the button, or the
+ *                     same pointer pressed again; 2D since 2026-10-07, KNOWN_ISSUES ED-27); 2D
+ *                     also a window blur; 3D also a tool switch, disposing the view (2D since
+ *                     2026-10-01, KNOWN_ISSUES ED-16)
  *    buttons?, onTerrain?, face?: 'top'|'side'|'plane'|'none', surfaceY?, clientX?, clientY?
  *                     3D only: the DOM `buttons`, whether the ray hit the map, what it hit, the
  *                     visible surface height (the water surface on water), the client position */
@@ -539,12 +627,24 @@ vary with position and seed), so it shows exactly what a click places.
   (selected object fields from the catalog schema; multi-selection; spawn; level settings when
   nothing is selected) + **outliner** (filterable object list), bottom **status bar** (tile coords,
   tile name, height level, world position, tool help, messages, object count).
-- Dark, professional game-editor look with Lumina's navy/gold accents; system-ui font for dense UI,
+- Dark, professional game-editor look with Luminati's navy/gold accents; system-ui font for dense UI,
   Cinzel only for the logo. Crisp icons (inline SVG). Everything responsive from 1280×720 up.
 - Dialogs: New level (name, size, base tile, base height, border width), Open (project / browser /
   file, with sizes & dates), Save As (name + destination: project folder (when the dev API is up),
-  browser, download), Level settings (name, subtitle, author, description, environment, water),
+  browser, download), Level settings (name, subtitle, author, description, environment, water;
+  *added 2026-10-07, following the code (KNOWN_ISSUES DOC-13): its tabs are General, Environment,
+  **Camera** and Water — the Camera tab sets `environment.camera.distance` (blank = auto, 30) and
+  `.pitch` (blank = auto, 32°) and the high-ground tilt `environment.highGround` (on / off, the
+  height above which it applies, its pitch)*),
   Resize (width, depth, 3×3 anchor), Keyboard shortcuts, Unsaved-changes confirmation.
+- Text keys (*added October 2026*): under each translatable field the inspector shows each text's
+  key read-only on a monospace line with a Copy button (a field of several texts behind a "Text
+  keys (n)" toggle; the subtitle's key in Level settings); the key buttons are out of the Tab
+  order. Edit › *Find by text key…* (`edit.findTextKey`) selects the text a key names (a GUID in
+  any case, braces and hyphens allowed, a `#line:` tag, `<GUID>.2`). Level › *Assign text keys*
+  (`level.assignTextKeys`) keys the rest in one undo step. *Check for problems* lists missing and
+  stray keys (one line each) and repeated keys (a line each, at most 20); these never block the
+  play-test.
 - Shortcuts: Ctrl+N/O/S/Shift+S, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, Delete, Ctrl+D, Ctrl+C/V, F (frame
   selection), Home (frame level), [ / ] (brush size), 1/2/3 (layouts), F5 (play-test), tool keys.
   Never steal keys while a text field has focus.
@@ -573,18 +673,24 @@ vary with position and seed), so it shows exactly what a click places.
   left drag pans in both views. "Building the 3D preview…" shows until the first full build; big
   levels open under a loading overlay.
 - **Play-test**: validate (`validateLevel`), save to the playtest slot, open
-  `index.html?level=local:__playtest__&autostart=1` in a new tab. Problems are worded for the
+  `game.html?level=local:__playtest__&autostart=1` in a new tab (*added October 2026:* with
+  `&i18n=<origin>`, the content table of the file the level's keys come from, for a level outside
+  a campaign; a campaign's level plays inside its campaign). Problems are worded for the
   user ("The player start is on water…"). With `autostart` the level's music starts at the first
   key / click (like after the title screen) — unless that key is M, which toggles it on itself.
 - `editor.html?open=<project level>` opens a project level at startup; `?new` starts empty.
-- Expose `window.__editor = { app, state, tools, view3d, view2d, textures, ready3d }` for scripted
-  tests. `app.ready` resolves once the first level is loaded **and** the 3D preview exists
+  *Added 2026-10-07, following the code (KNOWN_ISSUES DOC-13):* `?open=<campaign>/<level>` opens
+  a campaign's level file, and `?local=<slot>` opens the level saved in that browser-storage slot
+  (both offer the autosave restore when the autosave is a copy of that level, see above; one
+  that fails to load is reported in an alert).
+- Expose `window.__editor = { app, state, tools, view3d, view2d, textures, ready3d, seedTextKeys }`
+  for scripted tests (`seedTextKeys(prefix)`: deterministic text keys, I18N.md §4.10). `app.ready` resolves once the first level is loaded **and** the 3D preview exists
   (`view3d` is set — or null when it could not start); `ready3d` resolves after that, once the
   preview's first full build is done (`view3d.ready`).
 
 ## 9. Performance
 
-60 fps while editing a 64×64 level with ~200 objects on the GTX 1060. Brush feedback in the 3D
+60 fps while editing a 64×64 level with ~200 objects on the reference desktop GPU. Brush feedback in the 3D
 view within ~100 ms (throttle full terrain rebuilds during a stroke, rebuild only changed objects —
 diff by id + JSON signature; objects standing on changed tiles must be rebuilt so their height
 follows). Keep a fixed pool of point lights in the 3D preview (never add / remove lights per edit).
@@ -664,7 +770,7 @@ with `reset: true` on a document load), so it ranks, culls and crossfades exactl
   big levels). Sprite shadow quads draw in the shadow pass only (every level). Starfall Vale
   (128 × 128, 874 objects, split layout): ~915 draw calls instead of ~2870 (shadow pass ~190
   instead of ~1000), idle at the display rate (render ≈ 13 ms of CPU per frame instead of 24),
-  strokes (the Starfall review's editor task, `docs/history/reports/07-starfall-vale-review.json`: paint / height / move in the 2D map and the 3D view) at
+  strokes (paint / height / move in the 2D map and the 3D view) at
   frame p50 18 ms, p95 18–36 ms, worst frame 36–54 ms on a quiet machine (were p95 33–50, worst
   50–117 ms); the exactness check still holds; a chunk merge takes ≤ 14 ms, a cell ≤ 24 ms, once
   per edit pause.

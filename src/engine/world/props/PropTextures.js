@@ -319,7 +319,7 @@ export class PropTextureSet {
       ...(t.alpha ? { alphaTest: 0.5, side: THREE.DoubleSide } : {}),
       ...extra,
     });
-    m.name = `lumina:prop:${name}`;
+    m.name = `luminati:prop:${name}`;
     m.userData.units = t.units;
     m.userData.texture = null;
     if (t.alpha) m.userData.alpha = true;

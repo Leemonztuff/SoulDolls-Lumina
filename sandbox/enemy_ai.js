@@ -36,14 +36,14 @@ import { createFxAtlas } from '../src/engine/pixel/FxSprites.js';
 import { GroundMarkers } from '../src/engine/fx/GroundMarkers.js';
 import { FxQuads } from '../src/engine/fx/FxQuads.js';
 import { Particles } from '../src/engine/fx/Particles.js';
-import { CHARACTER_SPRITE_OPTS } from '../src/demo/config.js';
-import { createEnemy } from '../src/demo/combat/Enemy.js';
-import { scaledDef } from '../src/demo/combat/defs.js';
-import { Nav } from '../src/demo/combat/Nav.js';
+import { CHARACTER_SPRITE_OPTS } from '../src/game/config.js';
+import { createEnemy } from '../src/game/combat/Enemy.js';
+import { scaledDef } from '../src/game/combat/defs.js';
+import { Nav } from '../src/game/combat/Nav.js';
 
 /**
- * @import { CombatContext, EnemyArena, PlayerView } from '../src/demo/combat/types.js'
- * @import { Enemy } from '../src/demo/combat/Enemy.js'
+ * @import { CombatContext, EnemyArena, PlayerView } from '../src/game/combat/types.js'
+ * @import { Enemy } from '../src/game/combat/Enemy.js'
  * @import { TileMapInput } from '../src/engine/world/TileMap.js'
  */
 

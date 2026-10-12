@@ -18,11 +18,16 @@
  *     camera yaw and pitch (Starfall's model generalised from yaw 0 / pitch 32)
  *   scatterTrees / scatterRocks   Starfall's rule-based scatter with the level's own rules
  *   normalizedChanges · canonicalObject · orderKeys · parseArgs
+ *   previousOutput · keyLevel · splitSharedKeys · keyIssueLines   the content-text keys of what a
+ *     generator writes (docs/specs/I18N.md §4.10)
  *
  * Randomness only through RNG / hash2 / fbm2 (src/engine/utils/math.js); no Math.random, no Date.
  */
-import { OBJECT_TYPES, createObject } from '../../src/engine/level/ObjectCatalog.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { OBJECT_TYPES, createObject, interiorFootprint } from '../../src/engine/level/ObjectCatalog.js';
 import { RNG, fbm2, hash2, clamp, lerp } from '../../src/engine/utils/math.js';
+import { assignTextKeys, seededMint, textKeyIssues, levelTexts } from '../../src/engine/i18n/TextKeys.js';
 
 /** @import { LevelObject, ObjectType, TileDef } from '../../src/engine/level/types.js' */
 
@@ -397,7 +402,9 @@ export function createPlacer(g) {
       case 'bench': { const Lb = op.length ?? 1.8; return [rotBox(o.x, o.z, a, -Lb / 2, Lb / 2, -0.35, 0.25)]; }
       case 'barrel': return [{ c: 'circle', x: o.x, z: o.z, r: 0.44 }];
       case 'crate': { const e = (op.size ?? 0.9) * 0.5 * (Math.abs(Math.cos(a)) + Math.abs(Math.sin(a))); return [{ c: 'box', minX: o.x - e, maxX: o.x + e, minZ: o.z - e, maxZ: o.z + e }]; }
-      case 'crateStack': { const s = op.size ?? 0.85; const hx = ((op.count ?? 3) / 2) * (s + 0.04) + 0.75; return [rotBox(o.x, o.z, a, -hx, hx, -s * 0.6, s * 0.6)]; }
+      // (a barrel the seed may put on either side: room for it at both ends; `barrel: false` —
+      // none — the builder's box exactly, buildCrateStack in props/SmallProps.js)
+      case 'crateStack': { const s = op.size ?? 0.85; const hx = ((op.count ?? 3) / 2) * (s + 0.04) + (op.barrel === false ? 0.06 : 0.75); return [rotBox(o.x, o.z, a, -hx, hx, -s * 0.6, s * 0.6)]; }
       case 'flowerbox': { if (op.wall) return []; const Lf = op.length ?? 1.2; return [rotBox(o.x, o.z, a, -Lf / 2, Lf / 2, -0.17, 0.17)]; }
       case 'signpost': return [{ c: 'circle', x: o.x, z: o.z, r: 0.22 }];
       case 'fence': return [{ c: 'seg', x0: o.x0, z0: o.z0, x1: o.x1, z1: o.z1, h: 0.1 }];
@@ -410,7 +417,13 @@ export function createPlacer(g) {
       case 'npc': return [{ c: 'circle', x: o.x, z: o.z, r: 0.34 }];
       case 'chest': return [{ c: 'circle', x: o.x, z: o.z, r: 0.45 }];
       case 'waystone': return [{ c: 'circle', x: o.x, z: o.z, r: 0.5 }];
-      default: return [];
+      default: {
+        // interior furniture: its footprint (rugs and wall windows have no collider)
+        const r = interiorFootprint(o);
+        if (!r?.solid) return [];
+        if (r.round) return [{ c: 'circle', x: o.x, z: o.z, r: r.maxX }];
+        return [rotBox(o.x, o.z, a, r.minX, r.maxX, r.minZ, r.maxZ)];
+      }
     }
   };
   P.reserve = (o) => {
@@ -511,7 +524,7 @@ export function createPlacer(g) {
    * @param {{ seat?: boolean, rotation?: number, id?: string }} [o]
    */
   P.fire = (x, z, { seat = false, rotation = 0.8, id } = {}) => { P.keepClear(x, z, 2.2, 'campfire'); return P.add('campfire', { id, x, z, rotation, opts: { seat } }); };
-  P.stall = (x, z, rotation, cloth, w = 3) => P.add('marketStall', { x, z, rotation: r3(rotation), opts: { cloth, width: w, seed: P.nextSeed() } });
+  P.stall = (x, z, rotation, cloth, w = 3, crates = undefined) => P.add('marketStall', { x, z, rotation: r3(rotation), opts: { cloth, width: w, seed: P.nextSeed(), ...(crates ? { crates } : {}) } });
   P.well = (id, x, z, text, roof = 'wood_planks') => { P.keepClear(x, z, 2.2, `well ${id}`); return P.add('well', { id, x, z, rotation: 0, text: [].concat(text), opts: { roof } }); };
   P.emit = (preset, x, z, size, count, dy = 1.2, extra = {}) => P.add('emitter', { x, z, preset, size, count, dy, ...extra });
   P.critters = (id, kind, x, z, count, radius, extra = {}) => P.add('critters', { id, x, z, kind, count, radius, ...extra });
@@ -582,12 +595,17 @@ export const stairT = (dir, lx, lz) => (dir === 'N' ? 1 - lz : dir === 'S' ? lz 
 
 /**
  * The walk grid of a level: every quarter-unit node where the player (radius 0.3) can stand, the
- * BFS from the spawn and route lengths.
+ * BFS from the spawn (and any other `starts`: a campaign level's entrances) and route lengths.
  * @param {ReturnType<typeof createGrid>} g
  * @param {ReturnType<typeof createPlacer>} P
  * @param {{ legend: Record<string, TileDef>, spawn: { x: number, z: number } }} level
+ * @param {{ starts?: [number, number][], reuse?: { hgt: Float32Array, rects: { minX: number, maxX: number, minZ: number, maxZ: number }[] } }} [opts]
+ *   starts: where the walk begins (default: the spawn); reuse: the node heights of another walk
+ *   model of the same grid whose objects differ from `P`'s only inside `rects` (world space, grown
+ *   by the player radius and more) — only the nodes there are worked out again (the level checks'
+ *   story states)
  */
-export function createWalkModel(g, P, level) {
+export function createWalkModel(g, P, level, { starts = null, reuse = null } = {}) {
   const { W, D } = g;
   const LEGEND = level.legend;
   const walkRects = P.objects.filter((o) => o.type === 'bridge').flatMap(walkRectsOf);
@@ -619,22 +637,46 @@ export function createWalkModel(g, P, level) {
 
   const G = 4; const GW = W * G + 1; const GD = D * G + 1;
   const hgt = new Float32Array(GW * GD);
-  for (let gz = 0; gz < GD; gz++) for (let gx = 0; gx < GW; gx++) hgt[gz * GW + gx] = standable(gx / G, gz / G);
+  if (reuse) {
+    hgt.set(reuse.hgt);
+    for (const r of reuse.rects) {
+      for (let gz = Math.max(0, Math.floor(r.minZ * G)); gz <= Math.min(GD - 1, Math.ceil(r.maxZ * G)); gz++) {
+        for (let gx = Math.max(0, Math.floor(r.minX * G)); gx <= Math.min(GW - 1, Math.ceil(r.maxX * G)); gx++) hgt[gz * GW + gx] = standable(gx / G, gz / G);
+      }
+    }
+  } else for (let gz = 0; gz < GD; gz++) for (let gx = 0; gx < GW; gx++) hgt[gz * GW + gx] = standable(gx / G, gz / G);
   const seen = new Uint8Array(GW * GD);
-  const sx = Math.round(level.spawn.x * G); const sz = Math.round(level.spawn.z * G);
-  let start = -1;
-  for (let r = 0; r < 6 && start < 0; r++) for (let dz = -r; dz <= r && start < 0; dz++) for (let dx = -r; dx <= r; dx++) { const k = (sz + dz) * GW + sx + dx; if (hgt[k] === hgt[k]) { start = k; break; } }
+  /** The standable node nearest (x, z) within 1.5 nodes' rings (6 rings), or -1. */
+  const nodeAt = (x, z) => {
+    const sx = Math.round(x * G); const sz = Math.round(z * G);
+    for (let r = 0; r < 6; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (sx + dx < 0 || sz + dz < 0 || sx + dx >= GW || sz + dz >= GD) continue;
+          const k = (sz + dz) * GW + sx + dx;
+          if (hgt[k] === hgt[k]) return k;
+        }
+      }
+    }
+    return -1;
+  };
   const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-  const queue = start >= 0 ? [start] : [];
-  if (start >= 0) seen[start] = 1;
+  const queue = [];
+  for (const [x, z] of starts ?? [[level.spawn.x, level.spawn.z]]) {
+    const k = nodeAt(x, z);
+    if (k >= 0 && !seen[k]) { seen[k] = 1; queue.push(k); }
+  }
+  // (the steps of NB as two flat lists: the BFS runs once per story state in the level checks)
+  const NBX = NB.map((d) => d[0]); const NBZ = NB.map((d) => d[1]);
   for (let h = 0; h < queue.length; h++) {
     const k = queue[h];
     const gx = k % GW; const gz = (k - gx) / GW;
-    for (const [dx, dz] of NB) {
-      const nx = gx + dx; const nz = gz + dz;
+    const hk = hgt[k];
+    for (let d = 0; d < 8; d++) {
+      const nx = gx + NBX[d]; const nz = gz + NBZ[d];
       if (nx < 0 || nz < 0 || nx >= GW || nz >= GD) continue;
       const n = nz * GW + nx;
-      if (seen[n] || hgt[n] !== hgt[n] || Math.abs(hgt[n] - hgt[k]) > 0.55) continue;
+      if (seen[n] || hgt[n] !== hgt[n] || Math.abs(hgt[n] - hk) > 0.55) continue;
       seen[n] = 1;
       queue.push(n);
     }
@@ -642,6 +684,45 @@ export function createWalkModel(g, P, level) {
   let standableCount = 0;
   for (let k = 0; k < hgt.length; k++) if (hgt[k] === hgt[k]) standableCount++;
 
+  /** Connected areas of standable nodes (labelled on first use; 0 = not standable). */
+  let comp = null;
+  /** The connected area of the standable node nearest (x, z) (`nodeAt`), 0 when there is none. */
+  const componentAt = (x, z) => {
+    if (!comp) {
+      comp = new Int32Array(GW * GD);
+      let next = 0;
+      for (let k0 = 0; k0 < hgt.length; k0++) {
+        if (comp[k0] || hgt[k0] !== hgt[k0]) continue;
+        comp[k0] = ++next;
+        const q = [k0];
+        for (let h = 0; h < q.length; h++) {
+          const c = q[h]; const gx = c % GW; const gz = (c - gx) / GW;
+          for (const [dx, dz] of NB) {
+            const nx = gx + dx; const nz = gz + dz;
+            if (nx < 0 || nz < 0 || nx >= GW || nz >= GD) continue;
+            const n = nz * GW + nx;
+            if (comp[n] || hgt[n] !== hgt[n] || Math.abs(hgt[n] - hgt[c]) > 0.55) continue;
+            comp[n] = next;
+            q.push(n);
+          }
+        }
+      }
+    }
+    const k = nodeAt(x, z);
+    return k >= 0 ? comp[k] : 0;
+  };
+  /** The connected areas with a standable node inside a rect (a campaign exit). */
+  const componentsIn = (r) => {
+    componentAt(r.minX, r.minZ); // (labels)
+    const out = new Set();
+    for (let gz = Math.max(0, Math.ceil(r.minZ * G)); gz <= Math.min(GD - 1, Math.floor(r.maxZ * G)); gz++) {
+      for (let gx = Math.max(0, Math.ceil(r.minX * G)); gx <= Math.min(GW - 1, Math.floor(r.maxX * G)); gx++) {
+        const c = comp[gz * GW + gx];
+        if (c) out.add(c);
+      }
+    }
+    return out;
+  };
   /** Is the node nearest (x, z) reachable from the spawn? */
   const reachableAt = (x, z) => {
     const gx = Math.round(x * G); const gz = Math.round(z * G);
@@ -756,7 +837,7 @@ export function createWalkModel(g, P, level) {
     }
     return out.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
   };
-  return { G, GW, GD, hgt, seen, walkRects, tileDef, surfaceAt, standable, reachableAt, reachNear, walkLength, walkBall, pockets, reached: queue.length, standableCount, spawnNode: start };
+  return { G, GW, GD, hgt, seen, walkRects, tileDef, surfaceAt, standable, reachableAt, reachNear, walkLength, walkBall, pockets, componentAt, componentsIn, reached: queue.length, standableCount, spawnNode: queue.length ? queue[0] : -1 };
 }
 
 // =============================================================================================
@@ -922,7 +1003,7 @@ export function createOcclusion({ g, objects, groundY, forest = { base: 1.2, top
 }
 
 /**
- * The tree height the game's forest scatter (src/demo/Scenery.js `scatterForest`) puts on a forest
+ * The tree height the game's forest scatter (src/game/Scenery.js `scatterForest`) puts on a forest
  * tile, as a view-ray occluder: none on the bottom three rows and in the third column from the
  * east / west edge (from row 9 down), 0.8 × in the second column, `top` elsewhere.
  */
@@ -1079,4 +1160,113 @@ export function canonicalObject(o) {
     if (isPlain(d) && isPlain(out[k])) out[k] = orderKeys(out[k], Object.keys(d));
   }
   return /** @type {LevelObject} */ (out);
+}
+
+// =============================================================================================
+// Content-text keys (docs/specs/I18N.md §4.10)
+// =============================================================================================
+
+/**
+ * A generator's previous output: the file at its **default** path (never `--out`, so a dry run to
+ * a scratch file gives the same keys), as JSON — or the text of a `.story` file (`text`); null
+ * when there is none or it does not parse.
+ * @param {string} root the repository root
+ * @param {string} file the default path, relative to the root (`public/levels/gildhaven.json`)
+ * @param {{ text?: boolean }} [o]
+ * @returns {any}
+ */
+export function previousOutput(root, file, o = {}) {
+  try {
+    const src = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+    return o.text ? src : JSON.parse(src);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Give every text of a level a generator built (normalized) its key, in place (`assignTextKeys`,
+ * docs/specs/I18N.md §4.10): carried from the generator's previous output (`previousOutput`: the
+ * same text, a moved text, a similar edit), shared with `base` (a chapter variant's base, already
+ * keyed) where the English there is the same, else minted from the file and the text
+ * (`seededMint(file)`: the same input, the same keys — `--check` stays byte-identical). `shared`:
+ * the keys the level's copies hold (`copyKeys` of its chapter variants' previous files) — an edit
+ * of a text whose key a copy holds with other English gets a new key (copy on write), so the copy
+ * keeps its translation.
+ * @param {any} level
+ * @param {{ root: string, file: string, base?: any, shared?: Map<string, Set<string>>|null }} o `file`: the default path, relative to the root
+ * @returns {{ carried: number, shared: number, minted: number, split: { key: string, was: string, text: string, where: string }[], previous: any }}
+ */
+export function keyLevel(level, { root, file, base = null, shared = null }) {
+  const previous = previousOutput(root, file);
+  const counts = assignTextKeys(level, { previous, base, shared, mint: seededMint(file) });
+  return { ...counts, previous };
+}
+
+/**
+ * The keys copies of a level hold, each with its English (`assignTextKeys`' `shared`): from the
+ * copies' files as last written (null entries: no file yet).
+ * @param {any[]} levels
+ * @returns {Map<string, Set<string>>}
+ */
+export function copyKeys(levels) {
+  /** @type {Map<string, Set<string>>} */
+  const out = new Map();
+  for (const lv of levels) {
+    if (!lv) continue;
+    for (const t of levelTexts(lv)) {
+      if (!t.key) continue;
+      const s = out.get(t.key);
+      if (s) s.add(t.text); else out.set(t.key, new Set([t.text]));
+    }
+  }
+  return out;
+}
+
+/**
+ * The text-key problems of a level a generator built, as messages (`textKeyIssues`: a generator
+ * fails on any — its bar is `level:check --strict`).
+ * @param {any} level
+ * @returns {string[]}
+ */
+export function keyIssueLines(level) {
+  return textKeyIssues(level).map((i) => `text keys: ${i.where}: ${i.msg}`);
+}
+
+/**
+ * Copies of a level that share keys (a chapter variant and its base): one key, one English
+ * (I18N.md §4.2). A key the copies hold with two Englishes stays with the copy whose English did not
+ * change since its previous file (else with the first copy, the base); every other copy gets a new
+ * key (minted from its file, its place and its text). Changes the levels in place.
+ * @param {{ file: string, level: any, previous: any }[]} copies the base first
+ * @returns {number} how many texts got a new key
+ */
+export function splitSharedKeys(copies) {
+  const recs = copies.map((c) => ({
+    ...c,
+    texts: levelTexts(c.level),
+    before: new Map(levelTexts(c.previous ?? {}).filter((t) => t.key).map((t) => [t.key, t.text])),
+    mint: seededMint(c.file),
+  }));
+  /** @type {Map<string, { r: typeof recs[number], t: ReturnType<typeof levelTexts>[number] }[]>} */
+  const byKey = new Map();
+  for (const r of recs) {
+    for (const t of r.texts) {
+      if (!t.key) continue;
+      let l = byKey.get(t.key);
+      if (!l) byKey.set(t.key, (l = []));
+      l.push({ r, t });
+    }
+  }
+  let n = 0;
+  for (const [key, list] of byKey) {
+    if (new Set(list.map((e) => e.t.text)).size < 2) continue;
+    const kept = (list.find((e) => e.r.before.get(key) === e.t.text) ?? list[0]).t.text;
+    for (const e of list) {
+      if (e.t.text === kept) continue;
+      e.t.set(e.r.mint(`split|${e.t.where}|${e.t.text}`));
+      n++;
+    }
+  }
+  return n;
 }

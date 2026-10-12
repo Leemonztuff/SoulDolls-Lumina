@@ -14,6 +14,8 @@ export interface GlobalUniforms {
   uSunDirection: THREE.IUniform<THREE.Vector3>;
   uSunColor: THREE.IUniform<THREE.Color>;
   uFogColor: THREE.IUniform<THREE.Color>;
+  /** [0]: where the fog starts (world units from the camera), [1] unused — GlobalUniforms.js says why. */
+  uFogStart: THREE.IUniform<Float32Array>;
 }
 
 /** A mesh with one material (terrain chunks, merged batches, shadow proxies, prop meshes). */

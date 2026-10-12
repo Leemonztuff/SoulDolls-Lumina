@@ -1,5 +1,5 @@
 /**
- * Catalog of every object type a Lumina level can contain: defaults, placement style, editor
+ * Catalog of every object type a Luminati level can contain: defaults, placement style, editor
  * metadata (category, palette glyph/colour) and a field schema that drives the editor inspector.
  *
  * Object shapes (all have `id` and `type`):
@@ -8,14 +8,22 @@
  *   rect   { id, type, minX, maxX, minZ, maxZ, ...fields }                   (region)
  * `opts` is passed straight to the matching PropFactory method (see src/engine/world/Props.js).
  *
- * Field schema entries: { key, label, type, min?, max?, step?, nullable?, options?, help? } where
+ * Field schema entries: { key, label, type, min?, max?, step?, nullable?, options?, help?, i18n? } where
  * `key` is a dotted path into the object ('opts.width'), `nullable` lets a number be left blank
  * (stored as null: bridge.deckY, region.minY) and `type` is one of:
  *   'number' | 'int' | 'angle' (radians stored, degrees shown) | 'bool' | 'select' | 'text' |
- *   'textarea' | 'lines' (string[], one entry per paragraph) | 'dialogue' (see NPC) | 'color'
+ *   'textarea' | 'lines' (string[], one entry per paragraph) | 'dialogue' (see NPC) | 'color' |
+ *   'script' (string[], one line of a story script per entry — docs/specs/STORY_SCRIPT.md) |
+ *   'condition' (text, a story condition).
+ * `i18n: true` marks a field players read (a name, a text, dialogue, a script): the content-text
+ * tools extract it for translation (src/engine/i18n/ContentStrings.js, docs/specs/I18N.md §4);
+ * identity fields (ids, flags, entrance / marker names, `to`, `actor` …) never carry it.
  */
 import { RNG, hashString } from '../utils/math.js';
-import { isOwnKey, showValue, toText, toNumber } from '../utils/own.js';
+import { isOwnKey, showValue, toText, toNumber, stripUnconvertible } from '../utils/own.js';
+// (the small condition module, not the script parser StoryScript.js: every level loads this file)
+import { hasScript } from './StoryCondition.js';
+import { cleanTextKeysOf } from '../i18n/ContentKeys.js';
 
 /**
  * @import { Level, LevelEnvironment, LevelObject, LevelObjectOf, ObjectType, ObjectOverrides,
@@ -47,17 +55,59 @@ export const NPC_ACTIONS = [
 export const NPC_BEHAVIOURS = ['wander', 'post', 'perform', 'chase'];
 
 /**
- * Hand-written conversations (implemented in src/demo/dialogue.js). '' = use `dialogue`.
+ * Hand-written conversations (implemented in src/game/dialogue.js). '' = use `dialogue`.
  * 'drillmaster' is the combat tutorial guard and 'shopkeeper' the combat shop's menu (draughts and
  * one-time wares for gold) — both combat levels only (COMBAT.md §6.12); on a peaceful level they
  * play the NPC's own dialogue and action.
  */
 export const NPC_SCRIPTS = ['', 'elder', 'innkeeper', 'merchant', 'guard', 'farmer', 'child', 'bard', 'scholar', 'drillmaster', 'shopkeeper'];
 
-/** Editor palette categories, in display order ('Combat': the combat-only types, COMBAT.md §14). */
-export const OBJECT_CATEGORIES = ['Buildings', 'Nature', 'Lights', 'Props', 'Structures', 'Water', 'Characters', 'Markers', 'Combat'];
+/** How an `exit` is used: walked into (a road at the map edge) or with Space (a door, a cave mouth). */
+export const EXIT_MODES = [
+  { value: 'walk', label: 'Walk into it' },
+  { value: 'use', label: 'Press Space (a door, a cave mouth)' },
+];
 
-/** Hostile kinds an `enemy` group can spawn (COMBAT.md §7.1); the game's stats are in src/demo/combat/defs.js. */
+/**
+ * Story conditions every object type has (optional, no default — absent from every file that does
+ * not use them): the object is there only while `when` holds, and gone while `unless` holds. Each
+ * is a story condition (docs/specs/STORY_SCRIPT.md §2) — a bare flag name, as before, or e.g.
+ * `bridge-mended and not flood`. They apply in a campaign and on a level with a story (events or
+ * talk scripts); the game re-checks them whenever the story changes (docs/specs/CAMPAIGN_FORMAT.md).
+ * @type {FieldDef[]}
+ */
+export const STORY_FIELDS = [
+  { key: 'when', label: 'Story: only when', type: 'condition', help: 'The object is there only while this story condition holds (a flag name, or e.g. "bridge-mended and not flood"). Blank = always.' },
+  { key: 'unless', label: 'Story: gone when', type: 'condition', help: 'The object is gone while this story condition holds. Blank = never.' },
+];
+
+/**
+ * When an `event` object runs its script (docs/specs/STORY_SCRIPT.md §4): Space in its rectangle,
+ * stepping in / out, arriving in the level, its condition becoming true, the clock passing an hour,
+ * the last foe of an enemy group falling.
+ */
+export const EVENT_TRIGGERS = [
+  { value: 'use', label: 'Space inside it (prompt: Label)' },
+  { value: 'enter', label: 'The player walks in' },
+  { value: 'leave', label: 'The player walks out' },
+  { value: 'arrive', label: 'The player arrives in the level' },
+  { value: 'change', label: 'Its condition becomes true' },
+  { value: 'time', label: 'The clock reaches an hour (At hour)' },
+  { value: 'cleared', label: 'An enemy group is defeated (Group)' },
+];
+
+/**
+ * Editor palette categories, in display order ('Interior': the furniture of rooms, `interior: true`;
+ * 'Combat': the combat-only types, COMBAT.md §14).
+ */
+export const OBJECT_CATEGORIES = ['Buildings', 'Nature', 'Lights', 'Props', 'Interior', 'Structures', 'Water', 'Characters', 'Markers', 'Combat'];
+
+/** Quilt colours of a `bed` (`opts.blanket`; the texture `quilt_<colour>`, props/Furniture.js BLANKETS). */
+export const BLANKET_COLORS = ['red', 'blue', 'green', 'ochre', 'plum'];
+/** Rug colours (`opts.color`; the texture `rug_<colour>`, props/Furniture.js RUGS). */
+export const RUG_COLORS = ['red', 'blue', 'green'];
+
+/** Hostile kinds an `enemy` group can spawn (COMBAT.md §7.1); the game's stats are in src/game/combat/defs.js. */
 export const ENEMY_KINDS = ['slime', 'goblin', 'archer', 'shaman', 'bat', 'boar', 'dummy', 'golem'];
 
 /** Node-safe traits of every enemy kind, for the editor and the level generators. */
@@ -82,7 +132,7 @@ const ROT = { key: 'rotation', label: 'Rotation', type: 'angle', step: 15 };
 /** @type {FieldDef} */
 const SEED = { key: 'opts.seed', label: 'Variation seed', type: 'int', min: 0, max: 9999 };
 /** @type {FieldDef} */
-const TEXT = { key: 'text', label: 'Text when examined', type: 'lines', help: 'One paragraph per dialog page. {word} is shown in gold.' };
+const TEXT = { key: 'text', label: 'Text when examined', type: 'lines', i18n: true, help: 'One paragraph per dialog page. {word} is shown in gold.' };
 
 /**
  * Checked with `satisfies`, not typed as a Record: each entry keeps its literal placement and the
@@ -131,7 +181,13 @@ export const OBJECT_TYPES = {
   marketStall: {
     label: 'Market stall', category: 'Buildings', placement: 'point', kind: 'prop', glyph: '▤', color: '#d24b4b', radius: 1.6, rotatable: true, snap: 0.5,
     defaults: { rotation: 0, opts: { cloth: 'cloth_stripe', width: 3 } },
-    fields: [ROT, { key: 'opts.cloth', label: 'Awning', type: 'select', options: CLOTH_TEXTURES }, { key: 'opts.width', label: 'Width', type: 'number', min: 2, max: 4, step: 0.25 }, SEED],
+    fields: [
+      ROT,
+      { key: 'opts.cloth', label: 'Awning', type: 'select', options: CLOTH_TEXTURES },
+      { key: 'opts.width', label: 'Width', type: 'number', min: 2, max: 4, step: 0.25 },
+      { key: 'opts.crates', label: 'Side crates', type: 'select', options: [{ value: '', label: '(by seed)' }, 'left', 'right', 'none'] },
+      SEED,
+    ],
   },
 
   // ------------------------------------------------------------------ Nature
@@ -208,7 +264,7 @@ export const OBJECT_TYPES = {
   crateStack: {
     label: 'Crate stack', category: 'Props', placement: 'point', kind: 'prop', glyph: '▦', color: '#b07b44', radius: 0.8, rotatable: true,
     defaults: { rotation: 0, opts: { count: 3, size: 0.85 } },
-    fields: [ROT, { key: 'opts.count', label: 'Crates', type: 'int', min: 1, max: 4 }, { key: 'opts.size', label: 'Crate size', type: 'number', min: 0.5, max: 1.2, step: 0.05 }, SEED],
+    fields: [ROT, { key: 'opts.count', label: 'Crates on the ground', type: 'int', min: 1, max: 4, help: 'One more crate sits on top (one or two from 3 on).' }, { key: 'opts.size', label: 'Crate size', type: 'number', min: 0.5, max: 1.2, step: 0.05 }, SEED],
   },
   flowerbox: {
     label: 'Flower box', category: 'Props', placement: 'point', kind: 'prop', glyph: '✿', color: '#e27aa8', radius: 0.6, rotatable: true,
@@ -218,7 +274,141 @@ export const OBJECT_TYPES = {
   signpost: {
     label: 'Signpost', category: 'Props', placement: 'point', kind: 'prop', glyph: '⚑', color: '#c9a45c', radius: 0.3, rotatable: true,
     defaults: { rotation: 0, speaker: 'Signpost', text: ['↑ Somewhere nice'], opts: { boards: 2 } },
-    fields: [ROT, { key: 'opts.boards', label: 'Boards', type: 'int', min: 1, max: 3 }, { key: 'speaker', label: 'Speaker', type: 'text' }, { ...TEXT, label: 'Sign text' }],
+    fields: [ROT, { key: 'opts.boards', label: 'Boards', type: 'int', min: 1, max: 3 }, { key: 'speaker', label: 'Speaker', type: 'text', i18n: true }, { ...TEXT, label: 'Sign text' }],
+  },
+
+  // ------------------------------------------------------------------ Interior (furniture of rooms)
+  // `interior: true` (props/Furniture.js): (x, z) is the footprint's centre (a wall window: the wall
+  // face); rotation 0 turns the front toward +Z (the camera) and a wall piece's back to the north.
+  // Footprints: `interiorFootprint`. Covered by the interiors demo, not by Starfall Vale.
+  bed: {
+    label: 'Bed', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '▬', color: '#d86a5a', radius: 1.1, rotatable: true, snap: 0.25,
+    help: 'Head against a wall (local −Z; rotation 0: a north wall), the foot toward the room. Width 1.2 is a single bed, from 1.6 a double with two pillows.',
+    defaults: { rotation: 0, opts: { width: 1.2, length: 2.2, blanket: 'red' } },
+    fields: [
+      ROT,
+      { key: 'opts.width', label: 'Width', type: 'number', min: 0.8, max: 2.4, step: 0.1 },
+      { key: 'opts.length', label: 'Length', type: 'number', min: 1.6, max: 2.8, step: 0.1 },
+      { key: 'opts.blanket', label: 'Quilt', type: 'select', options: BLANKET_COLORS },
+      SEED,
+    ],
+  },
+  table: {
+    label: 'Table', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '◫', color: '#b98653', radius: 0.8, rotatable: true, snap: 0.25,
+    help: 'Rect on four legs or round on a pedestal, 0.82 high, with seeded tableware. A candle adds a small flame (add a Point light for its glow).',
+    defaults: { rotation: 0, opts: { shape: 'rect', width: 1.6, depth: 0.9, cloth: false, items: true, candle: false } },
+    fields: [
+      ROT,
+      { key: 'opts.shape', label: 'Shape', type: 'select', options: ['rect', 'round'] },
+      { key: 'opts.width', label: 'Width (round: diameter)', type: 'number', min: 0.6, max: 3.2, step: 0.1 },
+      { key: 'opts.depth', label: 'Depth (rect)', type: 'number', min: 0.6, max: 2, step: 0.1 },
+      { key: 'opts.cloth', label: 'Table cloth', type: 'bool' },
+      { key: 'opts.items', label: 'Tableware', type: 'bool' },
+      { key: 'opts.candle', label: 'Candle', type: 'bool' },
+      SEED,
+    ],
+  },
+  chair: {
+    label: 'Chair', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '◳', color: '#9a6840', radius: 0.3, rotatable: true, snap: 0.25,
+    help: 'Rotation 0: the seat faces +Z (the camera), the back to the north. Turn it to face its table.',
+    defaults: { rotation: 0, opts: { style: 'chair' } },
+    fields: [ROT, { key: 'opts.style', label: 'Style', type: 'select', options: ['chair', 'stool'] }, SEED],
+  },
+  shelf: {
+    label: 'Shelf', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '▥', color: '#7c4f31', radius: 0.8, rotatable: true, snap: 0.25,
+    help: 'An open shelf 0.5 deep, its back on a wall (rotation 0: a north wall): a bookshelf or a pantry of jars, bottles and sacks.',
+    defaults: { rotation: 0, opts: { kind: 'books', width: 1.6, height: 2.2 } },
+    fields: [
+      ROT,
+      { key: 'opts.kind', label: 'Holds', type: 'select', options: [{ value: 'books', label: 'Books' }, { value: 'pantry', label: 'Pantry stores' }] },
+      { key: 'opts.width', label: 'Width', type: 'number', min: 0.8, max: 3.2, step: 0.1 },
+      { key: 'opts.height', label: 'Height', type: 'number', min: 1, max: 3, step: 0.1 },
+      SEED,
+    ],
+  },
+  hearth: {
+    label: 'Hearth', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '◙', color: '#ff7a3a', radius: 1.1, rotatable: true, snap: 0.25,
+    help: 'A stone fireplace 1 deep, its back on a wall (rotation 0: a north wall). Lit: a flame, glowing embers, sparks and one point light, day and night (the game shares 12 point lights).',
+    defaults: { rotation: 0, opts: { width: 2.2, height: 2.6, lit: true, embers: true, pot: false } },
+    fields: [
+      ROT,
+      { key: 'opts.width', label: 'Width', type: 'number', min: 1.6, max: 3.6, step: 0.1 },
+      { key: 'opts.height', label: 'Chimney breast height', type: 'number', min: 1.8, max: 4.5, step: 0.1, help: 'Match the wall: the breast reaches up to it.' },
+      { key: 'opts.lit', label: 'Fire burns', type: 'bool' },
+      { key: 'opts.embers', label: 'Sparks', type: 'bool' },
+      { key: 'opts.pot', label: 'Cooking pot', type: 'bool' },
+      SEED,
+    ],
+  },
+  counter: {
+    label: 'Counter', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '▰', color: '#a0703f', radius: 1.3, rotatable: true, snap: 0.25,
+    help: 'An inn bar or a shop counter, 0.7 deep; rotation 0: the panelled front faces +Z (the customers, the camera), the keeper stands north of it.',
+    defaults: { rotation: 0, opts: { style: 'bar', width: 2.6, items: true } },
+    fields: [
+      ROT,
+      { key: 'opts.style', label: 'Style', type: 'select', options: [{ value: 'bar', label: 'Inn bar' }, { value: 'shop', label: 'Shop counter' }] },
+      { key: 'opts.width', label: 'Width', type: 'number', min: 1.2, max: 6, step: 0.1 },
+      { key: 'opts.items', label: 'Things on top', type: 'bool' },
+      SEED,
+    ],
+  },
+  rug: {
+    label: 'Rug', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '▧', color: '#bf4b45', radius: 1, rotatable: true, snap: 0.25,
+    help: 'Flat on the floor: walked over, casts no shadow. Length runs along local Z (the tassel ends).',
+    defaults: { rotation: 0, opts: { color: 'red', width: 2, length: 3 } },
+    fields: [
+      ROT,
+      { key: 'opts.color', label: 'Colour', type: 'select', options: RUG_COLORS },
+      { key: 'opts.width', label: 'Width', type: 'number', min: 1, max: 6, step: 0.25 },
+      { key: 'opts.length', label: 'Length', type: 'number', min: 1, max: 8, step: 0.25 },
+      SEED,
+    ],
+  },
+  staircase: {
+    label: 'Staircase', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '◢', color: '#c49358', radius: 1.2, rotatable: true, snap: 0.25,
+    help: 'Marks where a "use" exit leads up or down (it is not walkable). Up: a flight along a wall (rotation 0: a north wall), rising to the east (or the west). Down: a stairwell, its open end toward +Z. Put the exit at its foot.',
+    defaults: { rotation: 0, opts: { dir: 'up', width: 1.2, steps: 7, height: 2.5, flip: false, rail: true } },
+    fields: [
+      ROT,
+      { key: 'opts.dir', label: 'Leads', type: 'select', options: [{ value: 'up', label: 'Up (a flight on a wall)' }, { value: 'down', label: 'Down (a stairwell)' }] },
+      { key: 'opts.width', label: 'Width', type: 'number', min: 0.8, max: 2.4, step: 0.1 },
+      { key: 'opts.steps', label: 'Steps', type: 'int', min: 3, max: 14 },
+      { key: 'opts.height', label: 'Height (up)', type: 'number', min: 1, max: 5, step: 0.1, help: 'The top step: match the wall height.' },
+      { key: 'opts.flip', label: 'Rises to the west (up)', type: 'bool' },
+      { key: 'opts.rail', label: 'Banister', type: 'bool' },
+      SEED,
+    ],
+  },
+  wardrobe: {
+    label: 'Wardrobe', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '▯', color: '#7d5230', radius: 0.7, rotatable: true, snap: 0.25,
+    help: 'A tall wardrobe (0.6 deep) or a chest of drawers (0.5 deep), its back on a wall (rotation 0: a north wall).',
+    defaults: { rotation: 0, opts: { kind: 'wardrobe', width: 1.4 } },
+    fields: [
+      ROT,
+      { key: 'opts.kind', label: 'Kind', type: 'select', options: [{ value: 'wardrobe', label: 'Wardrobe' }, { value: 'drawers', label: 'Chest of drawers' }] },
+      { key: 'opts.width', label: 'Width', type: 'number', min: 0.6, max: 2.6, step: 0.1 },
+      SEED,
+    ],
+  },
+  wallWindow: {
+    label: 'Wall window', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '⊞', color: '#bfe0f2', radius: 0.6, rotatable: true, snap: 0.25,
+    help: 'Place it on a wall face; rotation points into the room (0: on a north wall). Its panes glow (emissive, no point light); by day a shaft of light falls onto the floor.',
+    defaults: { rotation: 0, opts: { panes: 1, sill: 0.9, glow: 'daylight', curtains: 'red', beam: true } },
+    fields: [
+      ROT,
+      { key: 'opts.panes', label: 'Casements (1 wide each)', type: 'int', min: 1, max: 3 },
+      { key: 'opts.sill', label: 'Sill height', type: 'number', min: 0.3, max: 2, step: 0.05 },
+      { key: 'opts.glow', label: 'Light', type: 'select', options: [{ value: 'daylight', label: 'Daylight (dark at night)' }, { value: 'warm', label: 'Warm (glows day and night)' }] },
+      { key: 'opts.curtains', label: 'Curtains', type: 'select', options: ['red', 'linen', 'none'] },
+      { key: 'opts.beam', label: 'Light shaft by day', type: 'bool' },
+      { key: 'opts.flowers', label: 'Flower box on the sill', type: 'bool' },
+    ],
+  },
+  sacks: {
+    label: 'Grain sacks', category: 'Interior', placement: 'point', kind: 'prop', interior: true, glyph: '◓', color: '#bea573', radius: 0.7, rotatable: true, snap: 0.25,
+    help: 'Tied burlap sacks: up to three standing in a row, the fourth lying across them.',
+    defaults: { rotation: 0, opts: { count: 3 } },
+    fields: [ROT, { key: 'opts.count', label: 'Sacks', type: 'int', min: 1, max: 4 }, SEED],
   },
 
   // ------------------------------------------------------------------ Structures (two-point)
@@ -235,7 +425,7 @@ export const OBJECT_TYPES = {
     fields: [
       { key: 'opts.width', label: 'Width', type: 'number', min: 1.2, max: 3.5, step: 0.1 },
       { key: 'opts.arch', label: 'Arch', type: 'number', min: 0, max: 0.6, step: 0.02 },
-      { key: 'deckY', label: 'Deck height (blank = auto)', type: 'number', min: -2, max: 20, step: 0.05, nullable: true },
+      { key: 'deckY', label: 'Deck height, world units (blank = auto)', type: 'number', min: -2, max: 20, step: 0.05, nullable: true, help: 'World height = height level × 0.5. Blank: the height of the banks.' },
     ],
   },
 
@@ -257,10 +447,11 @@ export const OBJECT_TYPES = {
     defaults: { name: 'Villager', preset: 'villager', facing: 'down', wander: 1.2, speed: 1, portraitColor: '#c9a45c', action: 'none', item: '', behaviour: 'wander', script: '', dialogue: ['Hello, traveler!'] },
     fields: [
       // what a designer edits most comes first (the inspector shows fields in this order)
-      { key: 'name', label: 'Name', type: 'text' },
-      { key: 'dialogue', label: 'Dialogue', type: 'dialogue', help: 'One page per paragraph. A page like "Question? [Yes | No]" offers choices (one choice: "[Okay |]"); \\[ \\] \\| are literal. {word} is gold.' },
+      { key: 'name', label: 'Name', type: 'text', i18n: true },
+      { key: 'title', label: 'Title', type: 'text', i18n: true, help: 'The small title beside the name plate when this villager speaks (Warden of the Cinderwatch). Blank = none.' },
+      { key: 'dialogue', label: 'Dialogue', type: 'dialogue', i18n: true, help: 'One page per paragraph. A page like "Question? [Yes | No]" offers choices (one choice: "[Okay |]"); \\[ \\] \\| are literal. {word} is gold.' },
       { key: 'action', label: 'Special action', type: 'select', options: NPC_ACTIONS, help: 'Rest / shop: picking any answer but the first of the closing question runs it (a closing page of your own with one choice, "[Okay |]": that answer runs it). Music: starts the music (a closing question of your own: any answer but the first plays it — with one choice, that one; when the music is already playing, the built-in question offers to stop it).' },
-      { key: 'item', label: 'Item sold (shop action)', type: 'text', help: 'Blank = "Crisp Apple".' },
+      { key: 'item', label: 'Item sold (shop action)', type: 'text', i18n: true, help: 'Blank = "Crisp Apple".' },
       { key: 'preset', label: 'Look', type: 'select', options: CHARACTER_PRESET_NAMES },
       { key: 'facing', label: 'Facing', type: 'select', options: FACINGS },
       { key: 'behaviour', label: 'Behaviour', type: 'select', options: NPC_BEHAVIOURS },
@@ -268,6 +459,9 @@ export const OBJECT_TYPES = {
       { key: 'speed', label: 'Walk speed', type: 'number', min: 0.3, max: 2, step: 0.05 },
       { key: 'portraitColor', label: 'Name plate colour', type: 'color' },
       { key: 'script', label: 'Built-in script (overrides dialogue)', type: 'select', options: NPC_SCRIPTS },
+      { key: 'talk', label: 'Talk script (overrides all of the above)', type: 'script', i18n: true, help: 'What this villager says and does, in the story language (docs/specs/STORY_SCRIPT.md). Blank = the dialogue above, or the actor\'s talk script.' },
+      { key: 'actor', label: 'Actor (story character)', type: 'text', help: 'The character this villager is across levels: name, look and talk script from the campaign\'s story files, one visit count. Blank = this villager only.' },
+      { key: 'flag', label: 'Story: sets flag after talking', type: 'text', help: 'The story flag set when a conversation with this villager ends. Blank = none.' },
     ],
   },
   critters: {
@@ -299,10 +493,64 @@ export const OBJECT_TYPES = {
     help: 'Drag a rectangle. The HUD shows its name while the player is inside (first match wins).',
     defaults: { name: 'New area', sub: '', minY: null, banner: '' },
     fields: [
-      { key: 'name', label: 'Name', type: 'text' },
-      { key: 'sub', label: 'Subtitle', type: 'text' },
-      { key: 'minY', label: 'Only above height (blank = any)', type: 'number', min: -5, max: 20, step: 0.1, nullable: true },
-      { key: 'banner', label: 'Arrival banner subtitle (blank = none)', type: 'text', help: 'Shown with the region name the first time the player enters.' },
+      { key: 'name', label: 'Name', type: 'text', i18n: true },
+      { key: 'sub', label: 'Subtitle', type: 'text', i18n: true },
+      { key: 'minY', label: 'Only above height, world units (blank = any)', type: 'number', min: -5, max: 20, step: 0.1, nullable: true, help: 'World height = height level × 0.5 (3 = level 6).' },
+      { key: 'banner', label: 'Arrival banner subtitle (blank = none)', type: 'text', i18n: true, help: 'Shown with the region name the first time the player enters.' },
+    ],
+  },
+  // campaigns (docs/specs/CAMPAIGN_FORMAT.md): a level played on its own ignores both
+  exit: {
+    label: 'Exit (to another level)', category: 'Markers', placement: 'rect', kind: 'marker', campaign: true,
+    glyph: '⇨', color: '#7fd6a8', radius: 0,
+    help: 'Drag a rectangle where the player leaves for another level of the campaign: walking into it travels (or Space, for a door). A level played on its own ignores it.',
+    defaults: { to: '', entrance: '', mode: 'walk', label: 'Enter', requires: '', locked: [] },
+    fields: [
+      { key: 'to', label: 'Leads to level', type: 'text', help: 'The level\'s file name in the campaign\'s levels/ folder, without ".json".' },
+      { key: 'entrance', label: 'Arrive at entrance', type: 'text', help: 'An entrance\'s name in that level. Blank: across the seam when campaign.json places both levels, else at its player start.' },
+      { key: 'mode', label: 'Travel', type: 'select', options: EXIT_MODES },
+      { key: 'label', label: 'Prompt (Space exits)', type: 'text', i18n: true, help: 'The verb shown over an exit used with Space ("Enter", "Climb down").' },
+      { key: 'requires', label: 'Open only with story flag', type: 'text', help: 'Blank = always open.' },
+      { key: 'locked', label: 'Text while closed', type: 'lines', i18n: true, help: 'Shown when the flag is missing; one paragraph per dialog page (blank: "The way is closed.").' },
+    ],
+  },
+  entrance: {
+    label: 'Entrance (arrival point)', category: 'Markers', placement: 'point', kind: 'marker', campaign: true,
+    glyph: '⊙', color: '#7fd6a8', radius: 0.4,
+    help: 'Where the player arrives through an exit of another level that names it. A level played on its own ignores it.',
+    defaults: { name: '', facing: 'down' },
+    fields: [
+      { key: 'name', label: 'Name', type: 'text', help: 'What exits in other levels call it (blank: its id).' },
+      { key: 'facing', label: 'Facing on arrival', type: 'select', options: FACINGS },
+    ],
+  },
+
+  // story (docs/specs/STORY_SCRIPT.md): what happens, and named spots for the staging commands
+  event: {
+    label: 'Story event', category: 'Markers', placement: 'rect', kind: 'marker', story: true,
+    glyph: '!', color: '#e8c25a', radius: 0,
+    help: 'Drag a rectangle: its script runs when the trigger fires (Space inside it, walking in, arriving in the level, a condition becoming true…).',
+    defaults: { on: 'use', once: false, run: [] },
+    fields: [
+      { key: 'on', label: 'Runs when', type: 'select', options: EVENT_TRIGGERS },
+      { key: 'label', label: 'Prompt (Space)', type: 'text', i18n: true, help: 'The verb shown over a Space event ("Look", "Read", "Search"). Blank = "Look".' },
+      { key: 'if', label: 'Condition', type: 'condition', help: 'The event runs only while this holds; for "Its condition becomes true", the condition to watch. Blank = always.' },
+      { key: 'once', label: 'Only once', type: 'bool', help: 'Remembered in the save: it never runs again.' },
+      // (no default: absent from every file that does not use it)
+      { key: 'background', label: 'Runs in the background', type: 'bool', help: 'The script plays while the player keeps walking: it holds no one and opens no dialog window. Only lines that need no answer and move no one but villagers — bark, emote, villagers\' walk / face / teleport / home, wait, set, give, quest, toast, sfx … (no dialogue or choice: use bark). "Check for problems" lists the others.' },
+      { key: 'at', label: 'At hour (clock)', type: 'number', min: 0, max: 24, step: 0.25, nullable: true },
+      { key: 'group', label: 'Group (enemy id)', type: 'text', help: 'The enemy group object whose last foe ends the fight.' },
+      { key: 'run', label: 'Script', type: 'script', i18n: true, help: 'What happens (docs/specs/STORY_SCRIPT.md).' },
+    ],
+  },
+  marker: {
+    label: 'Story marker (named spot)', category: 'Markers', placement: 'point', kind: 'marker', story: true,
+    glyph: '✦', color: '#e8c25a', radius: 0.35,
+    help: 'A named spot the story scripts walk actors to, put them at or look at ("walk ilse well-side"). Invisible in the game.',
+    defaults: { name: '', facing: 'down' },
+    fields: [
+      { key: 'name', label: 'Name', type: 'text', help: 'What scripts call it (blank: its id).' },
+      { key: 'facing', label: 'Facing', type: 'select', options: FACINGS, help: 'How an actor put here faces.' },
     ],
   },
 
@@ -321,7 +569,7 @@ export const OBJECT_TYPES = {
       { key: 'radius', label: 'Home radius', type: 'number', min: 0.5, max: 12, step: 0.1 },
       { key: 'level', label: 'Level', type: 'int', min: 1, max: 10 },
       { key: 'elite', label: 'Elite', type: 'bool' },
-      { key: 'name', label: 'Name plate (optional)', type: 'text' },
+      { key: 'name', label: 'Name plate (optional)', type: 'text', i18n: true },
     ],
   },
   chest: {
@@ -339,9 +587,12 @@ export const OBJECT_TYPES = {
     glyph: '◆', color: '#7fe3ff', radius: 0.6,
     help: 'Walk close to attune (respawn point); Space to rest (heal, enemies return).',
     defaults: { name: 'Waystone' },
-    fields: [{ key: 'name', label: 'Name', type: 'text' }],
+    fields: [{ key: 'name', label: 'Name', type: 'text', i18n: true }],
   },
 };
+
+// every type's inspector ends with the story conditions (STORY_FIELDS)
+for (const def of /** @type {ObjectTypeDef[]} */ (Object.values(OBJECT_TYPES))) def.fields.push(...STORY_FIELDS);
 
 /** The player spawn is stored in `level.spawn`, not in `objects`; editors show it as a marker. */
 export const SPAWN_MARKER = { label: 'Player start', glyph: '★', color: '#7fe3ff', radius: 0.35 };
@@ -420,14 +671,23 @@ export function createObject(type, x, z, overrides = {}) {
  * absolute NPC / critter fields (`talkPoint`, `bounds`, `spots`) become their relative forms
  * (`talkOffset`, `area`, `spotOffsets` — the game reads both), so they move with the object in
  * the editor. `o.type` must be a catalog type (normalizeLevel and the editor's paste drop the
- * others first); throws for any other type.
+ * others first); throws for any other type. A value String() cannot convert (a JSON object with an
+ * own `toString` key), at any depth, is dropped first — a key's default then fills it, an array
+ * element becomes null (`stripUnconvertible`, KNOWN_ISSUES LVL-18) — so no reader of the object
+ * (a name in the Outliner, a texture name, a talk) can throw on it later; every other value is
+ * kept as it is.
+ * Its content-text keys (`textKeys`, docs/specs/I18N.md §4.2) keep only well-formed keys of the
+ * type's translatable fields, bounded by those fields (a key of a field the object does not hold is
+ * dropped, a key list is cut to its field's length); `report.textKeys` counts what was dropped,
+ * `report.upcased` the keys of lower-case digits written in upper case.
  * @param {{ type: ObjectType, [key: string]: any }} o raw object (not modified: the result is a copy)
+ * @param {{ textKeys: number, upcased: number }} [report] counted into (normalizeLevel warns)
  * @returns {LevelObject}
  */
-export function normalizeObject(o) {
+export function normalizeObject(o, report) {
   if (!o || !isOwnKey(OBJECT_TYPES, o.type)) throw new Error(`Unknown object type "${showValue(o?.type)}"`);
   const def = OBJECT_TYPES[o.type];
-  const out = fillDefaults(clone(o), clone(def.defaults) ?? {});
+  const out = fillDefaults(stripUnconvertible(clone(o)), clone(def.defaults) ?? {});
   // (toNumber / toText: a value Number() / String() cannot convert — a JSON object with an own
   // `toString` key — is not a number / gives '', i.e. normalizeLevel renames the object)
   const num = (k, d = 0) => { out[k] = Number.isFinite(toNumber(out[k])) ? toNumber(out[k]) : d; };
@@ -441,6 +701,15 @@ export function normalizeObject(o) {
   if ('rotation' in def.defaults || out.rotation != null) num('rotation');
   out.id = toText(out.id ?? '', '');
   if (def.placement === 'point' && (o.type === 'npc' || o.type === 'critters')) relativizeLegacy(out);
+  // the content-text keys (docs/specs/I18N.md §4.2): only well-formed keys of this type's
+  // translatable fields, bounded by the fields the object holds, are kept in place; nothing left,
+  // no field (counted into `report`: normalizeLevel warns)
+  if (Object.prototype.hasOwnProperty.call(out, 'textKeys')) {
+    const { keys, dropped, upcased } = cleanTextKeysOf(o.type, out.textKeys, out);
+    if (keys) out.textKeys = keys;
+    else delete out.textKeys;
+    if (report) { report.textKeys += dropped; report.upcased += upcased; }
+  }
   return out;
 }
 
@@ -512,6 +781,25 @@ export function objectBounds(obj) {
   if (def.placement === 'line') {
     const pad = obj.type === 'bridge' ? (obj.opts?.width ?? 2) / 2 : 0.2;
     return { minX: Math.min(obj.x0, obj.x1) - pad, maxX: Math.max(obj.x0, obj.x1) + pad, minZ: Math.min(obj.z0, obj.z1) - pad, maxZ: Math.max(obj.z0, obj.z1) + pad };
+  }
+  if (/** @type {ObjectTypeDef} */ (def).interior && def.placement === 'point') {
+    const r = interiorFootprint(obj);
+    if (r) {
+      const rot = r.round ? 0 : obj.rotation ?? 0;
+      const c = Math.cos(rot);
+      const s = Math.sin(rot);
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const [lx, lz] of [[r.minX, r.minZ], [r.maxX, r.minZ], [r.maxX, r.maxZ], [r.minX, r.maxZ]]) {
+        const wx = obj.x + lx * c + lz * s;
+        const wz = obj.z - lx * s + lz * c;
+        minX = Math.min(minX, wx); maxX = Math.max(maxX, wx);
+        minZ = Math.min(minZ, wz); maxZ = Math.max(maxZ, wz);
+      }
+      return { minX, maxX, minZ, maxZ };
+    }
   }
   let hw = def.radius;
   let hd = def.radius;
@@ -721,7 +1009,8 @@ export function mergeLinesText(lines, text) {
 
 
 // ---------------------------------------------------------------------------------------------
-// Critter groups: where the game starts the animals (src/demo/Critters.js rules)
+// Critter groups: where the game starts the animals (src/game/Critters.js calls these, and so do
+// the editor's previews)
 // ---------------------------------------------------------------------------------------------
 
 const isFinitePoint = (p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
@@ -742,7 +1031,8 @@ export function critterYard(g) {
 }
 
 /**
- * World start positions of a critter group's animals, exactly as the game chooses them: `count`
+ * World start positions of a critter group's animals — the game's (`Critters._spawnGroup` starts
+ * them here) and the editor previews': `count`
  * animals (0–16; the number of spots when blank), the first ones on the exact spots (relative
  * `spotOffsets`, or the absolute legacy `spots`), the others scattered over the yard
  * (`critterYard`, else the roam-radius square) with the group's seeded RNG (`seed`, default a
@@ -840,6 +1130,134 @@ export function enemyStartPoints(g, isWalkable = null) {
  */
 export function isCombatType(type) {
   return !!OBJECT_TYPES[type]?.combat;
+}
+
+/**
+ * Is `type` one of the campaign types (`campaign: true`: exit, entrance — a level played on its own
+ * ignores them)?
+ * @param {string} type any string (unknown types are not campaign types)
+ * @returns {boolean}
+ */
+export function isCampaignType(type) {
+  return isOwnKey(OBJECT_TYPES, type) && !!(/** @type {ObjectTypeDef} */ (OBJECT_TYPES[type]).campaign);
+}
+
+/**
+ * Is `type` one of the interior types (`interior: true`: the furniture of rooms — bed, table, chair,
+ * shelf, hearth, counter, rug, staircase, wardrobe, wallWindow, sacks)?
+ * @param {string} type any string (unknown types are not interior types)
+ * @returns {boolean}
+ */
+export function isInteriorType(type) {
+  return isOwnKey(OBJECT_TYPES, type) && !!(/** @type {ObjectTypeDef} */ (OBJECT_TYPES[type]).interior);
+}
+
+/**
+ * A number option from level data (anything else: the default), clamped — as the furniture
+ * builders read it (the editor's 2D sketches read them the same way).
+ * @param {unknown} v @param {number} d @param {number} lo @param {number} hi
+ * @returns {number}
+ */
+export function optNum(v, d, lo, hi) {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+  return Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : d));
+}
+
+/**
+ * The footprint of an interior piece in its own frame (x across, z front to back; rotation 0: the
+ * front toward +Z; turn it by `rotation` about +Y for the world) — what its collider covers, or for
+ * a rug / a wall window (`solid: false`, no collider) what it covers on the floor / the wall. Null
+ * for any other type. Mirrors the builders in src/engine/world/props/Furniture.js: change both.
+ * Used for picking and the 2D map (`objectBounds`) and by the level checks. `round`: the collider
+ * is a circle of radius maxX (a chair, a round table) — the same whatever the rotation.
+ * @param {LevelObject} obj
+ * @returns {{ minX: number, maxX: number, minZ: number, maxZ: number, solid: boolean, round: boolean }|null}
+ */
+export function interiorFootprint(obj) {
+  // (only a plain object: the builders read a spread copy, which a string or an array leaves
+  // without e.g. `length`)
+  const raw = obj?.opts;
+  const o = /** @type {Record<string, any>} */ (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {});
+  const box = (hx, z0, z1, solid = true, round = false) => ({ minX: -hx, maxX: hx, minZ: z0, maxZ: z1, solid, round });
+  switch (obj?.type) {
+    case 'bed': { const w = optNum(o.width, 1.2, 0.8, 2.4); const l = optNum(o.length, 2.2, 1.6, 2.8); return box(w / 2 + 0.05, -l / 2, l / 2); }
+    case 'table': {
+      const round = o.shape === 'round';
+      const w = optNum(o.width, round ? 1.2 : 1.6, 0.6, 3.2);
+      if (round) return box(w / 2 + 0.02, -w / 2 - 0.02, w / 2 + 0.02, true, true);
+      const d = optNum(o.depth, 0.9, 0.6, 2);
+      return box(w / 2, -d / 2, d / 2);
+    }
+    case 'chair': { const r = o.style === 'stool' ? 0.22 : 0.27; return box(r, -r, r, true, true); }
+    case 'shelf': return box(optNum(o.width, 1.6, 0.8, 3.2) / 2, -0.25, 0.25);
+    case 'hearth': return box(optNum(o.width, 2.2, 1.6, 3.6) / 2 + 0.15, -0.5, 0.5);
+    case 'counter': return box(optNum(o.width, 2.6, 1.2, 6) / 2, -0.35, 0.41);
+    case 'rug': { const l = optNum(o.length, 3, 1, 8); return box(optNum(o.width, 2, 1, 6) / 2, -l / 2 - 0.15, l / 2 + 0.15, false); }
+    case 'staircase': {
+      const w = optNum(o.width, 1.2, 0.8, 2.4);
+      const n = Math.round(optNum(o.steps, 7, 3, 14));
+      if (o.dir === 'down') { const l = n * 0.38; return box(w / 2 + 0.1, -l / 2 - 0.1, l / 2); }
+      return box(n * 0.2, -w / 2, w / 2 + 0.04);
+    }
+    case 'wardrobe': {
+      const drawers = o.kind === 'drawers';
+      const w = optNum(o.width, drawers ? 1.2 : 1.4, 0.6, 2.6);
+      const d = drawers ? 0.5 : 0.6;
+      return box(w / 2 + 0.04, -d / 2, d / 2 + 0.04);
+    }
+    case 'wallWindow': return box(Math.round(optNum(o.panes, 1, 1, 3)) / 2 + 0.5, 0, 0.3, false);
+    case 'sacks': return box((Math.min(Math.round(optNum(o.count, 3, 1, 4)), 3) * 0.52 + 0.1) / 2, -0.33, 0.33);
+    default: return null;
+  }
+}
+
+/**
+ * Where the player stands to use a `staircase` — the spot for its `use` exit — and the way they face
+ * there: 0.5 beyond the first step of an up flight, or 0.55 in front of a stairwell's open end.
+ * Null for any other object.
+ * @param {LevelObject} obj
+ * @returns {{ x: number, z: number, dx: number, dz: number }|null} the world point and the facing
+ *   direction (a unit vector)
+ */
+export function staircaseFoot(obj) {
+  if (obj?.type !== 'staircase') return null;
+  const o = /** @type {Record<string, any>} */ (obj.opts ?? {});
+  const n = Math.round(optNum(o.steps, 7, 3, 14));
+  let lx;
+  let lz;
+  let fx;
+  let fz;
+  if (o.dir === 'down') { lx = 0; lz = (n * 0.38) / 2 + 0.55; fx = 0; fz = -1; }
+  else { const s = o.flip === true ? -1 : 1; lx = -s * (n * 0.2 + 0.5); lz = 0; fx = s; fz = 0; }
+  const rot = obj.rotation ?? 0;
+  const c = Math.cos(rot);
+  const sn = Math.sin(rot);
+  return { x: obj.x + lx * c + lz * sn, z: obj.z - lx * sn + lz * c, dx: fx * c + fz * sn, dz: -fx * sn + fz * c };
+}
+
+/**
+ * Is `type` one of the story types (`story: true`: event, marker — docs/specs/STORY_SCRIPT.md)?
+ * @param {string} type any string (unknown types are not story types)
+ * @returns {boolean}
+ */
+export function isStoryType(type) {
+  return isOwnKey(OBJECT_TYPES, type) && !!(/** @type {ObjectTypeDef} */ (OBJECT_TYPES[type]).story);
+}
+
+/**
+ * Does the level carry a story of its own — an `event` object, or a villager with a talk script or
+ * an actor (docs/specs/STORY_SCRIPT.md)? Such a level gets the story runtime also when it is played
+ * on its own (a session-only story state); every other single level plays exactly as before
+ * (`when` / `unless` ignored, no story module loaded).
+ * @param {Level} level
+ * @returns {boolean}
+ */
+export function levelHasStory(level) {
+  for (const o of level?.objects ?? []) {
+    if (o?.type === 'event') return true;
+    if (o?.type === 'npc' && (hasScript(o.talk) || (typeof o.actor === 'string' && o.actor.trim()))) return true;
+  }
+  return false;
 }
 
 /**

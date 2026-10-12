@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import * as SCENERY from '../../demo/Scenery.js';
-import { addSnowCover } from '../../demo/SnowCover.js';
+import * as SCENERY from '../../game/Scenery.js';
+import { addSnowCover } from '../../game/SnowCover.js';
+import { southGap, forestBorderOn, outerSceneryOn } from '../../game/LevelLook.js';
 
 /**
  * @import { PropFactory } from '../../engine/world/Props.js'
@@ -9,14 +10,11 @@ import { addSnowCover } from '../../demo/SnowCover.js';
  * @import { TextureLibrary } from '../../engine/pixel/Textures.js'
  */
 
-/** Open ground south of the map before the outer forest (the game's default, see World.js). */
-const SOUTH_GAP = 5;
-
 /**
  * SceneryPreview — the level's surroundings as the game builds them (docs/contracts/LEVEL_EDITOR.md §5):
  * trees scattered on the blocked forest-border tiles (`environment.border: 'forest'`) and the
  * fogged outer world — rolling ground with tree clusters — around the map
- * (`environment.outerScenery`). Uses the game's own scenery builders (src/demo/Scenery.js), so the
+ * (`environment.outerScenery`). Uses the game's own scenery builders (src/game/Scenery.js), so the
  * editor shows the diorama exactly as it will be played; when they are unavailable the preview
  * simply has no surroundings.
  *
@@ -48,7 +46,7 @@ export class SceneryPreview {
   /** Environment signature the scenery depends on. */
   static envKey(level) {
     const e = level.environment ?? {};
-    return JSON.stringify([e.border, e.outerScenery, e.scenery ?? null, e.forest ?? null, level.width, level.depth]);
+    return JSON.stringify([e.border, e.outerScenery, e.interior === true, e.scenery ?? null, e.forest ?? null, level.width, level.depth]);
   }
 
   /** Does a changed tile rect affect the scenery (forest tiles or the map edge)? */
@@ -136,15 +134,16 @@ export class SceneryPreview {
     try {
       if (!this.available || !tileMap) { this.clear(); adopted = true; return; }
       const env = level.environment ?? {};
-      const forest = env.border === 'forest';
-      const outerOn = env.outerScenery !== false;
+      // (the game's rule, never in a room: LevelLook.isInterior)
+      const forest = forestBorderOn(env);
+      const outerOn = outerSceneryOn(env);
       if (!forest && !outerOn) { this.clear(); adopted = true; return; }
       const heightAt = SCENERY.makeOuterHeight(tileMap);
       const inMap = (x, z) => x >= 0 && z >= 0 && x <= level.width && z <= level.depth;
       const avoid = level.objects.filter((o) => o.type === 'tree').map((o) => ({ x: o.x, z: o.z, r: inMap(o.x, o.z) ? 1.2 : 1.8 }));
-      const southGap = Number.isFinite(env.scenery?.southGap) ? env.scenery.southGap : SOUTH_GAP;
+      const gap = southGap(env);
       const kindAreas = SCENERY.forestKindAreas?.(env) ?? [];
-      let { border, outer } = SCENERY.scatterForest({ tileMap, heightAt, avoid, southGap, kindAreas });
+      let { border, outer } = SCENERY.scatterForest({ tileMap, heightAt, avoid, southGap: gap, kindAreas });
       if (!forest) border = [];
       if (!outerOn) outer = [];
       yield;

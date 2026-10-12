@@ -41,7 +41,7 @@
   { "eval": "T.clickText('.le-dialog .le-btn', 'Don\\'t save')" },
   { "wait": 600 },
   { "eval": "T.summary()" },
-  { "eval": "T.E.state.moveObjects(['inn'], 0.5, 0); T.E.app._autosave(true); !!localStorage.getItem('lumina.level.__autosave__')" },
+  { "eval": "T.E.state.moveObjects(['inn'], 0.5, 0); T.E.app._autosave(true); !!localStorage.getItem('luminati.level.__autosave__')" },
   { "eval": "T.E.state.markSaved(); location.href = '/editor.html'; 'nav'" },
   { "wait": 3500 },
   { "shot": "09-restore-offer" },
@@ -49,5 +49,5 @@
   { "wait": 800 },
   { "eval": "JSON.stringify({ ...T.summary(), types: undefined, inn: T.E.state.getObject('inn')?.x })" },
   { "shot": "10-restored" },
-  { "eval": "localStorage.removeItem('lumina.level.__autosave__'); localStorage.removeItem('lumina.editor.autosave'); T.E.state.markSaved(); 'clean'" }
+  { "eval": "localStorage.removeItem('luminati.level.__autosave__'); localStorage.removeItem('luminati.editor.autosave'); T.E.state.markSaved(); 'clean'" }
 ]

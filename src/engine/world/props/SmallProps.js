@@ -3,6 +3,11 @@ import { smoothstep, clamp, hash2 } from '../../utils/math.js';
 import { TRIM, flowerBoxGeom } from './Details.js';
 
 /**
+ * @import { PropFactory } from '../Props.js'
+ * @import { Collider } from '../TileMap.js'
+ */
+
+/**
  * Small props: fence, barrel, crate, crate stack, signpost, rock, bench, haystack, flower box.
  */
 
@@ -15,6 +20,7 @@ const groundAO = (h = 0.5, k = 0.62) => (px, py) => k + (1 - k) * smoothstep(-0.
 /**
  * Straight run of posts and two rails between (x0, z0) and (x1, z1) at ground height y.
  * opts: { spacing = 1.0, height = 0.95, rails = 2, endPosts = true }
+ * @param {PropFactory} f
  */
 export function buildFence(f, x0, z0, x1, z1, y, opts = {}) {
   const rng = f.rng('fence', (x0 + x1) / 2, (z0 + z1) / 2, opts.seed);
@@ -87,7 +93,10 @@ export function barrelGeom(b, cx, cy, cz, { h = 1.0, r = 0.4, yaw = 0, lid = tru
   if (bottom) lidAt(true);
 }
 
-/** Barrel. opts: { height = 1, radius = 0.4, lying = false } */
+/**
+ * Barrel. opts: { height = 1, radius = 0.4, lying = false }
+ * @param {PropFactory} f
+ */
 export function buildBarrel(f, x, y, z, opts = {}) {
   const rng = f.rng('barrel', x, z, opts.seed);
   const b = f.builder(groundAO(0.5));
@@ -102,7 +111,10 @@ export function buildBarrel(f, x, y, z, opts = {}) {
   return f.result(group, { colliders: [{ type: 'circle', x, z, r: r + 0.04 }] });
 }
 
-/** Crate. opts: { size = 0.9 } */
+/**
+ * Crate. opts: { size = 0.9 }
+ * @param {PropFactory} f
+ */
 export function buildCrate(f, x, y, z, opts = {}) {
   const rng = f.rng('crate', x, z, opts.seed);
   const s = opts.size ?? 0.9;
@@ -114,7 +126,10 @@ export function buildCrate(f, x, y, z, opts = {}) {
   return f.result(group, { colliders: [{ type: 'box', minX: x - e, maxX: x + e, minZ: z - e, maxZ: z + e }] });
 }
 
-/** A small pile of crates (2–3 on the ground, 1–2 on top) with an optional barrel. */
+/**
+ * A small pile of crates (2–3 on the ground, 1–2 on top) with an optional barrel.
+ * @param {PropFactory} f
+ */
 export function buildCrateStack(f, x, y, z, opts = {}) {
   const rng = f.rng('crateStack', x, z, opts.seed);
   const b = f.builder(groundAO(0.6));
@@ -133,14 +148,21 @@ export function buildCrateStack(f, x, y, z, opts = {}) {
     const cx = n1 === 1 ? rng.range(-0.25, 0.25) : (i - 0.5) * (s + 0.02);
     b.box('crate', [s * 0.92, s * 0.92, s * 0.92], { at: [cx, s + (s * 0.92) / 2, rng.range(-0.06, 0.06)], rot: rng.range(-0.35, 0.35), uv: 'fit', faces: { ny: false } });
   }
+  // (the box covers what was built: the crates, and the barrel only on its side when there is one —
+  // it used to reserve room for a barrel at both ends: KNOWN_ISSUES PROP-14)
+  const hx = (n0 / 2) * (s + 0.04) + 0.06;
+  let lo = -hx;
+  let hi = hx;
   if (opts.barrel ?? rng.chance(0.6)) {
     const side = rng.chance(0.5) ? 1 : -1;
-    barrelGeom(b, side * ((n0 / 2) * (s + 0.04) + 0.3), 0, rng.range(0.1, 0.4), { yaw: rng.range(0, 6) });
+    const bx = side * ((n0 / 2) * (s + 0.04) + 0.3);
+    barrelGeom(b, bx, 0, rng.range(0.1, 0.4), { yaw: rng.range(0, 6) });
+    if (side > 0) hi = bx + 0.42;
+    else lo = bx - 0.42;
   }
   const rot = opts.rotation ?? rng.range(-0.4, 0.4);
   const group = f.finish(b, 'crateStack', x, y, z, rot);
-  const hx = (n0 / 2) * (s + 0.04) + 0.75;
-  return f.result(group, { colliders: [f.boxCollider(group, -hx, hx, -s * 0.6, s * 0.6)] });
+  return f.result(group, { colliders: [f.boxCollider(group, lo, hi, -s * 0.6, s * 0.6)] });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -151,6 +173,7 @@ export function buildCrateStack(f, x, y, z, opts = {}) {
  * Wooden signpost with `boards` arrow boards (sign_board texture; the editor offers 1–3) stacked
  * down the post, pointing alternately right and left.
  * opts: { rotation = 0, boards = 2, seed, id = 'signpost' }
+ * @param {PropFactory} f
  */
 export function buildSignpost(f, x, y, z, opts = {}) {
   const rng = f.rng('signpost', x, z, opts.seed);
@@ -290,7 +313,10 @@ export function rockGeom(b, cx, cy, cz, size, rng, { top = 'moss_stone', side = 
   }
 }
 
-/** Irregular mossy boulder. opts: { size = 1, flat = false } */
+/**
+ * Irregular mossy boulder. opts: { size = 1, flat = false }
+ * @param {PropFactory} f
+ */
 export function buildRock(f, x, y, z, opts = {}) {
   const rng = f.rng('rock', x, z, opts.seed);
   const s = opts.size ?? 1;
@@ -311,6 +337,7 @@ export function buildRock(f, x, y, z, opts = {}) {
     }
   }
   const group = f.finish(b, 'rock', x, y, z, opts.rotation ?? rng.range(0, Math.PI * 2));
+  /** @type {Collider[]} */
   const colliders = [{ type: 'circle', x, z, r: Math.max(sx, sz) * 0.95 }];
   if (side) {
     // the leaning boulder sticks out past the main circle (the group is randomly rotated)
@@ -324,7 +351,10 @@ export function buildRock(f, x, y, z, opts = {}) {
 // Bench, haystack, flower box
 // ---------------------------------------------------------------------------------------------
 
-/** Wooden bench with stone feet and a backrest. opts: { rotation = 0, length = 1.8, back = true } */
+/**
+ * Wooden bench with stone feet and a backrest. opts: { rotation = 0, length = 1.8, back = true }
+ * @param {PropFactory} f
+ */
 export function buildBench(f, x, y, z, opts = {}) {
   const rng = f.rng('bench', x, z, opts.seed);
   const b = f.builder(groundAO(0.4));
@@ -346,7 +376,10 @@ export function buildBench(f, x, y, z, opts = {}) {
   });
 }
 
-/** Round haystack with a centre pole and a loose straw skirt. opts: { size = 1 } */
+/**
+ * Round haystack with a centre pole and a loose straw skirt. opts: { size = 1 }
+ * @param {PropFactory} f
+ */
 export function buildHaystack(f, x, y, z, opts = {}) {
   const rng = f.rng('haystack', x, z, opts.seed);
   const s = opts.size ?? 1;
@@ -378,6 +411,7 @@ export function buildHaystack(f, x, y, z, opts = {}) {
 /**
  * Stand-alone flower box: a planter on short legs (or wall-mounted with `wall: true`).
  * opts: { rotation = 0, length = 1.2, wall = false }
+ * @param {PropFactory} f
  */
 export function buildFlowerbox(f, x, y, z, opts = {}) {
   const rng = f.rng('flowerbox', x, z, opts.seed);

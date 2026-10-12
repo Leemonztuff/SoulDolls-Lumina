@@ -9,10 +9,10 @@ mechanics and settings, and how to change it without breaking the look it was tu
 | | |
 | --- | --- |
 | **Audience** | Designers and AI agents editing or testing Emberfall; anyone using it as the reference small level. |
-| **Source of truth** | [`public/levels/emberfall.json`](../../../public/levels/emberfall.json) (the level), [`src/demo/dialogue.js`](../../../src/demo/dialogue.js) (`CONVERSATIONS`: its eight scripts), [`tools/convert-emberfall.mjs`](../../../tools/convert-emberfall.mjs) (how it was made) |
+| **Source of truth** | [`public/levels/emberfall.json`](../../../public/levels/emberfall.json) (the level), [`src/game/dialogue.js`](../../../src/game/dialogue.js) (`CONVERSATIONS`: its eight scripts) |
 | **Related docs** | [Level design guide](../LEVEL_DESIGN_GUIDE.md) · [Visual design](../VISUAL_DESIGN.md) · [Level format](../../specs/LEVEL_FORMAT.md) · [Playing the game](../../user/PLAYING_THE_GAME.md) · [Game architecture](../../architecture/GAME.md) · other levels: [Starfall Vale](starfall-vale.md), [Brightwater Crossing](brightwater-crossing.md), [Willowmere](sample-hamlet.md) |
 
-Play it: `index.html` (or `index.html?level=emberfall`, `&autostart=1` to skip the title).
+Play it: `game.html` (or `game.html?level=emberfall`, `&autostart=1` to skip the title).
 Edit it: `editor.html?open=emberfall`.
 
 ![Emberfall's title screen](../../assets/screenshots/emberfall-title.jpg)
@@ -33,7 +33,7 @@ controls in character.
 | Fact | Value |
 | --- | --- |
 | Size | 48 × 40 tiles, ringed by a 3-tile forest border (open only where the spring enters in the north and the river leaves in the south) |
-| Objects | 136 (37 trees, 14 rocks, 8 benches, 8 fences, 8 villagers, 7 regions, 6 houses, 6 lampposts, 6 particle areas, 6 barrels …) |
+| Objects | 137 (37 trees, 14 rocks, 8 benches, 9 fences, 8 villagers, 7 regions, 6 houses, 6 lampposts, 6 particle areas, 6 barrels …) |
 | Walkable / water tiles | 1324 / 131 |
 | Height levels | 0–11 (plain at level 2 = y 1.0; Windmill Hill level 8 = y 4.0; meadow level 1 = y 0.5) |
 | Water | `waterLevel` 0.4, flow `[0, 0.45]` (south), `reflect 0.2`, `neutral 0.2` |
@@ -235,7 +235,7 @@ campfire; the door lanterns of the inn, the Riverside house and the thatched cot
 ## People
 
 All eight villagers use hand-written scripts (`script` ids → `CONVERSATIONS` in
-[`src/demo/dialogue.js`](../../../src/demo/dialogue.js)); their data `dialogue` is unused while the
+[`src/game/dialogue.js`](../../../src/game/dialogue.js)); their data `dialogue` is unused while the
 script exists. These ids are part of the automation API (`window.__game.talkTo(id)`).
 
 | Id | Name | Preset | Position | Behaviour | Action | What they do |
@@ -289,7 +289,7 @@ dust motes following the camera, and god rays in two areas (below).
 | `border`, `outerScenery` | `forest`, true | forest ring + fogged outer heightfield: no view shows the world's edge |
 | `camera` | distance 30, pitch 32, `bounds` near `{4.8–43.2, 3.5–36.2}`, mid `{6.5–41.5, 3.5–35}`, far `{7.5–40.5, 4–34}` | hand-tuned focus bounds (they became the game's automatic margins, `AUTO_BOUNDS_MARGINS`) |
 | `highGround` | `{ minY: 3.2, pitch: 39 }` | tilt down on the hill so the village roofs don't fill the frame |
-| `title` | subtitle "A Lumina HD-2D Engine Demo", credit "Lumina HD-2D Engine · three.js" | the title itself defaults to the name in capitals |
+| `title` | subtitle "A Luminati 2.5D Pixel-Art Engine Demo", credit "Luminati 2.5D Pixel-Art Engine · three.js" | the title itself defaults to the name in capitals |
 | `titleCamera` | x 22, z 21, y 1.5, drift 7 × 5, distance 35 | drifts over the square and the river |
 | `scenery.southGap` | 0 | the outer forest starts right at the south edge |
 | `godRayAreas` | x 12–30 × z 13–31 (y 1, 4 shafts, seed 7); x 35–45 × z 12–32 (y 1, 2 shafts, seed 11) | shafts over the square and the grove |
@@ -300,20 +300,10 @@ dust motes following the camera, and god rays in two areas (below).
 
 ## How it was made
 
-Emberfall started as hand-written JavaScript (`src/demo/maps/emberfall.js` plus `NPC_DEFS` /
-`OBJECT_TEXT` in `dialogue.js` and `CAMERA_BOUNDS` in `config.js`), built and reviewed in phase 2 of
-the project (57 review findings, 43 fixed — see [history](../../history/PROJECT_HISTORY.md)). When the
-level editor arrived, **`tools/convert-emberfall.mjs` converted it once** into
-`public/levels/emberfall.json`, with one binding requirement: *Emberfall must look and play exactly
-as before*. The converter:
-
-- transcribes what the old code built procedurally (windmill, spring cascade, particle areas,
-  critters, god-ray areas, foliage zones, title camera);
-- writes options the `PropFactory` picks at random when absent as `null` ("seeded random": house
-  shutters, door hoods, woodpiles; tree and rock seeds), so the props come out identical;
-- computes the random rotations of barrels, crates and crate stacks with the factory's own RNG.
-
-The old module no longer exists; the JSON is the **single source of truth**.
+Emberfall is maintained as [`public/levels/emberfall.json`](../../../public/levels/emberfall.json),
+the level's single source of truth. It can be edited in the level editor or as JSON; it has no
+active generator. Options that intentionally use seeded randomness remain explicit in the data
+so unchanged objects keep their appearance.
 
 ---
 
@@ -322,18 +312,12 @@ The old module no longer exists; the JSON is the **single source of truth**.
 - **Edit in the editor** (`editor.html?open=emberfall`, Ctrl+S saves back to
   `public/levels/emberfall.json` under `npm run dev`) or edit the JSON by hand, one object per line.
   Saving it unchanged leaves `git diff` empty.
-- **Never re-run `tools/convert-emberfall.mjs`.** It rebuilds the level from the pre-conversion code
-  in git and would overwrite every later change. With its default `--rev=HEAD` it now stops with
-  "The legacy Emberfall constants are gone from the working tree and could not be read from git
-  revision "HEAD"" and writes nothing; only an old revision (e.g. `--rev=8e36884`, the phase-2
-  commit) makes it run — and then it writes `public/levels/emberfall.json` unless `--out` says
-  otherwise.
 - **Keep it at ≤ 12 light sources.** With 12 descriptors every lantern owns a permanent light; a 13th
   switches the level to the pooled mode, where lights follow the camera — a visible change.
 - **Keep the ids** `elder`, `innkeeper`, `merchant`, `guard`, `farmer`, `child`, `bard`, `scholar`
   and their `script` fields: tests and the README's automation hooks use them. The scripts mention
   Emberfall's places (the Ember & Oak, Windmill Hill, Duchess the hen); rename a place and update
-  [`dialogue.js`](../../../src/demo/dialogue.js) too.
+  [`dialogue.js`](../../../src/game/dialogue.js) too.
 - **Emberfall is the regression baseline** for engine changes on small levels — the game loads it by
   default, and its draw calls, triangles and light list must stay identical unless a change is
   intended (see [TESTING_AND_VERIFICATION](../../development/TESTING_AND_VERIFICATION.md)).
@@ -350,7 +334,7 @@ The old module no longer exists; the JSON is the **single source of truth**.
 - In lantern-lit places night is still brighter than dusk (by design of the lamps; away from them
   dusk ≥ night).
 - At the start position the thatched cottage in the lower-left foreground is blurred by the near
-  depth of field — intentional Octopath-style framing that hides part of the farm from some angles.
+  depth of field — intentional framing in the manner of Square Enix's HD-2D games that hides part of the farm from some angles.
 - **Tobin's fenced field is sealed.** Its gate (the gap in the east fence at x 9.9, z 26.2–27.6)
   opens onto the thatched cottage's west wall, too close for the player to pass, so Old Tobin can
   only be talked to across the fence ([KNOWN_ISSUES LVL-20](../../ai/KNOWN_ISSUES.md#levels-and-generators);

@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { RENDER_ORDER } from '../constants.js';
 import { globalUniforms } from '../render/GlobalUniforms.js';
 import { RNG, hashString, clamp, bayer4, fbm2 } from '../utils/math.js';
-import { ownValue } from '../utils/own.js';
+import { ownValue, ownColor } from '../utils/own.js';
 import { PixelCanvas, makePixelTexture } from '../pixel/PixelCanvas.js';
 
 /**
- * Particles — GPU particle effects for the HD-2D look.
+ * Particles — GPU particle effects for the 2.5D pixel-art look.
  *
  * Continuous emitters are ONE instanced draw call each, fully stateless on the GPU: every
  * particle's life cycle, spawn position and motion are computed in the vertex shader from its
@@ -716,8 +716,13 @@ function toVec3(v, fallback) {
   if (Array.isArray(v)) return new THREE.Vector3(v[0], v[1], v[2]);
   return new THREE.Vector3(v, v, v);
 }
+/**
+ * A colour parameter (preset or a particle area's `params`) as a linear THREE.Color × hdr. A name
+ * three.js would resolve through Object.prototype ("constructor", "__proto__": black, KNOWN_ISSUES
+ * LVL-19) acts like any unknown name: the target keeps its colour (white when new), with a warning.
+ */
 function linearColor(c, hdr = 1, target = new THREE.Color()) {
-  return target.set(c).multiplyScalar(hdr);
+  return target.set(ownColor(c, THREE.Color.NAMES)).multiplyScalar(hdr);
 }
 const rangeRand = (rng, r) => r[0] + (r[1] - r[0]) * rng.next();
 
@@ -760,6 +765,7 @@ function makeUniforms(cfg, texInfo) {
     uWindStrength: globalUniforms.uWindStrength,
     uSunColor: globalUniforms.uSunColor,
     ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+    uFogStart: globalUniforms.uFogStart,
     uMap: { value: texInfo ? texInfo.texture : null },
     uVariants: { value: texInfo ? texInfo.variants : 1 },
     uOrigin: { value: new THREE.Vector3() },
@@ -1195,6 +1201,33 @@ export class Particles {
       );
     }
     pool.flush();
+  }
+
+  /**
+   * The burst pools created so far, in creation order (a copy: opaque handles for
+   * `releaseBurstPools`).
+   * @returns {BurstPool[]}
+   */
+  burstPools() {
+    return this._poolList.slice();
+  }
+
+  /**
+   * Dispose burst pools (handles from `burstPools`): their meshes leave the scene, their geometry and
+   * material are freed — a program no other material uses goes with them — and the resolved burst
+   * configs that pointed at them are forgotten, so the next burst of such a preset creates its pool
+   * anew. A combat level's own pools are released when combat is disposed (a campaign's next,
+   * peaceful level keeps its own program count: KNOWN_ISSUES CMP-05).
+   * @param {Iterable<BurstPool>} pools
+   */
+  releaseBurstPools(pools) {
+    const drop = new Set(pools);
+    if (!drop.size) return;
+    // (deleting from a Map while iterating it is safe: entries not reached yet are skipped)
+    for (const [key, pool] of this._pools) if (drop.has(pool)) this._pools.delete(key);
+    for (const [key, cfg] of this._burstConfigs) if (drop.has(cfg._pool)) this._burstConfigs.delete(key);
+    for (let i = this._poolList.length - 1; i >= 0; i--) if (drop.has(this._poolList[i])) this._poolList.splice(i, 1);
+    for (const pool of drop) pool.dispose();
   }
 
   /**

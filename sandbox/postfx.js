@@ -1,5 +1,5 @@
 /**
- * PostFX sandbox — an HD-2D test diorama exercising the post-processing stack standalone.
+ * PostFX sandbox — a 2.5D test diorama exercising the post-processing stack standalone.
  *
  * URL params:  ?gui (lil-gui panel)  ?label (settings / GPU timing label)  ?samples=N  ?scale=0.5
  *              ?freeze (stop animation)
@@ -22,7 +22,7 @@ const params = new URLSearchParams(location.search);
 const container = document.getElementById('app');
 
 // ------------------------------------------------------------------------------------------------
-// Renderer / scene / HD-2D camera
+// Renderer / scene / diorama camera
 // ------------------------------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));

@@ -163,8 +163,9 @@ export function createFlameMaterial({ width, height, seed = 0, intensity = 1, sp
   }]);
   uniforms.uTime = globalUniforms.uTime;
   uniforms.uCameraYaw = globalUniforms.uCameraYaw;
+  uniforms.uFogStart = globalUniforms.uFogStart;
   const m = new THREE.ShaderMaterial({
-    name: 'lumina:flame',
+    name: 'luminati:flame',
     uniforms,
     vertexShader: BILLBOARD_VERT,
     fragmentShader: FLAME_FRAG,
@@ -191,8 +192,9 @@ export function createGlowMaterial({ color = 0xff8a3a, intensity = 0.6, seed = 0
   uniforms.uTime = globalUniforms.uTime;
   uniforms.uCameraYaw = globalUniforms.uCameraYaw;
   uniforms.uNight = globalUniforms.uNight;
+  uniforms.uFogStart = globalUniforms.uFogStart;
   return new THREE.ShaderMaterial({
-    name: 'lumina:glow',
+    name: 'luminati:glow',
     uniforms,
     vertexShader: BILLBOARD_VERT,
     fragmentShader: GLOW_FRAG,

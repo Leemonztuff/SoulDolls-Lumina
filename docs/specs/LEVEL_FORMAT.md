@@ -1,6 +1,6 @@
-# Level format — `lumina-level` v1
+# Level format — `luminati-level` v1
 
-> **Purpose.** The normative, field-by-field specification of a Lumina level file: the JSON
+> **Purpose.** The normative, field-by-field specification of a Luminati level file: the JSON
 > document that describes a whole playable diorama (terrain, water, environment, player start,
 > every placed object). It says what each field means, its type, its default when missing, its
 > constraints, how files are normalised, validated and written back byte-for-byte, and how the
@@ -15,10 +15,10 @@
 > `normalizeObject`), [`src/engine/world/TileMap.js`](../../src/engine/world/TileMap.js) (how the
 > legend, heights, stairs and water surfaces are interpreted),
 > [`src/engine/world/Water.js`](../../src/engine/world/Water.js),
-> [`src/demo/Game.js`](../../src/demo/Game.js), [`src/demo/World.js`](../../src/demo/World.js),
-> [`src/demo/Scenery.js`](../../src/demo/Scenery.js),
-> [`src/demo/GroundDetail.js`](../../src/demo/GroundDetail.js) and
-> [`src/demo/Weather.js`](../../src/demo/Weather.js) (how the game uses the optional fields).
+> [`src/game/Game.js`](../../src/game/Game.js), [`src/game/World.js`](../../src/game/World.js),
+> [`src/game/Scenery.js`](../../src/game/Scenery.js),
+> [`src/game/GroundDetail.js`](../../src/game/GroundDetail.js) and
+> [`src/game/Weather.js`](../../src/game/Weather.js) (how the game uses the optional fields).
 > The **binding contract** is [contracts/LEVEL_EDITOR.md §1–§5](../contracts/LEVEL_EDITOR.md);
 > this page is its readable, code-verified expansion. Where the two disagree, the code wins. The
 > same document is declared as types in [`src/engine/level/types.d.ts`](../../src/engine/level/types.d.ts),
@@ -76,7 +76,7 @@ flowchart LR
 
 | Constant | Value | Where |
 | --- | --- | --- |
-| `LEVEL_FORMAT` | `"lumina-level"` | `LevelFormat.js` |
+| `LEVEL_FORMAT` | `"luminati-level"` | `LevelFormat.js` |
 | `LEVEL_VERSION` | `1` | `LevelFormat.js` |
 | `MIN_SIZE` / `MAX_SIZE` | `8` / `128` tiles per side | `LevelFormat.js` |
 | `MAX_LEVEL` | `35` (highest terrain level a height char can hold) | `LevelFormat.js` |
@@ -113,11 +113,13 @@ the code. JavaScript that reads or writes levels imports them with
 All fields are optional when **reading** (the normaliser fills them in). `serializeLevel` always
 writes every field below, in this order: `format`, `version`, `name`, `subtitle`, `author`,
 `description`, `width`, `depth`, `waterLevel`, `water`, `environment`, `spawn`, `legend`, `tiles`,
-`heights`, `objects`, then any unknown fields (see [§15](#15-versioning-and-forward-compatibility)).
+`heights`, `objects`. After `objects` come the level's `textKeys` (when it holds any) and any
+unknown fields, in the file's own order (see [§14](#14-serialisation-byte-stable-writing) and
+[§15](#15-versioning-and-forward-compatibility)).
 
 | Field | Type | Default when missing | Constraints and meaning |
 | --- | --- | --- | --- |
-| `format` | string | `"lumina-level"` | Must be `"lumina-level"` if present; any other value throws `Unknown level format "<value>"`. A file with **no** `format` is accepted only if it has a `tiles` or `heights` array. |
+| `format` | string | `"luminati-level"` | Must be `"luminati-level"` if present; any other value throws `Unknown level format "<value>"`. A file with **no** `format` is accepted only if it has a `tiles` or `heights` array. |
 | `version` | integer | `1` | Always written as `1`. A value above `1` loads with a warning ([§15](#15-versioning-and-forward-compatibility)). |
 | `name` | string | `"Untitled"` | Display name: title screen (upper-cased), arrival banner, HUD location fallback, world-map title. The game renames a blank name to `"Untitled"` ([`src/main.js`](../../src/main.js) `boot`). |
 | `subtitle` | string | `""` | Shown under the name on the title screen and banner, and as the HUD sub-line outside any region. |
@@ -125,7 +127,7 @@ writes every field below, in this order: `format`, `version`, `name`, `subtitle`
 | `description` | string | `""` | Informational only (the editor's Level settings shows it). |
 | `width` | integer | longest `tiles` row | Number of columns. Clamped to `8…128` (`Math.round`). |
 | `depth` | integer | number of `tiles` rows | Number of rows. Clamped to `8…128`. |
-| `waterLevel` | number | `0.35` (new levels: `0.4`) | Global water surface height in world units ([§8](#8-water)). |
+| `waterLevel` | number | `0.4` | Global water surface height in world units ([§8](#8-water)). New levels write it; a file without it gets 0.4 too (0.35 before 2026-10-07; every shipped level has the key). |
 | `water` | object | `{ "flow": [0, 0.45], "reflect": 0.2, "neutral": 0.2 }` | Water look ([§8](#8-water)). |
 | `environment` | object | `DEFAULT_ENVIRONMENT` | Time, weather, camera, scenery and presentation options ([§9](#9-environment)). |
 | `spawn` | object | `{ x: width/2, z: depth/2, facing: "down" }` | Player start ([§10](#10-spawn-player-start)). |
@@ -133,6 +135,7 @@ writes every field below, in this order: `format`, `version`, `name`, `subtitle`
 | `tiles` | string[] | rows of `g` | One string per row, one character per tile ([§4](#4-terrain-legend-tiles-heights)). |
 | `heights` | string[] | rows of `0` | One string per row, one height character per tile ([§6](#6-heights-and-walkability)). |
 | `objects` | object[] | `[]` | Every placed object ([§11](#11-objects), [OBJECT_CATALOG.md](OBJECT_CATALOG.md)). |
+| `textKeys` | object | absent | *(Optional; additive, October 2026.)* The text keys of the level's own texts: `subtitle`, and `title.title`, `title.subtitle`, `title.prompt`, `title.credit` for the `environment.title` overrides; each a GUID (32 hex digits) that keys the text's translation ([I18N.md §4.2](I18N.md#42-keys-and-lookup)). Made by the editor, a generator or `npm run i18n:keys`, never by hand. Absent when the level has none. |
 
 > New levels made by `createEmptyLevel({ name, width = 32, depth = 24, fill = 'g', level = 2, border = 2 })`
 > get `waterLevel: 0.4`, the full default legend, a `border`-tile-wide ring of `T` (blocked
@@ -257,8 +260,8 @@ when ([`TileMap.isWalkable`](../../src/engine/world/TileMap.js), `TileMap.move`)
    pass, so a gap narrower than the character is blocked.
 
 `LevelFormat.isWalkablePoint(level, x, z)` is the data-only version used by validation (walkable
-tile or bridge deck). It treats every water tile as unwalkable, even one whose legend says
-`walkable: true` (the TileMap would let characters wade there).
+tile or bridge deck), with TileMap's rule `walkable ?? !water`: a water tile whose legend says
+`walkable: true` (a ford, where characters wade) is walkable, so a spawn on one validates.
 
 ## 7. Stairs
 
@@ -341,7 +344,7 @@ values field by field (the column "Invalid values" says how).
 | Field | Type | Default | Meaning | Invalid values |
 | --- | --- | --- | --- | --- |
 | `timeOfDay` | number (hours) | `17.2` (golden hour) | Starting hour; wrapped into 0…24. The editor's 3D preview shows this hour until you drag its sun slider. | non-number → 17.2 |
-| `clock` | boolean | `true` | Does time advance while playing? The clock runs at `TIME_SPEED` = 1/90 game hour per real second ([`src/demo/config.js`](../../src/demo/config.js)); it is paused on the loading and title screens. `false` freezes the hour. | only `false` stops it |
+| `clock` | boolean | `true` | Does time advance while playing? The clock runs at `TIME_SPEED` = 1/90 game hour per real second ([`src/game/config.js`](../../src/game/config.js)); it is paused on the loading and title screens. `false` freezes the hour. | only `false` stops it |
 | `weather` | `"clear"` \| `"rain"` \| `"snow"` | `"clear"` | Starting weather, applied instantly (lighting, particles and settled snow). The editor's 3D preview shows it too (the light always; rain / snow, haze and snow cover with its atmosphere preview). | unknown names are ignored (clear) |
 | `border` | `"forest"` \| `"none"` | `"forest"` | `"forest"` scatters dense border trees on every `T` tile ([§5](#5-built-in-tile-types-tile_types)). | anything but `"forest"` = no border trees |
 | `outerScenery` | boolean | `true` | Fogged outer ground, tree clusters and hills around the map. `false` = none. | only `false` turns it off |
@@ -355,7 +358,7 @@ values field by field (the column "Invalid values" says how).
 
 | Field | Shape | Default when absent | Meaning |
 | --- | --- | --- | --- |
-| `title` | `{ title?, subtitle?, prompt?, credit? }` | title = `name` in capitals; subtitle = `subtitle` or `"A Lumina HD-2D Level"`; prompt = `"Press any key"`; credit = `"Lumina HD-2D Engine · three.js"` | Title-screen texts. An empty `title` or `prompt` falls back to the default; an empty `subtitle` or `credit` stays empty. |
+| `title` | `{ title?, subtitle?, prompt?, credit? }` | title = `name` in capitals; subtitle = `subtitle` or `"A Luminati 2.5D Level"`; prompt = `"Press any key"`; credit = `"Luminati 2.5D Pixel-Art Engine · three.js"` | Title-screen texts. An empty `title` or `prompt` falls back to the default; an empty `subtitle` or `credit` stays empty. |
 | `titleCamera` | `{ x?, z?, y?, driftX?, driftZ?, distance? }` | centre of the mid camera bounds; `y` = the most common walkable ground height + 0.5; `driftX` = min(7, ¼ of the bounds width); `driftZ` = min(5, ¼ of the bounds depth); `distance` = clamp(min(35, max(22, 0.8 × max(width, depth))), 8, 80) | The slow drifting camera behind the title screen: centre, height, drift amplitudes and distance. |
 | `godRayAreas` | `[{ minX, maxX, minZ, maxZ, y?, count?, seed? }]` | one area over the walkable ground: the walkable extent shrunk by 1, `y` = the most common walkable height, `count` = clamp(round(area / 90), 1, 6), `seed` 7 | World-space rects the god-ray shafts stand in. `count` is rounded and clamped to 0–12 (default 3); `y` defaults to 0; `seed` to 7. An area with `count` 0 or an empty rect is skipped; an empty array means automatic. Ignored when `godRays` is `false`. |
 | `foliage` | `{ seed?, flowerAreas?, shrubAreas? }` | seed 2024; default flower colours; bush / fern chance 0.05 | Ground-foliage zones in **tile** coordinates (tile `(i, j)` is inside when `minX ≤ i < maxX` and `minZ ≤ j < maxZ`; the first matching zone wins). `flowerAreas: [{ minX, maxX, minZ, maxZ, palette }]` — `palette` is a list of flower frames (0 red, 1 yellow, 2 white, 3 blue; repeat a frame to weight it; default `[1, 2, 3, 1, 2]`). `shrubAreas: [{ minX, maxX, minZ, maxZ, chance }]` — bush / fern chance per grass tile. Malformed zones are dropped. |
@@ -364,6 +367,8 @@ values field by field (the column "Invalid values" says how).
 | `fogScale` | number > 0 | `1` | Multiplier on the game's fog density at every hour. A big level whose views reach far can thin the haze so dawn and dusk keep their far layers (Starfall Vale: `0.65`). Non-positive or non-numeric values count as 1. No editor field; kept when editing. |
 | `minimap` | boolean | shown | `false` hides the HUD minimap under the clock. The world map (N / Tab) works either way. The editor's Level settings never writes the default (`true`) into a file that did not have the field. |
 | `combat` | boolean | auto: combat is on exactly when the level has an `enemy` object | `true` forces combat on (the player's sword kit, chests and waystones work without enemies); `false` forces a peaceful level (enemies are not spawned; chests and waystones are only examined). `levelHasCombat(level)` in `ObjectCatalog.js` is the one test ([COMBAT.md §3](../contracts/COMBAT.md#3-enabling-combat-per-level)). Never written by default; the editor's Level settings (*Combat: Auto / On / Off*) removes it again for Auto. Cinderwatch Pass has no key (auto). |
+| `backdrop` | `"void"` or `"#rrggbb"` | the sky | An interior's surround: no sky; the fog and the background are that colour (`void`: black). Switched with the sky's visibility and the renderer's clear colour — no program changes. Anything else: a warning, the sky. Read by `LevelLook.backdropColor` (the editor's 3D preview shows it too). The editor's Level settings (*Environment › Backdrop*: the sky / void / a colour) writes it only when changed and removes it again for the sky; a value it cannot read is kept until another choice is made. The demo's mill cellar uses `#0d0b12` ([CAMPAIGN_FORMAT.md §6.4](CAMPAIGN_FORMAT.md#64-entering-a-level)). |
+| `interior` | boolean | absent: an outdoor level | `true` makes the level a **room** — a house's floor, an upper floor, a cellar (`LevelLook.isInterior`). Inside a room the game shows no forest border, no outer scenery, no god rays and no weather — no rain, snow, settled snow or overcast look (`shownWeather` is `clear`; a campaign's weather goes on outside) — whatever `border`, `outerScenery`, `godRays` / `godRayAreas` and `weather` say; those values are kept for when the level is outdoors again. The look a room usually wants besides is set with the ordinary fields: `backdrop`, `clock: false` with its own `timeOfDay`, `minimap: false`, a closer `camera` (`{ "distance": 20, "pitch": 38 }`), `border: "none"`. In a campaign the level the player came from stays set aside while they are in rooms, and the last room after they leave it, so walking in and out is quick ([CAMPAIGN_FORMAT.md §6.3](CAMPAIGN_FORMAT.md#rooms-the-levels-set-aside)). The demo's mill cellar is one. Never written by default: the editor's Level settings (*Environment › Interior (room)*) writes `true` and removes the key when switched off; File › New › *Room (interior)* starts a level with it and the room look ([EDITOR.md](../architecture/EDITOR.md#35-files-open-save-export-play-test)). |
 
 ### 9.3 Camera
 
@@ -371,7 +376,7 @@ values field by field (the column "Invalid values" says how).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `distance` | number | `30` | Gameplay camera distance, clamped to 8–80. The zoom range is `18…42` (`CAMERA` in [`src/demo/config.js`](../../src/demo/config.js)), widened to include `distance`. |
+| `distance` | number | `30` | Gameplay camera distance, clamped to 8–80. The zoom range is `18…42` (`CAMERA` in [`src/game/config.js`](../../src/game/config.js)), widened to include `distance`. |
 | `pitch` | number (degrees) | `32` | Camera pitch, clamped to 10–80. |
 | `bounds` | rect or `{ near, mid, far }` | automatic | Where the camera focus may go. |
 
@@ -387,7 +392,7 @@ A **rect** is `{ minX, maxX, minZ, maxZ }` in world units (swapped min / max are
 
 Without bounds, the game computes them from the walkable tiles
 (`ObjectBuilder.computeCameraBounds(level, 0)`), shrunk by `AUTO_BOUNDS_MARGINS` in
-[`src/demo/Game.js`](../../src/demo/Game.js): near `x 1.8, north 0.5, south 0.8`; mid
+[`src/game/Game.js`](../../src/game/Game.js): near `x 1.8, north 0.5, south 0.8`; mid
 `x 3.5, north 0.5, south 2`; far `x 4.5, north 1, south 3`.
 
 The game also narrows the camera's yaw range near the east and west map edges (so the camera
@@ -395,10 +400,17 @@ does not swing out over the border forest). This is automatic and has no level f
 
 ### 9.4 What the editor's Level settings dialog edits
 
-Name, subtitle, author, description; `timeOfDay`, `clock`, `weather`, `border`, `outerScenery`,
-`godRays`, `dust`, `music`, `minimap`; `camera.distance` and `camera.pitch` (existing `bounds` are
-kept, not edited); `highGround`; `waterLevel`; `water.flow`, `reflect`, `neutral`, `glint`. The
-other optional fields have no dialog field and are kept as they are.
+Name, subtitle, author, description; `interior`, `timeOfDay`, `clock`, `weather`, `border`,
+`outerScenery`, `godRays`, `backdrop`, `dust`, `music`, `minimap`, `combat`; `camera.distance` and
+`camera.pitch` (existing `bounds` are kept, not edited); `highGround`; `waterLevel`; `water.flow`,
+`reflect`, `neutral`, `glint`. The optional ones (`interior`, `backdrop`, `minimap`, `combat`,
+`glint`) are written only when set away from their default and removed again when set back, so a
+level that never had them keeps its bytes. With *Interior (room)* on, the rows of `weather`,
+`border`, `outerScenery` and `godRays` are dimmed with a note (the game leaves them out in a room),
+and the dialog offers the room look in one step (*Use the room look*: border none, outer scenery
+and god rays off, the backdrop `#0d0b12` unless the level has one, minimap off, the clock stopped,
+and the camera 20 / 38° while it is automatic) — applied with the rest of the dialog as one undo
+step. The other optional fields have no dialog field and are kept as they are.
 
 ## 10. Spawn (player start)
 
@@ -414,7 +426,9 @@ other optional fields have no dialog field and are kept as they are.
 
 The spawn must be inside the map and on walkable ground or a bridge deck (`validateLevel`). The
 editor refuses to play-test otherwise. The game itself only warns: if the spawn is not
-standable it moves the player to the nearest standable spot (`Game._ensureStandingSpawn`).
+standable it moves the player to the nearest standable spot (`Game._ensureStandingSpawn`). In a
+campaign the spawn is also where an exit arrives that names no entrance and crosses no seam
+([CAMPAIGN_FORMAT.md §4](CAMPAIGN_FORMAT.md#4-exits-and-entrances)).
 
 The editor selects the player start with the id `"spawn"` (`SPAWN_ID`), which is therefore
 reserved: no object may use it.
@@ -428,7 +442,7 @@ from `OBJECT_TYPES`. There are three shapes:
 | --- | --- | --- |
 | point | `{ id, type, x, z, rotation?, opts?, …fields }` | every type except the ones below |
 | line | `{ id, type, x0, z0, x1, z1, opts?, …fields }` | `fence`, `bridge` |
-| rect | `{ id, type, minX, maxX, minZ, maxZ, …fields }` | `region` |
+| rect | `{ id, type, minX, maxX, minZ, maxZ, …fields }` | `region`, `exit` |
 
 - `opts` is passed straight to the matching `PropFactory` method
   ([`src/engine/world/Props.js`](../../src/engine/world/Props.js)), so a file may set builder
@@ -436,6 +450,13 @@ from `OBJECT_TYPES`. There are three shapes:
 - Ids: the editor generates `<type>_<n>` (`generateObjectId`); hand-written files may use any
   string (Emberfall uses readable ids like `elder`, `well`, `sign_plaza`). NPC ids are the handles
   for `window.__game.talkTo(id)` ([AUTOMATION_API.md](AUTOMATION_API.md)).
+- Each translatable text carries its **text key** in the data, a GUID that keys its translation
+  ([I18N.md §4.2](I18N.md#42-keys-and-lookup)): an object's optional `textKeys` holds the keys of
+  its translatable fields (`{"text":["FD16…","638F…"]}`, parallel to the pages), and a script
+  field's lines (`talk`, `run`) carry trailing `#line:<GUID>` tags. The keys are kept through
+  every edit, so inserting a page, reordering lines or **renaming an object's id keeps its
+  translations**; never edit them by hand
+  ([OBJECT_CATALOG.md §13.3](OBJECT_CATALOG.md#133-translations)).
 - Object order matters in two places: point lights of equal priority are ranked in object order
   ([OBJECT_CATALOG.md §4](OBJECT_CATALOG.md#4-point-lights-budget-and-priority)), and where regions
   overlap the first matching `region` in the array wins (HUD plate and arrival banner).
@@ -444,6 +465,15 @@ from `OBJECT_TYPES`. There are three shapes:
   point objects. An `enemy` group's optional `spotOffsets`, `area`, `seed`, `arena` and `gate` are
   all **relative** to its `x, z` and never written by default; an engine older than the combat
   types drops these objects with a `normalizeLevel` warning.
+- The campaign types (`exit`, `entrance`; `campaign: true` in the catalog) join the levels of a
+  campaign ([CAMPAIGN_FORMAT.md](CAMPAIGN_FORMAT.md)): an exit is a rect that leads to another
+  level, an entrance a named arrival point. A level played on its own ignores both.
+- Any object may carry the optional story conditions `when` and `unless` (story flag names; never
+  written by default): in a campaign the object exists only while `when` is set and is gone once
+  `unless` is set — live for the `LIVE_STORY_TYPES` (villagers, the props that stand alone, the
+  combat objects …), decided when the level is entered for the rest
+  ([STORY_SCRIPT.md §9.5](STORY_SCRIPT.md#95-objects-that-come-and-go)); a level played on its own
+  without a story keeps every object. A villager may carry `flag`, the story flag a conversation with it sets.
 
 Every type, its fields, defaults and ranges, and what the game builds from it are specified in
 [OBJECT_CATALOG.md](OBJECT_CATALOG.md).
@@ -456,8 +486,8 @@ returns `{ level, warnings }`. Every loader (game, editor, storage, generators) 
 **Throws** (the level cannot be opened):
 
 - `Level data is not an object` — `null`, an array or a primitive;
-- `Unknown level format "<format>"` — `format` present and not `"lumina-level"`;
-- `Not a Lumina level (no "format": "lumina-level" and no tiles)` — neither `format` nor a
+- `Unknown level format "<format>"` — `format` present and not `"luminati-level"`;
+- `Not a Luminati level (no "format": "luminati-level" and no tiles)` — neither `format` nor a
   `tiles` / `heights` array (so a `package.json` never opens as a blank map);
 - JSON syntax errors (from `JSON.parse`).
 
@@ -472,6 +502,9 @@ returns `{ level, warnings }`. Every loader (game, editor, storage, generators) 
 | unknown object `type` — anything but a string naming one of the catalog's own types: a misspelt name, an `Object.prototype` name (`"constructor"`, `"__proto__"`, `"toString"` …), a number, an array or an object | object **dropped** | `Unknown object type "t" skipped.` (a value that is not a string is shown as JSON: `["house"]`) |
 | a `legend` key that is not exactly one character (`"ab"`, `"constructor"`) | kept in the file; no tile can use it (the editor's palette and painting leave it out) | `Legend key "k" is not a single character; no tile can use it.` |
 | duplicate or reserved (`"spawn"`) object id | renamed to a fresh `<type>_<n>` not used anywhere in the file (of two objects with the same id, the first keeps it; `"spawn"` is always renamed) | `Duplicate object id "a" renamed to "b".` / `Object id "spawn" is reserved for the player start; renamed to "b".` |
+| an object's `textKeys` with a malformed key, an unknown field, a key of a field the object does not hold, or a key list longer than its field (a choice list longer than its page's) | the entry dropped (a malformed key in a list becomes `null`), the list cut ([I18N.md §4.2](I18N.md#42-keys-and-lookup)) | `Object "id": N malformed or unknown text key(s) dropped (…).` |
+| the level's `textKeys` with a malformed key, an unknown field, or a key of a title line `environment.title` does not hold as a string (a blank `subtitle` keeps its key) | the entry dropped | `textKeys: N malformed or unknown text key(s) dropped (…).` |
+| a text key of lower-case hex digits (an object's or the level's) | written in upper case | `Object "id": N text key(s) of lower-case digits written in upper case.` / `textKeys: N text key(s) …` |
 
 **Repairs without a warning:**
 
@@ -486,20 +519,24 @@ returns `{ level, warnings }`. Every loader (game, editor, storage, generators) 
   `water` becomes `{ ...DEFAULT_WATER, ...file.water }` (a malformed `flow` is reset);
 - `spawn.x` / `spawn.z` default to the map centre, an invalid `facing` becomes `"down"`;
 - `name` / `subtitle` / `author` / `description` are converted to strings; `waterLevel` falls
-  back to `0.35` when it is not a finite number;
+  back to `0.4` (as in a new level) when it is not a finite number;
 - a value that `String()` or `Number()` cannot convert — a JSON object with its own `toString`
   key, such as `{"toString": 1}` — never aborts the load: a text field gets its default
   (`"Untitled"` for `name`, `""` for the others), a `tiles` / `heights` row counts as empty, a
-  number is treated like any other non-number (`waterLevel` 0.35, the spawn the map centre, an
+  number is treated like any other non-number (`waterLevel` 0.4, the spawn the map centre, an
   object position or rect bound its default, `width` / `depth` the minimum 8), and an object `id`
-  becomes empty and is renamed;
+  becomes empty and is renamed; where the load keeps values as they are — any other field of an
+  object (at any depth: `name`, `portraitColor`, `opts` texture names …), a legend entry's
+  fields, `environment` and `water` — such a value is dropped and the default applies (an array
+  element becomes `null`), so nothing reads it later;
 - each object goes through `normalizeObject` ([OBJECT_CATALOG.md §2](OBJECT_CATALOG.md#2-object-shapes-and-normalisation)):
   missing catalog defaults are added (the object's own keys keep their order, new keys are
   appended), positions and `rotation` are coerced to numbers, a reversed rect is swapped, and the
   legacy absolute NPC / critter fields `talkPoint`, `bounds`, `spots` are converted to the
   relative `talkOffset`, `area`, `spotOffsets`;
 - unknown top-level fields are kept (except `__proto__`, `constructor`, `prototype` and
-  `undefined` values).
+  `undefined` values). The level's `textKeys` keeps its place among them, cleaned as above (it is
+  dropped when nothing is left).
 
 **Names are matched as own keys.** Every name the engine, the game and the editor read from a
 level — object `type`, legend `stairs` and texture names, waterfall / NPC / spawn `facing`, tree,
@@ -510,11 +547,13 @@ equivalent test such as a list's `includes`). An
 `Object.prototype` member name (`"constructor"`, `"__proto__"`, `"toString"`,
 `"hasOwnProperty"` …) is therefore unknown like any misspelt name and gets that field's
 documented fallback (fixed on 2026-10-01, KNOWN_ISSUES LVL-17). An NPC's `item` is an ordinary
-name: `"constructor"` is just another item. The one exception is a colour that three.js parses
-itself (a `light`'s `color`, a particle area's `params` colours): `"constructor"` and
-`"__proto__"` give black ([LVL-19](../ai/KNOWN_ISSUES.md#levels-and-generators)).
+name: `"constructor"` is just another item. Colours that three.js parses itself (a `light`'s
+`color`, a particle area's `params` colours) are tested the same way since 2026-10-07: three.js
+would turn `"constructor"` and `"__proto__"` into black, so such a name warns and acts as
+unknown — the light takes its default colour (#ffb46b), the particles turn white as for any
+unknown CSS name (KNOWN_ISSUES LVL-19, resolved).
 
-The game logs normalisation warnings to the console (`[Lumina] <source>: <warning>`); the editor
+The game logs normalisation warnings to the console (`[Luminati] <source>: <warning>`); the editor
 shows them in an "Opened with warnings" dialog.
 
 ## 13. Validation
@@ -550,7 +589,7 @@ height row and per object**, so files are readable and diffs stay small:
 
 ```text
 {
-  "format": "lumina-level",          ← 12 lines, one per scalar/object field, in this order:
+  "format": "luminati-level",        ← 12 lines, one per scalar/object field, in this order:
   "version": 1,                         format version name subtitle author description
   …                                     width depth waterLevel water environment spawn
   "spawn": {"x":8.5,"z":10.5,"facing":"up"},
@@ -564,7 +603,8 @@ height row and per object**, so files are readable and diffs stay small:
   "heights": [ … ],
   "objects": [
     {"id":"house_1","type":"house",…}, ← one line per object
-  ]                                     ← "]," when unknown top-level fields follow
+  ]                                     ← "]," when textKeys or unknown fields follow
+  "textKeys": {"subtitle":"668F…",…}   ← the level's own text keys (when it has any), one line
   "extra": …                            ← unknown top-level fields, one per line
 }
 ```
@@ -579,13 +619,16 @@ Rules:
 - Object keys keep their order: `createObject` writes `id`, `type`, the position, then the
   catalog defaults, then overrides; `normalizeObject` keeps the order of a loaded object and
   appends defaults it lacks.
+- The level's `textKeys` (when it has any) is written on one line after `objects`, in its place
+  among the unknown top-level fields: the order the loaded file had (a field the file has before it
+  stays before it). An older engine keeps it as an unknown field.
 - `serializeLevel` expects a **normalised** level (all known top-level fields present).
 
 **Byte stability.** For any file that `serializeLevel` wrote, `serializeLevel(parseLevel(text).level) === text`.
-Opening a level in the editor and saving it unchanged leaves `git diff` empty. All five shipped
-levels (`emberfall`, `starfall-vale`, `brightwater-crossing`, `sample-hamlet`, `cinderwatch-pass`)
-round-trip byte-identically with zero warnings. A file written by hand in another layout is rewritten into
-this layout on its first save.
+Opening a level in the editor and saving it unchanged leaves `git diff` empty. All six shipped
+levels (`emberfall`, `starfall-vale`, `brightwater-crossing`, `sample-hamlet`, `cinderwatch-pass`,
+`gildhaven`) round-trip byte-identically with zero warnings, their text keys included. A file
+written by hand in another layout is rewritten into this layout on its first save.
 
 Quick check from the repository root (Node 20+ reads the ES modules directly):
 
@@ -601,16 +644,19 @@ console.log({ warnings, errors: validateLevel(level), byteStable: serializeLevel
 
 ## 15. Versioning and forward compatibility
 
-The format is **v1**; every change so far has been additive (new optional fields). Rules for
-evolving it (from [CLAUDE.md](../../CLAUDE.md) and the contract): never rename a field or change
-its meaning; add optional fields whose absence keeps the old behaviour; document them here and
-in the contract.
+The format is **v1**; every change so far has been additive (new optional fields), except the
+format id itself, renamed with the engine: a file with the former id is refused like any
+other unknown format (change its `"format"` to `"luminati-level"` to open it). Rules for evolving
+it (from [AGENTS.md](../../AGENTS.md) and the contract): never rename a field or change its
+meaning; add optional fields whose absence keeps the old behaviour; document them here and in the
+contract.
 
 What survives a load → save cycle in this engine:
 
 | Data | Kept? |
 | --- | --- |
 | unknown top-level fields | yes, written after `objects` |
+| `textKeys` (the level's and its objects') | yes, cleaned ([§12](#12-normalisation-loading)); the level's keeps its place among the unknown top-level fields |
 | unknown keys in `environment`, `water`, `spawn`, legend entries | yes |
 | unknown keys inside an object (including inside `opts`) | yes |
 | unknown **object types** | **no** — dropped with a warning |
@@ -686,11 +732,11 @@ interactable).
 
 ```json
 {
-  "format": "lumina-level",
+  "format": "luminati-level",
   "version": 1,
   "name": "Mossbrook",
   "subtitle": "A Tiny Example",
-  "author": "Lumina docs",
+  "author": "Luminati docs",
   "description": "The example level of docs/specs/LEVEL_FORMAT.md.",
   "width": 16,
   "depth": 12,
@@ -775,15 +821,15 @@ Things to notice:
   the first) gives the player a Pear.
 - The file does not need the full legend: a hand-written file may omit `legend` entirely (the
   built-in legend is merged in) and even most fields. The minimal loadable level is
-  `{"format":"lumina-level","tiles":["gggggggg", …8 rows]}`; saving it once writes the full form.
+  `{"format":"luminati-level","tiles":["gggggggg", …8 rows]}`; saving it once writes the full form.
 
-To play it: save it as `public/levels/mossbrook.json` and open `index.html?level=mossbrook`, or
-from a page console: `window.__lumina.playLocal(levelObject, 'mossbrook')`
-([AUTOMATION_API.md](AUTOMATION_API.md)).
+To play it: save it as `public/levels/mossbrook.json` and open `game.html?level=mossbrook` (the
+launcher, `index.html`, lists it with Play and Edit links), or from a page console:
+`window.__luminati.playLocal(levelObject, 'mossbrook')` ([AUTOMATION_API.md](AUTOMATION_API.md)).
 
 ## 19. Checklist for hand-written and generated levels
 
-- `format` is `"lumina-level"`; every row of `tiles` and `heights` has exactly `width` characters
+- `format` is `"luminati-level"`; every row of `tiles` and `heights` has exactly `width` characters
   and there are exactly `depth` rows.
 - Every tile character is in the legend (built-in or your own), and every legend key is one
   character.
@@ -799,6 +845,11 @@ from a page console: `window.__lumina.playLocal(levelObject, 'mossbrook')`
   the file is written.
 - Generated levels: re-run the generator instead of hand-editing its output
   (`node tools/make-starfall-vale.mjs`, `node tools/make-sample-hamlet.mjs`,
-  `node tools/make-cinderwatch-pass.mjs`, `node tools/make-gildhaven.mjs`).
-- Play it: `npm run check -- --page=index.html --query="level=<name>&autostart=1" --out=<name>`
+  `node tools/make-cinderwatch-pass.mjs`, `node tools/make-gildhaven.mjs`). A generator keys its
+  output itself and fails on any text-key problem.
+- Text keys: never write `textKeys` or `#line:` tags by hand. After a hand edit of a level's
+  texts, run `npm run i18n:keys -- --check <file>` (`--assign` gives new texts their keys,
+  `--fix` splits a key whose copies now differ), then `npm run i18n:check` for lines that need a
+  translator ([I18N.md §4.10](I18N.md#410-keys-through-edits-the-editor-the-generators-the-tools)).
+- Play it: `npm run check -- --page=game.html --query="level=<name>&autostart=1" --out=<name>`
   and read the screenshots ([../development/TESTING_AND_VERIFICATION.md](../development/TESTING_AND_VERIFICATION.md)).

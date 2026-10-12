@@ -83,7 +83,7 @@ export class Engine {
     this.renderer = renderer;
 
     const canvas = renderer.domElement;
-    canvas.classList.add('lumina-canvas');
+    canvas.classList.add('luminati-canvas');
     canvas.style.display = 'block';
     canvas.style.width = '100%';
     canvas.style.height = '100%';

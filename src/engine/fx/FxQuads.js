@@ -4,7 +4,7 @@ import { globalUniforms } from '../render/GlobalUniforms.js';
 /**
  * FxQuads — one instanced batch of textured atlas quads for combat effects (COMBAT.md §11.1):
  * slash arcs, hit stars, dust, projectiles, pickups, stun stars, the level-up pillar and the boss
- * ember wall, all in ONE draw call (`customProgramCacheKey` `lumina-fxquads-v1`, unlit, alpha test
+ * ember wall, all in ONE draw call (`customProgramCacheKey` `luminati-fxquads-v1`, unlit, alpha test
  * 0.5 with a 4 × 4 Bayer dither fade for `a < 1`, fog, HDR colours so bright cores bloom).
  *
  * Handles: `alloc()` → handle (−1 when full), `set(h, p)` every time the quad changes (the caller
@@ -198,6 +198,7 @@ export class FxQuads {
       name: 'FxQuads',
       uniforms: {
         ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+        uFogStart: globalUniforms.uFogStart,
         uMap: { value: texture },
         uAtlasSize: { value: new THREE.Vector2(img?.width || 512, img?.height || 512) },
         uCameraYaw: globalUniforms.uCameraYaw,
@@ -209,7 +210,7 @@ export class FxQuads {
       depthWrite: true,
       fog: true,
     });
-    this.material.customProgramCacheKey = () => 'lumina-fxquads-v1';
+    this.material.customProgramCacheKey = () => 'luminati-fxquads-v1';
 
     /** Add to the scene: one draw call, hidden while no quad is live. */
     this.object = new THREE.InstancedMesh(geometry, this.material, cap);

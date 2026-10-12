@@ -1,5 +1,5 @@
 /**
- * Lumina — public engine API (barrel).
+ * Luminati — public engine API (barrel).
  *
  * `import { Engine, CameraRig, PostFX, LightingSystem, TileMap, ... } from './engine/index.js'`
  *

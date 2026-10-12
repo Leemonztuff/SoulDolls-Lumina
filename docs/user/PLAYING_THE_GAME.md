@@ -1,35 +1,37 @@
 # Playing the game
 
-> **Purpose** — The complete player's guide to the Lumina demo game: how a session flows, every
+> **Purpose** — The complete player's guide to the Luminati demo game: how a session flows, every
 > control, the HUD and maps, talking to villagers, time of day and weather, photo mode, music, the
-> debug panel, the five shipped levels, guided tours of **Emberfall** and **Starfall Vale**, and
-> combat on **Cinderwatch Pass**.
+> debug panel, the shipped levels, guided tours of **Emberfall** and **Starfall Vale**, combat and
+> companions on **Cinderwatch Pass**, and the demo campaign **The Ferryman's Lantern** (several
+> levels, one story, saved games).
 >
 > **Audience** — Players, level designers checking their levels, and AI agents that need to know
 > what the game does from the player's side.
 >
-> **Source of truth** — [`src/demo/Game.js`](../../src/demo/Game.js) (flow, shortcuts, interaction,
+> **Source of truth** — [`src/game/Game.js`](../../src/game/Game.js) (flow, shortcuts, interaction,
 > `CONTROLS`), [`src/engine/core/Input.js`](../../src/engine/core/Input.js) (`DEFAULT_BINDINGS`,
 > `DEFAULT_PAD_BINDINGS`), [`src/engine/core/CameraRig.js`](../../src/engine/core/CameraRig.js),
-> [`src/demo/config.js`](../../src/demo/config.js) (`CAMERA`, `TIME_SPEED`),
-> [`src/demo/Weather.js`](../../src/demo/Weather.js) (`TIME_PRESETS`, `WEATHERS`),
-> [`src/demo/dialogue.js`](../../src/demo/dialogue.js), [`src/demo/DebugControls.js`](../../src/demo/DebugControls.js),
+> [`src/game/config.js`](../../src/game/config.js) (`CAMERA`, `TIME_SPEED`),
+> [`src/game/Weather.js`](../../src/game/Weather.js) (`TIME_PRESETS`, `WEATHERS`),
+> [`src/game/dialogue.js`](../../src/game/dialogue.js), [`src/game/DebugControls.js`](../../src/game/DebugControls.js),
 > [`src/engine/ui/`](../../src/engine/ui/) (HUD, DialogBox, TitleScreen, Minimap / WorldMap),
-> [`public/levels/*.json`](../../public/levels/); for combat [`src/demo/combat/`](../../src/demo/combat/CombatSystem.js)
-> (`bindings.js`, `rules.js`, `defs.js`).
+> [`public/levels/*.json`](../../public/levels/); for combat [`src/game/combat/`](../../src/game/combat/CombatSystem.js)
+> (`bindings.js`, `rules.js`, `defs.js`); for campaigns [`src/game/campaign/`](../../src/game/campaign/CampaignRuntime.js)
+> and [`public/campaigns/`](../../public/campaigns/ferrymans-lantern/campaign.json).
 >
 > **Related** — [Getting started](GETTING_STARTED.md) · [Shortcut cheat-sheet](shortcuts.html) ·
 > [Input & controls spec](../specs/INPUT_AND_CONTROLS.md) · [Game architecture](../architecture/GAME.md) ·
 > [Automation API](../specs/AUTOMATION_API.md) · Level notes: [Emberfall](../design/levels/emberfall.md),
 > [Starfall Vale](../design/levels/starfall-vale.md), [Brightwater Crossing](../design/levels/brightwater-crossing.md),
 > [Willowmere](../design/levels/sample-hamlet.md), [Cinderwatch Pass](../design/levels/cinderwatch-pass.md) ·
-> [Combat contract](../contracts/COMBAT.md)
+> [Combat contract](../contracts/COMBAT.md) · [The Ferryman's Lantern](../design/campaigns/ferrymans-lantern.md) ·
+> [Campaign format](../specs/CAMPAIGN_FORMAT.md)
 
-![Emberfall's village square at golden hour: the HUD location plate, clock, controls legend and arrival banner](../assets/screenshots/emberfall-golden-hour.jpg)
+![Emberfall's village square at golden hour: the place plate, the clock and the minimap, the controls legend and the arrival banner, all in the pixel-art UI](../assets/screenshots/emberfall-golden-hour.jpg)
 
-*The Emberfall screenshots in this guide were taken before the minimap and the world map were
-added. The current HUD also shows a minimap under the clock and an **N/Tab · World map** row in the
-controls legend (the Starfall Vale screenshots show them).*
+The game plays in **English, Japanese and Simplified Chinese** — see
+[§17 Languages](#17-languages).
 
 ---
 
@@ -49,11 +51,13 @@ stateDiagram-v2
   PhotoMode --> Play: P, Esc or Backspace
 ```
 
-1. **Loading** — a small ember, the level name and a gold progress bar ("Reading the map" …
-   "Waking the villagers", "Warming up the lanterns", "Ready"). The screen stays up until the first
+1. **Loading** — a pixel ember, the level name and a gilt progress bar ("Reading the map" …
+   "Waking the villagers", "Warming up the lanterns", "Ready" — in the page's language). The screen stays up until the first
    frames — rain and snow included — have been drawn, so nothing stutters later.
-2. **Title screen** — the level name in capitals, its subtitle and a blinking **Press any key**,
-   while the camera drifts slowly over the level. The clock is paused. Any key (except Shift, Ctrl,
+2. **Title screen** — the level name as a gilded pixel logo (in Japanese and Chinese the
+   translated name, with the English one under it), its subtitle and a blinking **Press any key**,
+   while the camera drifts slowly over the level; the language row (EN · 日本語 · 中文) sits bottom
+   right ([§17](#17-languages)). The clock is paused. Any key (except Shift, Ctrl,
    Alt, the Windows / Cmd key, Tab, Caps Lock, F5, F11, F12 — `IGNORED_KEYS` in
    [`TitleScreen.js`](../../src/engine/ui/TitleScreen.js)), a click or any gamepad button starts
    the game; that same press unlocks audio and starts the music (unless the level has its music
@@ -83,13 +87,14 @@ use the keys that sit where the US letters are. Printable version: [shortcuts.ht
 | Choose a dialogue answer | **↑ / ↓** or **W / S** | Or hover and click an answer. |
 | Finish the typing line at once | **Esc** or **Backspace** | Space / Enter / F do the same while text is typing. |
 | Rotate the camera | hold **Q** / **E** | Up to 60° either side of north. |
-| Zoom in / out | hold **Z** / **X**, or **=** / **−**, or the **mouse wheel** | Camera distance 18–42, 30 by default (`CAMERA` in [`config.js`](../../src/demo/config.js); a level's `environment.camera.distance` can change the default and widens the range to include it). |
+| Zoom in / out | hold **Z** / **X**, or **=** / **−**, or the **mouse wheel** | Camera distance 18–42, 30 by default (`CAMERA` in [`config.js`](../../src/game/config.js); a level's `environment.camera.distance` can change the default and widens the range to include it). |
 | World map | **N** or **Tab** | **N**, **Tab**, **Esc** or **Backspace** closes it. |
 | Next time of day | **T** | Dawn → Midday → Golden Hour → Dusk → Night, with a 2-second glide. |
 | Next weather | **R** | Clear → Rain → Snow → Clear. |
 | Photo mode | **P** | **P** or **Esc** (or Backspace) returns. |
 | Music on / off | **M** | |
 | Controls legend on / off | **H** | |
+| Party tactics | **G** | Once a companion has joined you ([§15.7](#157-companions)); **G** or **Esc** closes it. |
 | Debug panel | **`** (backquote, the key left of 1) or **F1** | The legend shows it as **~**. |
 
 ### 2.2 Gamepad (standard mapping)
@@ -107,8 +112,9 @@ use the keys that sit where the US letters are. Printable version: [shortcuts.ht
 | Controls legend | **Start / Menu** |
 | Photo mode | **Right stick click** |
 
-Time of day, weather, music and the debug panel have no gamepad buttons. Any gamepad button
-dismisses the title screen.
+Time of day, weather, music and the debug panel have no gamepad buttons; nor does the party's
+tactics panel — talk to a companion (**A**) and pick *Tactics…*. Any gamepad button dismisses the
+title screen — except **LB / RB** there, which pick the language ([§17](#17-languages)).
 
 ---
 
@@ -116,13 +122,17 @@ dismisses the title screen.
 
 | Element | Where | What it shows |
 | --- | --- | --- |
-| **Location plate** | top-left | The region you are in and its subtitle (e.g. *Village Square · Emberfall*). Between regions the last one stays. |
-| **Clock** | top-right | 24-hour time with a sun / moon icon and the phase name (table below). |
-| **Minimap** | under the clock | A painted map of the level, north up, about 34 world units across: your arrow and the camera's view wedge, villagers (light-blue dots), signs and doors (gold diamonds), wells (blue diamonds) and campfires (orange dots). A level can switch it off (`environment.minimap: false`). |
-| **Controls legend** | bottom-left | The keys; toggle with **H**. Tucked away during conversations. |
-| **Toasts** | top-centre | Short messages: the new time or weather, *Obtained: …*, *♪ Music on*. |
-| **Interaction prompt** | above the target | *Talk*, *Read*, *Knock* or *Look* with the **Space** key cap. |
+| **Place plate** | top-left | The region you are in and its subtitle (e.g. *VILLAGE SQUARE · Emberfall*). Between regions the last one stays. |
+| **Clock** | top-right | 24-hour time with the phase's pixel icon and its name (table below). |
+| **Minimap** | under the clock | A pixel-art map of the level, north up, about 34 world units across: the level's tiles and buildings, your arrow and the camera's view wedge, villagers, signs, doors, wells and campfires as small gems and dots. A level can switch it off (`environment.minimap: false`). |
+| **Controls legend** | bottom-left | The keys as keycaps; toggle with **H**. Tucked away during conversations. |
+| **Toasts** | top | Short messages on a gold band: the new time or weather, *Obtained: …*, *♪ Music on*; keys in them are drawn as keycaps. They keep clear of the other panels and the banner. |
+| **Interaction prompt** | above the target | *Talk*, *Read*, *Knock* or *Look* with the **Space** key cap, under a little speech bubble. |
 | **Arrival banner** | upper centre | The level name when play starts, and a region's name and banner line the first time you enter a region that has one. |
+
+The UI is drawn as pixel art and stays pixel-sharp at any window size: one art pixel is 2 screen
+pixels up to 1919 px wide, 3 at 1920 × 1080 and 4 at 2560 × 1440; on a small window the panels keep
+their pixels and the big windows rearrange (only below 1024 × 600 do the corner panels shrink).
 
 Clock phases (`timePhase` in [`HUD.js`](../../src/engine/ui/HUD.js)):
 
@@ -185,14 +195,17 @@ when knocking*, a sign's *Sign text*, a well's *Text when examined*).
 The target must be roughly in front of you and at about your height. A villager stops, turns to
 you and carries on afterwards.
 
-**The dialogue window** types each page out letter by letter, with little blips and pauses at
-punctuation. Words in **gold** are names and places (level authors mark them as `{word}`).
+**The dialogue window** (bottom left) shows the speaker's portrait, the name on a plate — with a
+title where the villager has one (Sela: *Warden of the Cinderwatch*) — and types each page out
+letter by letter, with little blips and pauses at punctuation (Japanese and Chinese character by
+character). Words in **gold** are names and places (level authors mark them as `{word}`). A
+question may stand under the speech, with the answers in a small window above.
 
 - **Space / Enter / F** (or a click on the window) while typing completes the page; once complete,
   it turns the page. The bobbing **▼** means "more"; the last page ends with a diamond.
 - **Esc / Backspace** while typing also completes the page. A conversation cannot be skipped
   entirely.
-- **Choices** appear in a list with a gold cursor: **↑ / ↓** (or W / S, D-pad) and confirm, or
+- **Choices** appear in a small window with a gold gem cursor: **↑ / ↓** (or W / S, D-pad) and confirm, or
   click one. For a quarter of a second after the choices appear input is ignored, so mashing
   through the text never picks one by accident — and in the built-in questions (rest, shop, music,
   Emberfall's conversations) the **first answer is the non-committal one** ("Not yet", "Just
@@ -208,7 +221,7 @@ punctuation. Words in **gold** are names and places (level authors mark them as 
 | **Music** (bards) | Starts the music when it is silent; when it is playing they offer to stop it. |
 
 Emberfall's eight villagers use hand-written conversations (`CONVERSATIONS` in
-[`dialogue.js`](../../src/demo/dialogue.js)). Four of them change on later visits: the elder, the
+[`dialogue.js`](../../src/game/dialogue.js)). Four of them change on later visits: the elder, the
 guard, the child and the scholar say something different the second time, and Wren the bard asks
 whether to keep playing (or starts the music again if it is silent).
 
@@ -252,10 +265,11 @@ while the world map is open. **P**, **Esc**, **Backspace** or gamepad **B** brin
 
 For more freedom, set up the camera in the debug panel before entering photo mode (the panel is
 hidden with the rest of the UI): **Camera › free yaw** lets the camera turn all the way round, and
-**Camera › fov / distance** reframe the shot. **Camera › pitch** does not stick: while you play,
-the game re-applies the level's pitch (or the high-ground tilt) every frame. In photo mode the
-camera keeps the pitch it had when you entered, and the edge-of-map limit on Q / E is lifted
-(`Game._updatePlayCamera` is skipped for both).
+**Camera › fov / distance** reframe the shot. **Camera › pitch** changes the level's pitch while
+you play — or its high-ground tilt while you stand up there (Windmill Hill) — and stays until
+**Camera › reset** or the next level. In photo mode the camera keeps the pitch it had when you
+entered, and the edge-of-map limit on Q / E is lifted (`Game._updatePlayCamera` is skipped for
+both).
 
 ---
 
@@ -271,7 +285,7 @@ first key press or click (browser rule).
 
 ## 9. The world map
 
-**N** or **Tab** (gamepad **Back / View**) opens a full-screen, gold-framed map of the whole level:
+**N** or **Tab** (gamepad **Back / View**) opens a gilded window with a map of the whole level:
 region names, your arrow, villagers, signs, doors and wells, campfires, buildings, roads, water and
 forest, with a legend and *You are in …*. You stand still while it is open — the clock and the
 villagers carry on. Close it with **N**, **Tab**, **Esc** or **Backspace** (gamepad **B** or
@@ -292,9 +306,9 @@ Changes are live and are not saved.
 | Folder | Controls | Use it to |
 | --- | --- | --- |
 | **Time & Weather** | time of day (0–24), *speed (h / s)* (0–2 game hours per real second in 0.01 steps; the default is 1/90 ≈ 0.011, shown as 0.01), paused, weather, *next preset (T)* | Freeze or scrub the clock. |
-| **Post FX** | *post-processing* on / off; **Depth of field** (enabled, CoC debug view, autofocus and autofocus speed, focus distance / range, max blur, near / far scale, tilt-shift amount / centre / width / feather, bokeh boost / threshold / sprites); **Bloom** (enabled, strength, radius, threshold, knee, warmth); **Grade** (enabled, exposure, contrast, saturation, temperature, tint, vignette and its softness / roundness, grain and grain size, chromatic aberration, sharpen, dither; split-toning and vignette colour) | Tune or switch off the HD-2D look. |
+| **Post FX** | *post-processing* on / off; **Depth of field** (enabled, CoC debug view, autofocus and autofocus speed, focus distance / range, max blur, near / far scale, tilt-shift amount / centre / width / feather, bokeh boost / threshold / sprites); **Bloom** (enabled, strength, radius, threshold, knee, warmth); **Grade** (enabled, exposure, contrast, saturation, temperature, tint, vignette and its softness / roundness, grain and grain size, chromatic aberration, sharpen, dither; split-toning and vignette colour) | Tune or switch off the 2.5D pixel-art look. |
 | **Lighting** | sun, ambient, fog, exposure and point-light multipliers; shadows; lantern flicker; shadow extent; cliff bounce | Adjust the light on top of the time-of-day palette. |
-| **Camera** | fov, pitch, distance, yaw, free yaw, look-ahead, follow speed, reset | Frame screenshots; *reset* restores the level's framing. The game re-applies its pitch every frame during play, so the pitch slider does not stick. |
+| **Camera** | fov, pitch, distance, yaw, free yaw, look-ahead, follow speed, reset | Frame screenshots; *reset* restores the level's framing. The pitch slider changes the active ground or high-ground pitch until reset or the next level. |
 | **Atmosphere** | god rays, dust motes, fireflies, falling leaves, petals, chimney smoke, waterfall mist, wind, snow cover | Thin out or boost the particles. |
 | **Render** | render scale (0.5–1), dynamic resolution, show stats, *photo mode (P)* | Trade sharpness for speed ([performance tips](GETTING_STARTED.md#63-performance-tips)). |
 
@@ -307,18 +321,28 @@ Every knob is explained from the engine side in [architecture/RENDER_PIPELINE.md
 
 | Level | URL | Size | Starts | What is there |
 | --- | --- | --- | --- | --- |
-| **Emberfall** — *Riverside Village* | `/` | 48 × 40 | 17:12, clear | The original demo: a village square, Windmill Hill, two waterfalls, a river and bridge, a farm, an autumn grove with a pond and a campfire meadow. 8 villagers, 6 houses, 136 objects, 7 regions. |
-| **Starfall Vale** — *Where the Stars Come Home* | `/?level=starfall-vale` | 128 × 128 | 17:24, clear | The flagship: the night of the Starfall Festival across a whole vale. 29 villagers, 27 houses, 874 objects, 31 regions, 5 waterfalls, 10 bridges and piers. |
-| **Brightwater Crossing** — *A Riverside Hamlet* | `/?level=brightwater-crossing` | 36 × 28 | 16:48, clear | A hamlet built entirely in the level editor: Miller's Hill with a windmill, a waterfall into a plunge pool, a river and bridge, the inn, a farm and a lily pond. 4 villagers, 68 objects. |
-| **Willowmere** — *A Hamlet by the Pond* | `/?level=sample-hamlet` | 28 × 22 | 16:48, clear | The small example level: a green, an orchard terrace and a mirror pond. 3 villagers, 38 objects. |
-| **Cinderwatch Pass** — *Where the Old Fires Wake* | `/?level=cinderwatch-pass` | 96 × 120 | 16:48, clear, clock stopped | The **combat** level ([§15](#15-combat-cinderwatch-pass)): a camp with training dummies, a glade of slimes, the Bramble Ruins or the Hollow Mire, the Cinder Quarry and the boss Cinderheart in its caldera. 53 enemies in 24 groups, 6 chests, 3 waystones, 5 villagers. |
+| **Emberfall** — *Riverside Village* | `/game.html` | 48 × 40 | 17:12, clear | The original demo: a village square, Windmill Hill, two waterfalls, a river and bridge, a farm, an autumn grove with a pond and a campfire meadow. 8 villagers, 6 houses, 137 objects, 7 regions. |
+| **Starfall Vale** — *Where the Stars Come Home* | `/game.html?level=starfall-vale` | 128 × 128 | 17:24, clear | The flagship: the night of the Starfall Festival across a whole vale. 29 villagers, 27 houses, 875 objects, 31 regions, 5 waterfalls, 10 bridges and piers. |
+| **Brightwater Crossing** — *A Riverside Hamlet* | `/game.html?level=brightwater-crossing` | 36 × 28 | 16:48, clear | A hamlet built entirely in the level editor: Miller's Hill with a windmill, a waterfall into a plunge pool, a river and bridge, the inn, a farm and a lily pond. 4 villagers, 68 objects. |
+| **Gildhaven** — *Market Day on the River Gild* | `/game.html?level=gildhaven` | 128 × 128 | 16:36, clear | A walled river town with a market, quays, bridges, an abbey and farms; 68 villagers and 53 houses. |
+| **Willowmere** — *A Hamlet by the Pond* | `/game.html?level=sample-hamlet` | 28 × 22 | 16:48, clear | The small example level: a green, an orchard terrace and a mirror pond. 3 villagers, 38 objects. |
+| **Cinderwatch Pass** — *Where the Old Fires Wake* | `/game.html?level=cinderwatch-pass` | 96 × 120 | 16:48, clear, clock stopped | The **combat** level ([§15](#15-combat-cinderwatch-pass)): a camp with training dummies, a glade of slimes, the Bramble Ruins or the Hollow Mire, the Cinder Quarry and the boss Cinderheart in its caldera. 58 enemies in 24 groups, 6 chests, 3 waystones, 7 villagers — three of them join your party; the pass is balanced for a party of four ([§15.7](#157-companions)). |
 
 Add `&autostart=1` to skip the title. Any other file in `public/levels/` plays with
 `?level=<file name>`, and levels saved in the browser with `?level=local:<slot>` — see
-[Getting started › URLs](GETTING_STARTED.md#41-urls-of-the-game). How the levels were designed:
-[Emberfall](../design/levels/emberfall.md), [Starfall Vale](../design/levels/starfall-vale.md),
+[Getting started › URLs](GETTING_STARTED.md#41-urls-of-the-game). The front page, `/`, is the
+**launcher**: every level and campaign in the project with a *Play* link (and *Edit*, into the
+editor) — [Getting started › The launcher](GETTING_STARTED.md#44-the-launcher). How the levels
+were designed: [Emberfall](../design/levels/emberfall.md), [Starfall Vale](../design/levels/starfall-vale.md),
 [Brightwater Crossing](../design/levels/brightwater-crossing.md),
-[Willowmere](../design/levels/sample-hamlet.md), [Cinderwatch Pass](../design/levels/cinderwatch-pass.md).
+[Willowmere](../design/levels/sample-hamlet.md), [Gildhaven](../design/levels/gildhaven.md),
+[Cinderwatch Pass](../design/levels/cinderwatch-pass.md).
+
+A **campaign** joins several levels into one story you walk through without a reload — the demo
+is *The Ferryman's Lantern*, `/game.html?campaign=ferrymans-lantern`
+([§16](#16-campaigns-the-ferrymans-lantern)); *Emberfall — Open Doors*,
+`/game.html?campaign=emberfall-interiors`, opens every door of Emberfall
+([§16.5](#165-emberfall--open-doors)).
 
 ![Brightwater Crossing at golden hour](../assets/screenshots/brightwater-golden-hour.jpg)
 
@@ -387,9 +411,9 @@ work with `__game.talkTo(id)`).
 
 ## 13. A guided tour of Starfall Vale
 
-`/?level=starfall-vale` — the night of the Starfall Festival. You arrive at the south edge on the
-King's Road (70.5, 121.5), facing north, at 17:24. The clock runs: night falls about five minutes
-later, or press **T**. Open the world map (**N**) often — the vale is large.
+`/game.html?level=starfall-vale` — the night of the Starfall Festival. You arrive at the south
+edge on the King's Road (70.5, 121.5), facing north, at 17:24. The clock runs: night falls about
+five minutes later, or press **T**. Open the world map (**N**) often — the vale is large.
 
 ![Starfall Vale title screen](../assets/screenshots/starfall-title.jpg)
 
@@ -442,10 +466,11 @@ glade); then `__game.setTime(22)`.
 
 ## 15. Combat (Cinderwatch Pass)
 
-Levels with enemies — the shipped one is **Cinderwatch Pass** (`/?level=cinderwatch-pass`) — add
-real-time action combat. Everything above still works there; the combat keys below do nothing on
-the other levels. The title screen shows a level row: **← / →** (or the d-pad) choose a level and
-**Enter / A** travels there; any other key starts the current level.
+Levels with enemies — the shipped one is **Cinderwatch Pass**
+(`/game.html?level=cinderwatch-pass`) — add real-time action combat. Everything above still works
+there; the combat keys below do nothing on the other levels. The title screen shows a level row:
+**← / →** (or the d-pad) choose a level and **Enter / A** travels there; any other key starts the
+current level.
 
 ![The Waystone Camp at golden hour: the lodge, the campfire square, three straw training dummies and the waystone, with the combat HUD — level, HP, MP and SP under the location plate, the skill bar bottom right](../assets/screenshots/cinderwatch-camp.jpg)
 
@@ -477,7 +502,7 @@ pulse while that foe winds up). The boss has a bar at the bottom centre with its
 
 ### 15.3 Reading a fight
 
-![A fight in the Bramble Ruins: a shaman's Hex Flame circle fills on the ground under the traveler while goblins close in; damage numbers, enemy health bars and alert marks above them](../assets/screenshots/cinderwatch-ruins-fight.jpg)
+![A fight in the Bramble Ruins: goblins close in on the traveler, with damage numbers, enemy health bars and the combat HUD](../assets/screenshots/cinderwatch-ruins-fight.jpg)
 
 - **Every enemy attack is telegraphed**: the enemy flashes orange while it winds up, and big or
   ranged attacks draw a red marker on the ground that fills up — the hit lands when it is full.
@@ -516,32 +541,40 @@ stunned for two seconds; **roll inward through the rings**; step out of the magm
 opens the arena, drops its core (max HP +20) and shows a results card with your time, foes,
 falls, perfect dodges and level. Odo on the quarry lip and the signposts say the same.
 
-![Cinderheart's third phase: expanding shockwave rings, a magma pool under the golem, the ember wall across the gate and the boss bar with its phase gems](../assets/screenshots/cinderwatch-boss.jpg)
+![Cinderheart in the caldera: a magma pool under the traveler, the four braziers, the ember wall across the gate and the boss bar](../assets/screenshots/cinderwatch-boss.jpg)
 
 ### 15.5 A walk up the pass (light spoilers)
 
 The pass climbs from south to north — up the screen — so the camera always looks ahead.
 
 1. **Waystone Camp** (safe). Talk to **Captain Maren** by the dummies: she explains the keys, and a
-   full combo on a dummy plus one roll earns two draughts. **Sister Ilse** explains waystones;
-   **Bram** sells draughts and a few upgrades for your gold. The camp's waystone is your first checkpoint. Not everything in the camp
-   is in plain sight.
-2. **Mossy Glade** (Lv 1). Slimes in the meadow and two goblins by the brook — the place to learn
+   full combo on a dummy plus one roll earns two draughts. **Sister Ilse** by the campfire explains
+   waystones and offers to come with you as a healer; **Rook**, the camp's bowman just south of the
+   dummies, offers his bow. Take them both: the pass is tuned for you and three companions
+   ([§15.7](#157-companions)), and alone it is hard. **Bram** sells draughts and a few upgrades for
+   your gold. The camp's waystone is your first checkpoint. Not everything in the camp is in plain
+   sight.
+2. **Mossy Glade** (Lv 2). Slimes in the meadow and three goblins by the brook — the place to learn
    the combo, the roll and the lock-on. There is a chest out west.
-3. **The Crossroads**. A second waystone, and **Pip**, who tells you what each way offers. Rest
-   here before choosing.
-4. **Either branch** (Lv 2–3) — both end on the quarry lip and give the same experience:
-   - **Bramble Ruins** (west): goblins at a broken gate, a hex shaman in the court and archers on a
-     ledge above it — close the distance or break their line of sight. A reward waits up on the
-     ledge, and the ridge beside the ruins hides a small pocket.
-   - **Hollow Mire** (east): bats over the ponds, slimes on the banks, a shaman, and goblins at the
-     foot of the quarry stair. The islet in the great pond is reachable — find the boardwalk.
-5. **Cinder Quarry** (Lv 4). Ironhide boars charge in straight lines: step aside and let them hit a
+3. **The Crossroads**. A second waystone; **Sela**, a warden of the watch, who joins you as the
+   fourth; and **Pip**, who tells you what each way offers. Rest here before choosing.
+4. **Either branch** — both end on the quarry lip; the Ruins are the harder way and give more
+   experience:
+   - **Bramble Ruins** (west, Lv 7–8): goblins at a broken gate, a hex shaman in the court and
+     archers on a ledge above it — close the distance or break their line of sight. A reward waits
+     up on the ledge, and the ridge beside the ruins hides a small pocket.
+   - **Hollow Mire** (east, Lv 6–7): bats over the ponds, slimes on the banks, a shaman, and goblins
+     at the foot of the quarry stair. The islet in the great pond is reachable — find the boardwalk.
+5. **Cinder Quarry** (Lv 8). Ironhide boars charge in straight lines: step aside and let them hit a
    rock or a block of cut stone for a long stun. Archers on the upper terrace, bats, a goblin
    crew — and an old boar with a name. **Odo** by the Quarry Waystone has advice for the boss and
    the watch's last stores — spend your gold there; rest at that waystone before the stair to the
    caldera.
-6. **The Caldera**: Cinderheart ([§15.4](#154-cinderheart)). You should be about level 5.
+6. **The Caldera**: Cinderheart ([§15.4](#154-cinderheart)). With the full party you should be about
+   level 6.
+
+The levels on the banners are the foes', set for four fighters: with the full party you leave the
+branch at about level 4 yourself.
 
 The clock is stopped at golden hour on this level; **T** still changes the time if you want to
 fight at night. Doing both branches is possible and gives extra experience and loot.
@@ -560,3 +593,151 @@ fight at night. Doing both branches is possible and gives extra experience and l
 | **Cinderheart** | The boss — [§15.4](#154-cinderheart). |
 
 An **elite** (a gold-framed bar with a name plate) has more health, hits harder and is worth more.
+
+### 15.7 Companions
+
+Three villagers of the pass will fight beside you — a party holds three, so all of them:
+
+| Who | Where | Fights as |
+| --- | --- | --- |
+| **Sister Ilse** | Waystone Camp, by the campfire | **Mystic** (staff): ember bolts, a flare that bursts on foes, the strongest healing. She starts on *Support*. |
+| **Rook** | Waystone Camp, just south of the dummies | **Ranger** (bow): arrows from range and a volley. |
+| **Sela** | The Crossroads Waystone | **Warden** (spear): thrusts up close and a sweeping strike. |
+
+All three can heal (*Mend*) when their tactic says so; Ilse's mends the most.
+
+- **Recruiting.** Talk to one and answer *Walk with me* (*Not yet* keeps the offer for later). A
+  toast says who joined.
+- **On the road** companions walk in your footsteps. Their frames sit under your vitals — name,
+  level, class, tactic, HP and MP — and they show as dots on the minimap and the world map.
+- **Tactics.** In a fight each one fights on its own, by its tactic. **G** opens the tactics panel
+  (on a gamepad: talk to a companion and pick *Tactics…*): **Q / E** (LB / RB) switch companion,
+  the six presets — *Balanced*, *All-Out*, *Guard Me*, *Support*, *Hunt Casters*, *Hold Back* — or
+  the seven rules under them set how it fights. Play waits while the panel is open; **G** or
+  **Esc** closes it. On the way up a companion sometimes changes its own tactic (a toast says so).
+- **Fights.** An enemy a companion hits may turn on it; Cinderheart and its bats always go for
+  you, but its slams, rings and magma hurt companions too. A companion at 0 HP is down until the
+  fight is over and then gets up; out of a fight they heal quickly. They level with you, and what
+  they kill gives you experience and loot.
+- **Talking to a companion**: *Tactics…* opens the panel, *Part ways* (asked twice) leaves them
+  where you stand — talk to them there to take them along again — and *Lead on* carries on.
+- **Balance.** The pass is tuned for you and all three; nothing about the enemies changes with how
+  many walk with you. Alone, expect more draughts and more falls — Cinderheart above all.
+
+---
+
+## 16. Campaigns (The Ferryman's Lantern)
+
+A campaign is a story told across several levels: you walk off the end of a road into the next
+place, open a door into a cellar, and the game remembers what you have done. It switches levels in
+the running page — the screen fades, the next place loads and fades back in —
+and it keeps your clock, weather, experience, gold and potions on the way. The demo campaign is
+**The Ferryman's Lantern**: `/game.html?campaign=ferrymans-lantern`.
+
+![The title screen over Millbrook green](../assets/screenshots/ferrymans-lantern-title.jpg)
+
+### 16.1 Travelling
+
+| Way | How it works |
+| --- | --- |
+| **Off the edge** | Where a road leaves the map into the next place, just keep walking: you arrive on the same road on the other side. Walking back takes you back. |
+| **Doors** (**Space**) | A door, a ladder or a cellar hatch that leads somewhere shows a prompt (*Space · Enter*, *Space · Climb up*) when you stand in front of it. Press **Space** (pad **A**) to go through. |
+| **Locked ways** | A way that needs something first says so when you try it ("The cellar door is locked …"); someone in the story can open it. |
+
+Interiors keep their own hour and weather: the campaign clock stops while you are inside and goes
+on from where it was when you come out. The **world map** (**N** / **Tab**) shows every outdoor
+place of the campaign side by side; places you have not been to yet are dimmed.
+
+### 16.2 The story: conversations, quests, the journal
+
+- **Talking** works as everywhere (**Space**), but what people say follows the story: their lines
+  change as things happen, some offer **choices** that change what happens next, and some remember
+  what you asked before.
+- **Things to examine** in a story — a stack of planks, an old chart — show a prompt like a door
+  (*Space · Search*, *Space · Read*).
+- **Items and gold** you receive show in a toast at the top; **quests** too ("New quest",
+  "Quest updated", "Quest complete").
+- **The journal** (**B**; B or Esc closes it): *Quests* — the active ones first, what you have
+  learned so far and the objectives (ticked when done) — and *Items* with your gold. ←/→ or Q/E
+  switch tabs, ↑/↓ choose an entry.
+- **Cutscenes** take the camera for a moment (black bars at the top and bottom): people walk, the
+  camera looks at what matters, the screen may fade. **Hold Esc** to skip one (a choice in it is
+  still asked).
+- Some places and people **change while you watch** — a bridge is built, someone leaves.
+
+![The journal in Millbrook](../assets/screenshots/ferrymans-lantern-journal.jpg)
+
+### 16.3 Saving and continuing
+
+The game saves by itself — every time you change places, when the story moves on and when you
+close or hide the page — in this browser (`localStorage`, one save per campaign; the previous save
+is kept as a backup). A cutscene or conversation is saved as a whole: closing the page in the
+middle of one brings you back to just before it. The title screen then offers **Continue** (back
+where you were, with the story, quests, items, the clock, your level, gold and the chests you
+opened) or **New journey** (the start, nothing remembered). `&new=1` in the URL also starts over;
+`&autostart=1` skips the title. Saves stay in the current browser and site address; clearing site
+data removes them, and another browser, port or device has its own progress.
+
+### 16.4 A walk through the tale (light spoilers)
+
+1. **Millbrook** (morning). Elder Wren tells you that Ilse the ferryman went east to the Old Quarry
+   with the ferry lantern and has not come back — will you look for her? Hollis the carpenter can
+   mend the broken bridge, if you find him the timber; Miller Odo keeps a key. The journal (B)
+   keeps track.
+2. **Mill Road**. Follow the road east off the map. The flood took the bridge at the Wolf Ford —
+   it will not be there until Hollis has mended it (watch).
+3. **The Old Quarry** — the one place with **combat** ([§15](#15-combat-cinderwatch-pass) has the
+   controls): slimes in two packs, a waystone and a chest. Ilse waits on a ledge; find the way up.
+4. **Home**. Bring the lantern back to begin **Chapter Two — Lanterns Home**: Millbrook at dusk,
+   every window lit. The cellar under the mill is worth a look at any time, once you have the key.
+   And when the ford is lit again, Ilse may row you across.
+
+![Chapter Two: Millbrook at dusk](../assets/screenshots/ferrymans-lantern-lanterns-home.jpg)
+
+### 16.5 Emberfall — Open Doors
+
+A second campaign, `/game.html?campaign=emberfall-interiors`, has no quest: it is Emberfall with
+every door open. Walk up to any house — the inn, the elder's cottage, the riverside house, the
+thatched cottage, the woodcutter's lodge, Tobin's barn, even the windmill on the hill — and press
+**Space** at *Enter*. Inside is a furnished room with new people to talk to; *Go out* is at the gap in the
+low wall nearest you, and the inn, the windmill and the barn have a floor above (*Go upstairs* at
+the foot of the stairs, *Go downstairs* at the stairwell). The game keeps the village and the
+last room ready to speed up return visits; a first visit may need extra loading time. Each room
+keeps its own hour, and the
+weather stays outside.
+
+![The Ember & Oak's taproom](../assets/screenshots/emberfall-interiors-taproom.jpg)
+
+How the campaign is built and how to make your own:
+[the design page](../design/campaigns/ferrymans-lantern.md),
+[the campaign format](../specs/CAMPAIGN_FORMAT.md) and the
+[level design guide §17](../design/LEVEL_DESIGN_GUIDE.md#17-campaigns-several-levels-one-story).
+
+---
+
+## 17. Languages
+
+The game plays in **English**, **Japanese** (日本語) and **Simplified Chinese** (中文): every word
+of the UI, and everything the levels, campaigns and stories show — names, signs, dialogue, quests,
+banners and title screens.
+
+- **On the title screen:** press **L** (gamepad **LB** or **RB**) — the language row in the
+  bottom-right corner lights the current language; **← / →** (or L / LB / RB again) choose,
+  **Enter** (gamepad **A**) switches, **Esc** / **Backspace** (gamepad **B**) goes back. A click on
+  a language switches at once. The page reloads in that language (a campaign's saved game is the
+  same in every language; play since the last save is lost) and remembers the choice in this
+  browser.
+- **In the address:** `?lang=ja`, `?lang=zh` or `?lang=en` plays that language for one load
+  without saving it. The game never follows the browser's own language.
+- **Fonts:** the pixel fonts load from Google Fonts first and, when that fails, from the copies
+  that come with the game, so a locally served build can play without internet access; the first
+  load after a failure may take a few seconds longer.
+- HP, MP, SP, Lv, G, key names and numbers stay in Latin letters in every language, as in Japanese
+  and Chinese RPGs. The level editor and the debug panel stay English.
+- A level you made yourself, or a line of a shipped level edited since it was translated, shows
+  its text in English until its translation is added — the rest of the game stays in your
+  language.
+
+| 日本語 | 中文 |
+| --- | --- |
+| ![The title screen in Japanese: エンバーフォール in gilded pixel type over the English wordmark](../assets/screenshots/emberfall-title-ja.jpg) | ![Elder Maren in Chinese: 玛伦长老 in the dialogue window](../assets/screenshots/emberfall-dialogue-zh.jpg) |

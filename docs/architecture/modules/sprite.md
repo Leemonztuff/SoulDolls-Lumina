@@ -1,6 +1,6 @@
 # Sprite module: Sprite3D, SpriteManager, Foliage, BlobBatch
 
-> **Purpose.** This is the reference for how pixel-art sheets become HD-2D actors. `Sprite3D` is
+> **Purpose.** This is the reference for how pixel-art sheets become actors in the 2.5D diorama. `Sprite3D` is
 > an animated billboard that is lit by the sun, the hemisphere and point lights without going
 > black when backlit, casts a full-silhouette shadow toward the sun and has a soft contact-shadow
 > blob. `SpriteManager` updates them all each frame. `Foliage` draws thousands of wind-swaying
@@ -48,7 +48,8 @@ shadow-casting walkers in a meadow of 3,000 instanced grass tufts, plus every pa
 - `window.__sb`: `sheet`, `spriteManager`, `walkers`, `foliage`, `particles`, `emitters`,
   `setNight(n)`, `setYaw(deg)`, `setView`, `weather`, `freeze()`, `stats()`, `textureStats()`
   (proves that spawning sprites uploads no textures), and `testEmitterToggles()`,
-  `testDirectionPhase()`, `testPlaySemantics()`.
+  `testDirectionPhase()`, `testPlaySemantics()`, `testRegistryAndWarnings()` (removals from inside an
+  update, one warning per unknown animation name, `parseColor`).
 
 ```bash
 npm run check -- --page=sandbox/sprite_runtime.html --query= --out=sprite_runtime --script=sandbox/sprite_runtime.actions.json
@@ -103,14 +104,14 @@ adds 0 texture uploads.
 | `wrap` *(extra)* | `0.6` | Wrap-diffuse amount: `(N·L + w)/(1 + w)`. |
 | `roundness` *(extra)* | `0.8` | Horizontal normal bend across the frame, so a side lantern lights one side. The demo uses 0.55. |
 | `ditherMode` *(extra)* | `'screen'` | Opacity dither in screen pixels, or `'texel'` for chunky pixel-art fades. |
-| `blobSize` *(extra)* | `[max(0.7, w·0.52), max(0.36, w·0.26)]` | `[width, depth]` in world units (w = quad width). The demo's critters use per-kind sizes from `[0.35, 0.18]` (bird) to `[0.8, 0.34]` (dog) (`KINDS` in [`src/demo/Critters.js`](../../../src/demo/Critters.js)). |
+| `blobSize` *(extra)* | `[max(0.7, w·0.52), max(0.36, w·0.26)]` | `[width, depth]` in world units (w = quad width). The demo's critters use per-kind sizes from `[0.35, 0.18]` (bird) to `[0.8, 0.34]` (dog) (`KINDS` in [`src/game/Critters.js`](../../../src/game/Critters.js)). |
 | `blobOpacity` *(extra)* | `0.5` | |
 | `tint` *(extra)* | `null` | Initial multiply colour. |
 | `animation` / `direction` *(extra)* | `null` / `'down'` | Initial state. Without `animation`, an `idle` (or `idle_<dir>`) animation auto-plays if the sheet has one. |
-| `combatFx` | `false` | Combat levels only ([COMBAT.md §10.1](../../contracts/COMBAT.md#101-sprite3d-option-combatfx-sprites)): the lit material becomes the `lumina-sprite3d-lit-fx-v1` variant with a per-sprite hit flash, selective glow and highlight (`setFlash` / `setGlow` / `setHighlight`, §2.7). Ignored with `lit: false`. |
+| `combatFx` | `false` | Combat levels only ([COMBAT.md §10.1](../../contracts/COMBAT.md#101-sprite3d-option-combatfx-sprites)): the lit material becomes the `luminati-sprite3d-lit-fx-v1` variant with a per-sprite hit flash, selective glow and highlight (`setFlash` / `setGlow` / `setHighlight`, §2.7). Ignored with `lit: false`. |
 
 The shared look for the demo's characters is `CHARACTER_SPRITE_OPTS` in
-[`src/demo/config.js`](../../../src/demo/config.js).
+[`src/game/config.js`](../../../src/game/config.js).
 
 ### 2.3 Members
 
@@ -137,7 +138,7 @@ The shared look for the demo's characters is `CHARACTER_SPRITE_OPTS` in
 
 | Method | Description |
 | --- | --- |
-| `play(name, { restart = false, speed, keepPhase = false } = {})` | See §2.4. Returns `this`. An unknown name is ignored with a `console.warn`, logged only for the **first** unknown name per sprite. |
+| `play(name, { restart = false, speed, keepPhase = false } = {})` | See §2.4. Returns `this`. An unknown name is ignored with a `console.warn` (`Sprite3D: unknown animation "…"`), once per name for the whole page: a crowd of sprites playing the same missing name warns once, and every different unknown name still warns (SPR-13). |
 | `setDirection(dir)` | Switches `walk_down` → `walk_left` **keeping the frame phase**. |
 | `faceVector(dx, dz, yaw = globalUniforms.uCameraYaw.value)` | Picks the camera-relative direction for a world XZ movement, with 1.15× hysteresis so diagonals don't flicker. |
 | `static directionFromVector(dx, dz, yaw = 0, current = 'down')` | The same, as a pure function. Screen-right = `dx·cos − dz·sin`, screen-down = `dx·sin + dz·cos`. |
@@ -183,8 +184,8 @@ same patch.
   RGBA packing, the same texture, alphaTest and dither) casts a full silhouette. The proxy draws
   nothing in the colour pass (`colorWrite: false`), but three still issues a draw call for it
   there (see §6).
-- Program cache keys are `lumina-sprite3d-lit-v1`, `-unlit-v1` and `-depth-v1`, so all sprites
-  share programs. `combatFx` sprites use `lumina-sprite3d-lit-fx-v1` for the visible material
+- Program cache keys are `luminati-sprite3d-lit-v1`, `-unlit-v1` and `-depth-v1`, so all sprites
+  share programs. `combatFx` sprites use `luminati-sprite3d-lit-fx-v1` for the visible material
   (§2.7); their depth material stays `-depth-v1`.
 
 ### 2.7 Combat flash, glow and highlight (`combatFx`)
@@ -225,7 +226,7 @@ brighten (255 for the golem, 0 for the slime, which has no glow texels).
 | `spriteSheetFromProp(prop)` | Adapts a `{ texture, width, height, frames?, fps? }` prop result to a one-row SpriteSheet with a looping `idle`. It detects whether `width` is the frame or the whole strip. Objects that already have `frameWidth` are returned unchanged. |
 | `patchSpriteLighting(shader, uniforms, { shadowCenter = 'modelMatrix[ 3 ].xyz' } = {})` | Applies the lighting patch to any Lambert shader inside `onBeforeCompile`. `uniforms` must contain `uNormalUp, uWrap, uRoundness, uShadowSkip, uShadowSkipBias`. `uSunDirection` is taken from `globalUniforms`. |
 | `cloneSharedTexture(src)` | `texture.clone()` that restores `source.version`, so the clone does not re-upload the shared image. |
-| `GLSL_BAYER4` | GLSL `float luminaBayer4(vec2 p)`, the 4×4 ordered-dither threshold. |
+| `GLSL_BAYER4` | GLSL `float luminatiBayer4(vec2 p)`, the 4×4 ordered-dither threshold. |
 
 ---
 
@@ -239,9 +240,9 @@ const manager = new SpriteManager(camera);   // camera handed to every sprite.up
 | --- | --- |
 | `camera` | May be swapped at runtime. |
 | `add(sprite)` → sprite | Anything with `update(dt, camera)`. Duplicates are ignored. |
-| `remove(sprite)` → boolean | Does not dispose. |
+| `remove(sprite)` → boolean | Does not dispose. Safe from inside an update (a sprite's `onAnimationEnd` / `onFrameChange`, or its own `update`): the walk stays in step, so no other sprite is skipped that frame, and a removed sprite the walk has not reached yet is not updated (SPR-06). |
 | `sprites` | The **live** array. Do not mutate it. |
-| `update(dt)` | Calls `sprite.update(dt, camera)` for all. Engine-system compatible (`name = 'SpriteManager'`). |
+| `update(dt)` | Calls `sprite.update(dt, camera)` for all, in registration order; a sprite added during the walk is updated in the same frame. Engine-system compatible (`name = 'SpriteManager'`). |
 | `dispose({ disposeSprites = false } = {})` | Clears the registry, and optionally disposes the sprites. |
 
 Register or update it **after** `CameraRig.update` in the frame. The demo calls
@@ -367,7 +368,7 @@ together with the particle cull.
 - **`combatFx` is a separate program.** Mixing fx and plain sprites on one level compiles both
   lit variants; combat warms the fx variant at load (COMBAT.md §19).
 
-## 9. History and decisions
+## 9. Design notes
 
 - **Phase 1 audit fixes** (sprite runtime):
   - `play()` speed semantics now match the contract: a new animation resets `speed` to
@@ -377,13 +378,13 @@ together with the particle cull.
   - Spherical billboards compensate the group rotation.
   - `clone()` works; `Object3D#clone` used to throw without a sheet.
   - `spriteSheetFromProp` was added, so prop flame strips are accepted directly.
-- **Phase 2 (Emberfall):**
+- **Emberfall:**
   - Backlit characters at golden hour were fixed **from the demo side** with the existing
     options (`normalUp`, `wrap`, `roundness`, a small `emissive` fill driven by
     `registerEmissive`). This is now `CHARACTER_SPRITE_OPTS`.
   - `_resolve()` results are cached per name and direction, so calling `play()` every frame
     allocates nothing.
-- **Combat (COMBAT.md §10.1):** the opt-in `combatFx` variant (`lumina-sprite3d-lit-fx-v1`) with
+- **Combat (COMBAT.md §10.1):** the opt-in `combatFx` variant (`luminati-sprite3d-lit-fx-v1`) with
   per-sprite `uFlash` / `uGlow` replaced per-enemy materials or emissive writes (which
   `LightingSystem` rewrites every frame). Glow is keyed on texel alpha 204 instead of a second
   mask texture; the fallback (a glow-mask texture under `-fx-v2`) was not needed.
@@ -393,7 +394,7 @@ together with the particle cull.
   `opacity` alone; peaceful sprites keep both at the same value, so their look and programs are
   unchanged. The editor's enemy batch (`src/editor/viewport3d/SpriteBatch.js`) does not batch a
   sprite whose `opacity` or `bodyOpacity` is below 1 (KNOWN_ISSUES ED-26).
-- **Phase 4 (Starfall Vale):**
+- **Starfall Vale:**
   - `BlobBatch` was added. It gives a pixel-identical A/B result, and the worst zoomed-out town
     view went from 344 to ~300 draw calls (with the particle cull).
   - Sprite shadow proxies were made shadow-only through `makeShadowOnly`: in the game on big

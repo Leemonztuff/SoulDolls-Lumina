@@ -13,7 +13,11 @@
  * `String(v)`, `${v}`, `Number(v)` and comparisons throw ("Cannot convert object to primitive
  * value": ToPrimitive finds no callable toString / valueOf). `showValue` formats any value for a
  * message, `toText` / `toNumber` convert a value that should be text / a number (load-time code;
- * they are not meant for per-frame paths).
+ * they are not meant for per-frame paths). `stripUnconvertible` removes such values from parsed
+ * level data where the load keeps it as it is (objects, the legend, the environment: LVL-18).
+ *
+ * Colour names: `ownColor` keeps the two Object.prototype names three.js would resolve to black
+ * ("constructor", "__proto__") away from `THREE.Color` (LVL-19).
  */
 
 /**
@@ -83,4 +87,91 @@ export function toNumber(v) {
   } catch {
     return NaN;
   }
+}
+
+/**
+ * Can String() convert `v` without throwing? False for a JSON object with an own `toString` key
+ * (`{"toString": 1}`; the only kind of parsed-JSON value whose conversion throws, besides an array
+ * holding one); arrays answer true (their elements are tested on their own, see
+ * `stripUnconvertible`).
+ * @param {unknown} v
+ */
+function convertible(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return true;
+  try {
+    String(v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Does `value` hold a value String() cannot convert (itself or anywhere inside, to depth 8)? The
+ * test `stripUnconvertible` would act on (load-time code).
+ * @param {unknown} value
+ * @param {number} [depth] (internal: the recursion depth)
+ * @returns {boolean}
+ */
+export function hasUnconvertible(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 8) return false;
+  if (!convertible(value)) return true;
+  for (const k of Object.keys(value)) if (hasUnconvertible(value[k], depth + 1)) return true;
+  return false;
+}
+
+/**
+ * Remove, in place, every value String() cannot convert from parsed level data (KNOWN_ISSUES
+ * LVL-18): such a value under an object key is deleted (so a default can fill it), such an array
+ * element becomes null; plain objects and arrays are searched (to depth 8). Values String()
+ * converts — strings, numbers, booleans, null, ordinary objects and arrays — are left exactly as
+ * they are, so valid data keeps its bytes. Load-time code: pass a copy you own.
+ * @template T
+ * @param {T} value
+ * @param {number} [depth] (internal: the recursion depth)
+ * @returns {T} `value`
+ */
+export function stripUnconvertible(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 8) return value;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (!convertible(value[i])) value[i] = null;
+      else stripUnconvertible(value[i], depth + 1);
+    }
+  } else {
+    for (const k of Object.keys(value)) {
+      if (!convertible(value[k])) delete value[k];
+      else stripUnconvertible(value[k], depth + 1);
+    }
+  }
+  return value;
+}
+
+/** Colour names `ownColor` has warned about (once each). */
+const warnedColors = new Set();
+
+/**
+ * A colour from level data, safe to hand to three.js (`Color.set`, `new THREE.Color`, a light's
+ * colour). three.js looks a colour name up in its keyword table with a plain index after
+ * lower-casing it, so "constructor" and "__proto__" find an Object.prototype member and the colour
+ * turns black without a warning (KNOWN_ISSUES LVL-19). Such a name gives `undefined` after a
+ * console warning (once per name) — the caller's default, or what three.js does with any unknown
+ * name: `Color.set(undefined)` keeps the colour, `new THREE.Color(undefined)` is white. Every other
+ * value is returned as it is (an unknown name too: three.js warns about it itself). Allocates only
+ * the lower-cased copy of a string.
+ * @template T
+ * @param {T} value any value (only strings are tested)
+ * @param {object} names the colour-name table: `THREE.Color.NAMES` (passed in, this module has no
+ *   imports)
+ * @returns {T | undefined}
+ */
+export function ownColor(value, names) {
+  if (typeof value !== 'string') return value;
+  const key = value.toLowerCase();
+  if (Object.hasOwn(names, key) || !(key in names)) return value;
+  if (!warnedColors.has(key)) {
+    warnedColors.add(key);
+    console.warn(`[Luminati] "${value}" is not a colour name; the default colour is used.`);
+  }
+  return undefined;
 }

@@ -34,7 +34,7 @@ uniform vec3 uMajor;
 uniform vec3 uBorder;
 uniform vec3 uAlpha;
 uniform vec2 uFade;
-uniform vec3 uFocus; // depth, sharp range, enabled (HD-2D preview: out-of-focus lines fade like the blur)
+uniform vec3 uFocus; // depth, sharp range, enabled (diorama preview: out-of-focus lines fade like the blur)
 varying float vKind;
 varying float vDepth;
 void main() {
@@ -234,7 +234,7 @@ export class Overlays {
   }
 
   /**
-   * Fade the grid with the camera distance (called per frame); with the HD-2D preview on, lines
+   * Fade the grid with the camera distance (called per frame); with the diorama preview on, lines
    * away from the focus depth fade out like the depth-of-field blur.
    * @param {number} distance camera → focus distance
    * @param {{ depth: number, range: number }|null} [focus]
@@ -403,9 +403,9 @@ export class Overlays {
     const ae = actors.get(id);
     if (ae?.type === 'emitter') {
       if (ae.volume) boxEdges(ae.volume, IDENTITY, segs);
-    } else if (ae?.type === 'light' && ae.box) {
+    } else if ((ae?.type === 'light' || ae?.type === 'entrance' || ae?.type === 'marker') && ae.box) {
       bracketSegments(ae.box, IDENTITY, 0.3, segs);
-    } else if (ae?.type === 'region') {
+    } else if (ae?.type === 'region' || ae?.type === 'exit' || ae?.type === 'event') {
       pathToSegments(drapedRect(S, normRect(obj), { lift: 0.08, step: 0.4 }), segs);
       if (ae.label && selected) ae.label.el.classList.add('selected');
     }

@@ -14,9 +14,9 @@ the [level editor guide](../../user/LEVEL_EDITOR_GUIDE.md).
 | **Source of truth** | [`public/levels/brightwater-crossing.json`](../../../public/levels/brightwater-crossing.json) |
 | **Related docs** | [Level editor guide](../../user/LEVEL_EDITOR_GUIDE.md) · [Level design guide](../LEVEL_DESIGN_GUIDE.md) · [Level format](../../specs/LEVEL_FORMAT.md) · [Editor architecture](../../architecture/EDITOR.md) · other levels: [Emberfall](emberfall.md), [Starfall Vale](starfall-vale.md), [Willowmere](sample-hamlet.md) |
 
-Play it: `index.html?level=brightwater-crossing`. Edit it: `editor.html?open=brightwater-crossing`.
+Play it: `game.html?level=brightwater-crossing`. Edit it: `editor.html?open=brightwater-crossing`.
 
-![Brightwater Crossing at 16:54, reading the square's signpost by the campfire](../../assets/screenshots/brightwater-golden-hour.jpg)
+![Brightwater Crossing at 16:53, reading the square's signpost by the campfire](../../assets/screenshots/brightwater-golden-hour.jpg)
 
 ---
 
@@ -37,7 +37,7 @@ the old bridge to Tamsin's farm, and sit by the campfire at Lily Pond after dark
 | Height levels | 0–7 (plain at level 2 = y 1.0; Miller's Hill level 6 = y 3.0) |
 | Water | `waterLevel` 0.4, the default `water` settings (flow `[0, 0.45]` south, reflect 0.2, neutral 0.2) |
 | Spawn | (15.5, 24.5) facing up — on the south path |
-| Author field | "Lumina level editor" |
+| Author field | "Luminati level editor" |
 | Light sources | 10 (6 lampposts, the campfire, 3 lit houses) — each gets a permanent light |
 
 ---
@@ -195,7 +195,7 @@ All four use plain `dialogue` and the built-in actions (no scripts); ids are the
 corner (12.8, 17.4, radius 2.5 — it roams the mouth of the west lane, the cobbles by Elda and the
 bench), 3 birds on the south path (17.5, 20.5, radius 1.2).
 
-![Brightwater Crossing at 22:38 — lit windows, lanterns and the campfire](../../assets/screenshots/brightwater-night.jpg)
+![Brightwater Crossing at 22:36 — lit windows, lanterns and the campfire](../../assets/screenshots/brightwater-night.jpg)
 
 ---
 
@@ -214,9 +214,8 @@ bench), 3 birds on the south path (17.5, 20.5, radius 1.2).
 
 ## How it was made
 
-In phase 3 of the project the verifier of the level-editor workflow built this level **only through
-the editor UI**, with real clicks, drags and typing at 1920 × 1080, to prove the tool end to end
-(history report 05): File › New (name, 36 × 28), Rectangle, Paint and Stairs strokes, the Place
+This level was built **through the editor UI**, with clicks, drags and typing at 1920 × 1080,
+to exercise the complete editing workflow: File › New (name, 36 × 28), Rectangle, Paint and Stairs strokes, the Place
 tool (a drag for the bridge, the fences and the regions), inspector edits (names, walls and roofs,
 dialogue and sign texts, emitter sizes, NPC action / look / behaviour), the Player-start tool, the
 Level settings dialog (subtitle, author, description, the high-ground tilt), then File › Save as ›
@@ -289,10 +288,11 @@ These were found while writing this documentation and while fixing it (probed in
   the square's south-east corner or on the bridge approach (x ≥ 17.65, z ≈ 13.4–20) shows only as
   the x-ray silhouette; nothing interactive is there any more. Moving the cottage out of the way
   would take ≈ 8 units (into the forest edge). Workaround: turn the camera with **Q / E**.
-- **Posy is hidden under her own awning** (open, KNOWN_ISSUES PROP-13). The stall's awning slopes
-  from 2.72 at the back to 2.03 at the front, so a keeper standing 1–1.35 behind the stall's centre
-  is covered from the gameplay camera (15 of 15 sprite points at the counter, also at zoom 18 and
-  yaw +40°, day and night; 14 of 15 at yaw −40°); only her "…" / *Talk* bubble shows. Emberfall's Bertram has the same problem.
+- **Posy stands under her own awning** (KNOWN_ISSUES PROP-13, resolved 2026-10-07). The stall's
+  awning slopes from 2.72 at the back to 2.03 at the front, so a keeper standing 1–1.35 behind the
+  stall's centre is covered from the gameplay camera (15 of 15 sprite points at the counter, also at
+  zoom 18 and yaw +40°, day and night; 14 of 15 at yaw −40°), as is Emberfall's Bertram. While the
+  player can talk to her she shows as the x-ray silhouette (the player's own).
 - **The well roof hides the inn's door step** (open, KNOWN_ISSUES LVL-16): a player knocking at the
   inn door (16, 12.9) shows mostly as the x-ray silhouette, and so does one at the north end of the
   walkway west of the well (14.8, 14.0).

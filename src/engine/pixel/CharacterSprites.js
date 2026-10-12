@@ -1,5 +1,5 @@
 /**
- * CharacterSprites.js — procedural HD-2D character & creature sprite sheets.
+ * CharacterSprites.js — procedural 2.5D pixel-art character & creature sprite sheets.
  *
  * Characters are painted as layered pixel art (body → legs → clothing → arms → head/face → hair →
  * hat → cape → gear) into a "material + shade" label buffer, then resolved to per-character

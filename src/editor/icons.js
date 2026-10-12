@@ -78,5 +78,5 @@ export const ICONS = {
   tag: svg('<path d="M3 9.4V3.8a.8.8 0 0 1 .8-.8h5.6l7.6 7.6-6.4 6.4Z"/><circle cx="6.6" cy="6.6" r="1.2"/>'),
 };
 
-/** A small inline logo mark (the Lumina ember), coloured. */
+/** A small inline logo mark (the Luminati ember), coloured. */
 export const LOGO_SVG = `<svg viewBox="0 0 16 16" width="18" height="18" shape-rendering="crispEdges" aria-hidden="true"><path fill="#c9a45c" d="M7 2h2v1h1v2h1v2h1v4h-1v1h-1v1H6v-1H5v-1H4V7h1V5h1V3h1z"/><path fill="#f59a2e" d="M7 5h2v2h1v3H9v1H7v-1H6V7h1z"/><path fill="#fff6d0" d="M7 8h2v2H7z"/></svg>`;

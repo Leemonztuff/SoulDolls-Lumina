@@ -15,7 +15,7 @@ script; this page documents what the script builds and how to change it.
 | --- | --- |
 | **Audience** | Designers and AI agents extending or testing the big level; anyone writing a level generator. |
 | **Source of truth** | [`tools/make-starfall-vale.mjs`](../../../tools/make-starfall-vale.mjs) (the generator — edit this), [`public/levels/starfall-vale.json`](../../../public/levels/starfall-vale.json) (its output — never hand-edit) |
-| **Related docs** | [Level design guide](../LEVEL_DESIGN_GUIDE.md) (most of its rules come from this level's reviews) · [Performance](../../architecture/PERFORMANCE.md) (big-level batching) · [Level format](../../specs/LEVEL_FORMAT.md) · [Project history](../../history/PROJECT_HISTORY.md) · other levels: [Emberfall](emberfall.md), [Brightwater Crossing](brightwater-crossing.md), [Willowmere](sample-hamlet.md), [Cinderwatch Pass](cinderwatch-pass.md) (the combat demo) |
+| **Related docs** | [Level design guide](../LEVEL_DESIGN_GUIDE.md) (most of its rules come from this level's reviews) · [Performance](../../architecture/PERFORMANCE.md) (big-level batching) · [Level format](../../specs/LEVEL_FORMAT.md) · [Architecture overview](../../architecture/OVERVIEW.md) · other levels: [Emberfall](emberfall.md), [Brightwater Crossing](brightwater-crossing.md), [Willowmere](sample-hamlet.md), [Cinderwatch Pass](cinderwatch-pass.md) (the combat demo) |
 
 ```bash
 node tools/make-starfall-vale.mjs              # regenerate (≈ 0.8 s); refuses to write if a check fails
@@ -28,7 +28,7 @@ node tools/make-starfall-vale.mjs --force      # write a failing level for inspe
 The run is deterministic: `--out=<scratch file>` produces a file byte-identical to the shipped
 `public/levels/starfall-vale.json` (checked while writing this page).
 
-Play it: `index.html?level=starfall-vale` (`&autostart=1` skips the title). Edit (view) it:
+Play it: `game.html?level=starfall-vale` (`&autostart=1` skips the title). Edit (view) it:
 `editor.html?open=starfall-vale`.
 
 ![Starfall Vale's title screen over the fishing hamlet and the piers](../../assets/screenshots/starfall-title.jpg)
@@ -58,7 +58,7 @@ the signposted walks, by the generator's route checks).
 | Fact | Value |
 | --- | --- |
 | Size | 128 × 128 tiles — the maximum (`MAX_SIZE`); uses the big-level build path |
-| Objects | 874: 288 trees, 101 rocks, 70 barrels, 60 lampposts, 42 particle areas, 32 fences, 31 signposts, 31 regions, 29 villagers, 28 benches, 28 flower boxes, 27 houses, 24 crates, 13 critter groups, 13 haystacks, 12 wall torches, 10 bridges, 8 `light` objects, 8 crate stacks, 5 market stalls, 5 waterfalls, 4 campfires, 4 wells, 1 windmill |
+| Objects | 875: 288 trees, 101 rocks, 70 barrels, 60 lampposts, 43 particle areas, 32 fences, 31 signposts, 31 regions, 29 villagers, 28 benches, 28 flower boxes, 27 houses, 24 crates, 13 critter groups, 13 haystacks, 12 wall torches, 10 bridges, 8 `light` objects, 8 crate stacks, 5 market stalls, 5 waterfalls, 4 campfires, 4 wells, 1 windmill |
 | Tiles | 12555 walkable, 1633 water; height levels 0–20 |
 | Custom legend chars | `e` — a river flowing east (`flow: [0.45, 0]`); `:` — the King's Road beyond the border (a dirt path that is not walkable) |
 | Water | `waterLevel` 0.4, `flow [0, 0.45]`, `reflect 0.08`, `neutral 0.55`, `glint 0.45` |
@@ -354,17 +354,17 @@ entirely from level data — no code:
 
 | Object | Where | What |
 | --- | --- | --- |
-| `emitter_20` (fireflies) | (104.5, 66.5), box 10 × 0.8 × 8, 44 particles, `dy` 0.3 (centred 0.3 above the lakebed, just under the 0.4 surface; the box reaches 0.7) | rising lights, recoloured `#a8d8ff` → `#fff4c8` through `params` |
-| `emitter_21` (fireflies) | (101, 58.8), box 6 × 0.8 × 4, 18 | the same by the North Pier |
+| `emitter_21` (fireflies) | (104.5, 66.5), box 10 × 0.8 × 8, 44 particles, `dy` 0.3 (centred 0.3 above the lakebed, just under the 0.4 surface; the box reaches 0.7) | rising lights, recoloured `#a8d8ff` → `#fff4c8` through `params` |
+| `emitter_22` (fireflies) | (101, 58.8), box 6 × 0.8 × 4, 18 | the same by the North Pier |
 | `light_5` | (104.2, 66.6), 0.9 up | a blue (`#9ec9ff`) night-only glow on the water (intensity 9, distance 9, flicker 0.4) |
-| `light_4` + `emitter_17` (sparkle) | the island (111, 71) | the island's own glow — "that glow is the stars' own" |
+| `light_4` + `emitter_18` (sparkle) | the island (111, 71) | the island's own glow — "that glow is the stars' own" |
 
 The `fireflies` preset only shows at night (`nightVisibility` 1), so the lights fade in as the night
 factor rises through dusk. The level starts at 17.4; at the game's clock speed (one game hour ≈ 90 s)
 full night (21.4 h) arrives about six minutes later, or press **T** until "Night". Casimir, Isolde,
 Ivo, Quentin and the town-hall notice all point at it.
 
-![Lake Mirrormere at 22:02: blue lights rising off the Long Pier, the hamlet lanterns lit](../../assets/screenshots/starfall-lake-night.jpg)
+![Lake Mirrormere at 22:00: blue lights rising off the Long Pier, the hamlet lanterns lit](../../assets/screenshots/starfall-lake-night.jpg)
 
 ### Rest, shops and music
 
@@ -396,13 +396,13 @@ spots were dark.
 
 ## Particle areas
 
-42 areas, using every non-weather preset (`dust`, `fireflies`, `mist`, `sparkle`, `leaves`, `smoke`,
+43 areas, using every non-weather preset (`dust`, `fireflies`, `mist`, `sparkle`, `leaves`, `smoke`,
 `petals`, `embers`):
 
 | Preset | Count | Where |
 | --- | --- | --- |
 | fireflies | 12 | the millrace, the farm pond, the lake (the star lights ×2, the South Beach, Reedmouth), the meadow pond and meadows, the Wishing Oak's crown, the glade, the Emberwood pond and woods |
-| sparkle | 10 | the pools below the falls, the spring, the Mirror Falls stream, the observatory lens, the glade stones, the island and the lake |
+| sparkle | 11 | the pools below the falls, the spring, the Mirror Falls stream, the observatory lens, the glade stones, the island, the lake and the quarry's star-glass |
 | leaves | 5 | the orchard, three in the Emberwood, Amberpine Heights |
 | mist | 5 | the foot of the Sisters, the spring, the Mirror Falls |
 | petals | 4 | the Meadowlands (×2), the glade, the square |
@@ -421,7 +421,7 @@ On this big level, areas whose box is more than 34 units from the camera focus a
 | `timeOfDay` | 17.4 | golden hour, a little later than Emberfall's 17.2 |
 | `camera` | distance 30, pitch 32 (no bounds: automatic from the walkable area) | |
 | `highGround` | `{ minY: 4.2, pitch: 40 }` | tilt down on the terrace, plateau and highland |
-| `title` | "STARFALL VALE", "Where the Stars Come Home", "Press any key", credit "A Lumina HD-2D showcase · three.js" | |
+| `title` | "STARFALL VALE", "Where the Stars Come Home", "Press any key", credit "A Luminati 2.5D showcase · three.js" | |
 | `titleCamera` | x 97, z 62, y 0.6, drift 5 × 3, distance 42 | the hamlet, the piers and the calm lake under the title |
 | `fogScale` | 0.65 | thinner haze: dawn and dusk otherwise dissolved the far layers into one salmon fog |
 | `scenery.southGap` | 10 | open meadow south of the map, so the outer woods don't stand between the camera and the spawn |
@@ -433,11 +433,8 @@ On this big level, areas whose box is more than 34 units from the camera focus a
 
 ## How it was made
 
-Starfall Vale was built in phase 4 of the project (see [PROJECT_HISTORY](../../history/PROJECT_HISTORY.md)):
-a scalability engineer made big levels affordable (`LightPool`, spatial batching and culling,
-shadow proxies, the collider grid, the shore worker, the minimap and world map) while a level designer
-wrote the generator; an integration and art pass followed; four reviewers (explorer, art, perf, data)
-filed 50 findings, all fixed, and a verifier toured the result with real input.
+Starfall Vale exercises the large-level systems: `LightPool`, spatial batching and culling,
+shadow proxies, the collider grid, the shore worker, and the minimap and world map.
 
 The generator ([`tools/make-starfall-vale.mjs`](../../../tools/make-starfall-vale.mjs), ~2400 lines)
 runs these steps in order, all seeded (`RNG`, `fbm2`, `hash2` — never `Math.random`):
@@ -508,8 +505,4 @@ flowchart LR
   by design.
 - 1.8 % of walkable ground is unreachable in tiny (< 3 tile) patches the pocket rule allows; the only
   large pocket is the island.
-- Dunstan mentions "glittery bits in the stone", but the quarry has dust, not sparkle. The review
-  left it, reasoning that an emitter would shift the generator's seeds; in fact `emit()` draws no
-  seed and reserves no collider, so a sparkle area in `oldQuarry()` would only renumber the later
-  `emitter_N` ids.
 - The festival items are inventory flavour only; the Starfall "event" is visual (no star falls).

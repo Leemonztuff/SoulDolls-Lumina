@@ -1,6 +1,6 @@
 # Object catalog
 
-> **Purpose.** The normative reference for every object type a Lumina level can contain: its
+> **Purpose.** The normative reference for every object type a Luminati level can contain: its
 > category and placement, every field with type, default and editor range, what the game builds
 > from it (geometry, colliders, point lights and their priority, emissive materials, particle
 > emitters, interactions), and the behaviour of villagers (dialogue syntax, built-in actions,
@@ -15,11 +15,11 @@
 > (`LevelObjectBuilder`, `LIGHT_PRIORITY`, `bridgeDeckHeight`, `buildWaterfall`),
 > [`src/engine/world/Props.js`](../../src/engine/world/Props.js) and
 > [`src/engine/world/props/`](../../src/engine/world/props/) (the prop builders),
-> [`src/demo/World.js`](../../src/demo/World.js) (how the game wires built objects),
-> [`src/demo/Game.js`](../../src/demo/Game.js), [`src/demo/Npc.js`](../../src/demo/Npc.js),
-> [`src/demo/dialogue.js`](../../src/demo/dialogue.js), [`src/demo/Critters.js`](../../src/demo/Critters.js),
+> [`src/game/World.js`](../../src/game/World.js) (how the game wires built objects),
+> [`src/game/Game.js`](../../src/game/Game.js), [`src/game/Npc.js`](../../src/game/Npc.js),
+> [`src/game/dialogue.js`](../../src/game/dialogue.js), [`src/game/Critters.js`](../../src/game/Critters.js),
 > [`src/engine/fx/Particles.js`](../../src/engine/fx/Particles.js),
-> [`src/demo/Weather.js`](../../src/demo/Weather.js). The binding contract is
+> [`src/game/Weather.js`](../../src/game/Weather.js). The binding contract is
 > [contracts/LEVEL_EDITOR.md §2–§3](../contracts/LEVEL_EDITOR.md). Where they disagree, the code
 > wins. The object types are also declared for the type check in
 > [`src/engine/level/types.d.ts`](../../src/engine/level/types.d.ts) ([§15](#15-extending-the-catalog)).
@@ -44,11 +44,11 @@
 5. Types — Buildings: [house](#house) · [windmill](#windmill) · [well](#well) · [marketStall](#marketstall)
 6. Types — Nature: [tree](#tree) · [rock](#rock) · [haystack](#haystack)
 7. Types — Lights: [lamppost](#lamppost) · [wallTorch](#walltorch) · [campfire](#campfire) · [light](#light)
-8. Types — Props: [bench](#bench) · [barrel](#barrel) · [crate](#crate) · [crateStack](#cratestack) · [flowerbox](#flowerbox) · [signpost](#signpost)
+8. Types — Props: [bench](#bench) · [barrel](#barrel) · [crate](#crate) · [crateStack](#cratestack) · [flowerbox](#flowerbox) · [signpost](#signpost) · [Interior](#interior): [bed](#bed) · [table](#table) · [chair](#chair) · [shelf](#shelf) · [hearth](#hearth) · [counter](#counter) · [rug](#rug) · [staircase](#staircase) · [wardrobe](#wardrobe) · [wallWindow](#wallwindow) · [sacks](#sacks)
 9. Types — Structures: [fence](#fence) · [bridge](#bridge)
 10. Types — Water: [waterfall](#waterfall)
 11. Types — Characters: [npc](#npc) · [critters](#critters)
-12. Types — Markers: [emitter](#emitter) · [region](#region) · Combat: [enemy](#enemy) · [chest](#chest) · [waystone](#waystone)
+12. Types — Markers: [emitter](#emitter) · [region](#region) · [exit](#exit) · [entrance](#entrance) · [event](#event) · [marker](#marker) · Combat: [enemy](#enemy) · [chest](#chest) · [waystone](#waystone)
 13. [Text fields and dialogue syntax](#13-text-fields-and-dialogue-syntax)
 14. [NPC actions, behaviours and scripts](#14-npc-actions-behaviours-and-scripts)
 15. [Extending the catalog](#15-extending-the-catalog)
@@ -57,16 +57,28 @@
 
 ## 1. Summary of all types
 
-`OBJECT_TYPES[type]` = `{ label, category, placement, kind, glyph, color, radius, rotatable?, snap?, help?, defaults, fields, combat? }`.
+`OBJECT_TYPES[type]` = `{ label, category, placement, kind, glyph, color, radius, rotatable?, snap?, help?, defaults, fields, combat?, campaign?, story?, interior? }`.
 `combat: true` marks the three combat-only types (`enemy`, `chest`, `waystone`,
 [COMBAT.md §14](../contracts/COMBAT.md#14-level-data)): an `enemy` object turns combat on for its
 level, and the combat demo [Cinderwatch Pass](../design/levels/cinderwatch-pass.md) covers them
 (Starfall Vale's coverage check skips them).
+`campaign: true` marks the two campaign types (`exit`, `entrance`): a level played on its own
+ignores them, a campaign uses them to travel between its levels ([the campaign format](CAMPAIGN_FORMAT.md)); Starfall Vale's coverage skips them too.
+`story: true` marks the two story types (`event`, `marker` — [STORY_SCRIPT.md](STORY_SCRIPT.md)):
+read by the story runtime (a level with an `event` gets it also when played on its own); the demo
+campaign's generator covers them, Starfall Vale's coverage skips them.
+`interior: true` marks the furniture of rooms (`bed`, `table`, `chair`, `shelf`, `hearth`,
+`counter`, `rug`, `staircase`, `wardrobe`, `wallWindow`, `sacks` — [Interior](#interior)), category
+**Interior**: ordinary props anywhere, made for the room levels (`environment.interior`); the
+interiors demo's generator covers them, Starfall Vale's coverage skips them (`isInteriorType`).
+Every type's inspector ends with the story conditions `when` / `unless` (`STORY_FIELDS`: optional,
+no default, absent from files that do not use them; [STORY_SCRIPT.md §3](STORY_SCRIPT.md#3-conditions)).
 `kind` decides who builds the object: **prop** objects are built by `LevelObjectBuilder` (3D
 geometry through `PropFactory`), **actor** objects by the game's character code, **marker**
 objects have no geometry (the game reads them directly). `glyph`, `color` and `radius` are for
 the editor's palette, 2D map and picking; `snap` is the placement snap step. Every type snaps to
-0.5 units (`house` and `marketStall` declare it, the rest use the default 0.5); Alt or the snap
+0.5 units (`house` and `marketStall` declare it, the rest use the default 0.5) except the interior
+furniture, which declares 0.25; Alt or the snap
 toggle in the tool options places freely (`snapStep` in
 [`src/editor/tools/common.js`](../../src/editor/tools/common.js)).
 
@@ -89,6 +101,17 @@ toggle in the tool options places freely (`snapStep` in
 | `crateStack` | Crate stack | Props | point | prop | yes | box | — | — |
 | `flowerbox` | Flower box | Props | point | prop | yes | box | — | — |
 | `signpost` | Signpost | Props | point | prop | yes | circle | — | Read (only with `text`) |
+| `bed` | Bed | Interior | point | prop | yes | box | — | — |
+| `table` | Table | Interior | point | prop | yes | box (round: circle) | — (a candle flame) | — |
+| `chair` | Chair | Interior | point | prop | yes | circle | — | — |
+| `shelf` | Shelf | Interior | point | prop | yes | box | — | — |
+| `hearth` | Hearth | Interior | point | prop | yes | box | yes, day and night (when lit) | — |
+| `counter` | Counter | Interior | point | prop | yes | box | — | — |
+| `rug` | Rug | Interior | point | prop | yes | none | — | — |
+| `staircase` | Staircase | Interior | point | prop | yes | box | — | — (marks a `use` exit) |
+| `wardrobe` | Wardrobe | Interior | point | prop | yes | box | — | — |
+| `wallWindow` | Wall window | Interior | point | prop | yes | none | — (emissive panes) | — |
+| `sacks` | Grain sacks | Interior | point | prop | yes | box | — | — |
 | `fence` | Fence | Structures | line | prop | — | boxes along the run | — | — |
 | `bridge` | Bridge | Structures | line | prop | — | rail boxes; deck is walkable | — | — |
 | `waterfall` | Waterfall | Water | point | prop | no (`facing`) | none | — | — |
@@ -96,12 +119,16 @@ toggle in the tool options places freely (`snapStep` in
 | `critters` | Critters | Characters | point | actor | no | none | — | — |
 | `emitter` | Particle area | Markers | point | marker | no | none | — | — |
 | `region` | Region name | Markers | rect | marker | — | none | — | HUD name, arrival banner |
+| `exit` | Exit (to another level) | Markers | rect | marker | — | none | — | campaigns: travel (walk in, or Space) |
+| `entrance` | Entrance (arrival point) | Markers | point | marker | no (`facing`) | none | — | campaigns: where an exit arrives |
+| `event` | Story event | Markers | rect | marker | — | none | — | its script runs on its trigger (Space, walking in / out, arriving, a condition, the clock, a group defeated) |
+| `marker` | Story marker (named spot) | Markers | point | marker | no (`facing`) | none | — | a place story scripts name |
 | `enemy` | Enemy group | Combat | point | actor | no | none (the combat system separates actors itself) | — | — (the creatures fight) |
 | `chest` | Treasure chest | Combat | point | prop | yes | circle r 0.45 | — | Examine; on a combat level Open |
 | `waystone` | Waystone (checkpoint) | Combat | point | prop | no | circle r 0.5 | — (it glows by bloom) | Examine; on a combat level attune by walking close, Rest |
 
 Palette categories, in display order (`OBJECT_CATEGORIES`): Buildings, Nature, Lights, Props,
-Structures, Water, Characters, Markers, Combat. The player start is **not** an object: it is
+Interior, Structures, Water, Characters, Markers, Combat. The player start is **not** an object: it is
 `level.spawn` ([LEVEL_FORMAT.md §10](LEVEL_FORMAT.md#10-spawn-player-start)); editors show it with
 `SPAWN_MARKER` (`★`, `#7fe3ff`).
 
@@ -120,10 +147,18 @@ Enumerations exported by the catalog:
 | `EMITTER_PRESETS` | `fireflies`, `leaves`, `petals`, `dust`, `embers`, `smoke`, `mist`, `sparkle`, `snow`, `rain` |
 | `NPC_ACTIONS` | `none` (Just talk), `rest` (Innkeeper), `shop` (Merchant), `music` (Bard) |
 | `NPC_BEHAVIOURS` | `wander`, `post`, `perform`, `chase` |
+| `EXIT_MODES` | `walk` (walk into it), `use` (press Space: a door, a cave mouth) |
+| `STORY_FIELDS` | the `when` / `unless` inspector fields every type ends with ([§2](#2-object-shapes-and-normalisation)) |
 | `NPC_SCRIPTS` | `''` (use `dialogue`), `elder`, `innkeeper`, `merchant`, `guard`, `farmer`, `child`, `bard`, `scholar`, `drillmaster`, `shopkeeper` |
 | `ENEMY_KINDS` | `slime`, `goblin`, `archer`, `shaman`, `bat`, `boar`, `dummy`, `golem` |
 | `ENEMY_INFO` | frozen `{ label, flier, boss, passive, humanoid }` per kind: Moss Slime, Bramble Goblin, Thorn Archer, Hex Shaman, Cinder Bat (flier), Ironhide Boar, Straw Dummy (passive), Cinderheart (boss) |
 | `CHEST_UPGRADES` | `none`, `maxHp` (+20 max HP), `maxMp` (+10 max MP), `attack` (+3 ATK) |
+| `BLANKET_COLORS` | `red`, `blue`, `green`, `ochre`, `plum` (a bed's quilt) |
+| `RUG_COLORS` | `red`, `blue`, `green` |
+
+Helpers for the interior types: `isInteriorType(type)`, `interiorFootprint(obj)` (the local
+footprint rectangle, `solid`, `round`), `staircaseFoot(obj)` (where the player stands to use a
+staircase: `{ x, z, dx, dz }`).
 
 ## 2. Object shapes and normalisation
 
@@ -143,7 +178,7 @@ inside a prop is seeded from the factory seed (42 in the game), the prop kind, i
 (1/16-unit grid) and `opts.seed`: moving an object or changing its seed changes its details;
 rebuilding the same level gives the same result.
 
-`normalizeObject(o)` (run on every load):
+`normalizeObject(o, report?)` (run on every load):
 
 - throws `Unknown object type "t"` unless `o.type` is a string naming one of `OBJECT_TYPES`' own
   types — an `Object.prototype` name such as `"constructor"` is unknown too (`createObject` throws
@@ -159,7 +194,12 @@ rebuilding the same level gives the same result.
 - converts the legacy **absolute** NPC / critter fields to the **relative** ones:
   `talkPoint: [x, z]` → `talkOffset: [dx, dz]`, `bounds: rect` → `area: rect` (offsets from the
   object), `spots: [[x, z], …]` → `spotOffsets` (rounded to 1e-6). Relative fields move with the
-  object when it is dragged, duplicated or rotated in the editor. The game still reads both forms.
+  object when it is dragged, duplicated or rotated in the editor. The game still reads both forms;
+- cleans the object's `textKeys` ([§13.3](#133-translations)): it keeps only well-formed keys of the
+  type's translatable fields that the object holds (a key of a field it lacks is dropped, a key
+  list is cut to its field's raw length, a choice list to its page's), writes a key of lower-case
+  digits in upper case, and drops `textKeys` when nothing is left. `report` (`{ textKeys,
+  upcased }`) counts what was dropped and upper-cased, and `normalizeLevel` warns with it.
 
 Other field values are not clamped on load; the ranges in the tables below are the editor's
 inspector ranges. Where the game sanitises a value, the "Notes" column says so. A name field
@@ -168,10 +208,21 @@ matched only against the own keys of its table, so an `Object.prototype` name (`
 `"__proto__"`, `"toString"` …) gets the same fallback as a misspelt name (KNOWN_ISSUES LVL-17,
 fixed on 2026-10-01); an unknown texture name draws the magenta fallback texture with a warning.
 
+**Story conditions** (campaigns, every type): `when` (a story flag: the object is there only
+while it is set) and `unless` (gone once it is set), both optional text without a default, so no
+file that does not use them changes. The game applies them when it enters a level of a campaign
+(`applyStory` in [`src/engine/level/Travel.js`](../../src/engine/level/Travel.js)); a level played
+on its own keeps every object. Every type's inspector ends with them (`STORY_FIELDS`).
+
 Inspector field types (`fields[].type`): `number`, `int`, `angle` (radians stored, degrees shown),
 `bool`, `select`, `text`, `textarea`, `lines` (`string[]`, one entry per paragraph), `dialogue`
 (see [§13](#13-text-fields-and-dialogue-syntax)), `color`. `nullable` numbers may be left blank
-(stored as `null`). `key` is a dotted path (`opts.width`, `size.0`).
+(stored as `null`). `key` is a dotted path (`opts.width`, `size.0`). `i18n: true` marks a field
+players read (a name, a text, dialogue, a script): the content-text tools extract it for translation
+([I18N.md §4.6](I18N.md#46-what-is-extracted)); identity fields never carry it. Every `i18n: true`
+field that is not a name is keyed: it is listed in `TEXT_KEY_FIELDS`
+([`ContentKeys.js`](../../src/engine/i18n/ContentKeys.js)), and `npm run keys:test` fails when the
+two disagree. A type with such fields has the common optional field `textKeys` ([§13.3](#133-translations)).
 
 ## 3. How the game builds objects
 
@@ -198,7 +249,7 @@ flowchart TD
 `LevelObjectBuilder.build()` returns `null` for actors and markers. For props it returns a
 `BuiltObject`: `{ object, colliders, walkRects, lights, emissives, emitters, update, interact, anchor, source, propResult, dispose }`.
 Each light descriptor gets `tag: "<type>:<id>"` and `priority` from `LIGHT_PRIORITY`. A prop that
-fails to build is skipped with a console warning (`[Lumina] could not build <type> "<id>"`).
+fails to build is skipped with a console warning (`[Luminati] could not build <type> "<id>"`).
 
 Static meshes of all props (not trees, lights or waterfalls) are merged per material by
 `PropFactory.mergeStatic`; animated parts (windmill sails, flames, wind-swayed foliage) stay
@@ -211,12 +262,15 @@ Interactables in the game (the prompt appears when the player is within the radi
 | Source | Id in `state().nearest` | Prompt label | Radius | Speaker | Condition |
 | --- | --- | --- | --- | --- | --- |
 | house door | `door:<id>` | Knock | 1.0 | none | non-empty `text` |
-| signpost | `<id>` | Read | 1.35 | `speaker` (default `Signpost`) | non-empty `text` |
+| signpost | `<id>` | Read | 1.35 | `speaker` (absent: the UI's `game.default.signpost`; `""`: none) | non-empty `text` |
 | well | `<id>` | Look | 1.75 | none; plays `sfx` | non-empty `text` |
-| npc | `<id>` | Talk | `talkRadius` (1.6) | the NPC's `name` | always |
-| chest | `<id>` | Examine ("The chest is locked tight."); on a combat level **Open** | 1.2 (0.8 in front of the chest) | none | always |
-| waystone | `<id>` | Examine ("An old waystone hums quietly."); on a combat level **Rest** | 1.5 | the waystone's `name` | always |
+| npc | `<id>` | Talk | `talkRadius` (1.6) | the NPC's `name` (blank: the UI's `game.default.villager`) | always |
+| chest | `<id>` | Examine ("The chest is locked tight.", the UI string `game.default.chest`); on a combat level **Open** | 1.2 (0.8 in front of the chest) | none | always |
+| waystone | `<id>` | Examine ("An old waystone hums quietly.", the UI string `game.default.waystoneText`); on a combat level **Rest** | 1.5 | the waystone's `name` (blank: the UI's `game.default.waystone`) | always |
 
+The prompt labels are the prompt's built-in verbs, shown as UI strings (`game.prompt.*`); the
+speakers are names, translated as terms, and the pages by the keys the object's `textKeys` holds
+([§13.3](#133-translations)).
 A chest's and a waystone's interactable also carries the level `object` and the prop's `controls`
 as `prop` (`open()` / `setAttuned(on)`); the combat system sets the label and `onInteract` at load
 ([COMBAT.md §9.8](../contracts/COMBAT.md#98-world-interactables-level-package-and-game_interact-combat-core)).
@@ -242,6 +296,7 @@ sources; the game hands every descriptor to a
 | Type | Priority | Colour | Intensity | Range | Flicker | When lit |
 | --- | --- | --- | --- | --- | --- | --- |
 | `campfire` | 0 | `#ff8c3a` | 14 | 10 | 0.5 | day and night |
+| `hearth` | 0 | `#ff8a3a` | 10 | 9 | 0.5 | day and night, while `opts.lit` |
 | `wallTorch` | 1 | `#ff9a45` | 7 | 7 | 0.45 | day and night |
 | `light` | 1 | `color` (`#ffb46b`) | `intensity` (8) | `distance` (8) | `flicker` (0.2) | `nightOnly` (true) |
 | `lamppost` | 2 | `#ffb46b` | 12 | 9 | 0.2 | night |
@@ -332,11 +387,13 @@ prompt floats well above the roof. Examining plays `sfx` and shows the pages wit
 | `rotation` | angle | `0` | step 15° | Counter faces +Z at 0. |
 | `opts.cloth` | select | `cloth_stripe` | `CLOTH_TEXTURES` | Awning. |
 | `opts.width` | number | `3` | 2–4, step 0.25 | |
+| `opts.crates` | select | (none) | `left` · `right` · `none` | Which side the crates and the sack beside the stall stand on, seen from the front; absent = a side the seed picks. Keep it away from the side the keeper stands on. |
 | `opts.seed` | int | (none) | 0–9999 | |
 
 Builder extras: `depth` (1.6), `display` (produce display in front, default on).
 
-**In the game:** box collider (extended 0.5 in front with the display). The stall itself has no
+**In the game:** box collider (extended 0.5 in front with the display), plus a small box for the
+crates beside it. The stall itself has no
 interaction; put a merchant `npc` behind it and give it a `talkOffset` in front of the counter
 (Emberfall's `merchant` does this).
 
@@ -473,11 +530,12 @@ Builder extra: `radius` (0.4). **In the game:** circle collider (radius + 0.04).
 | Field | Type | Default | Editor range |
 | --- | --- | --- | --- |
 | `rotation` | angle | `0` | step 15° |
-| `opts.count` | int | `3` | 1–4 |
+| `opts.count` | int | `3` | 1–4: *Crates on the ground*; one more sits on top (one or two from 3 on) |
 | `opts.size` | number | `0.85` | 0.5–1.2, step 0.05 |
 | `opts.seed` | int | (none) | 0–9999 |
 
-Builder extra: `barrel` (adds a barrel; random 60 % when absent). **In the game:** box collider.
+Builder extra: `barrel` (adds a barrel; random 60 % when absent). **In the game:** box collider
+over the crates, reaching to the barrel on its side when there is one.
 
 ### flowerbox
 
@@ -495,10 +553,236 @@ Builder extra: `wall` (wall-mounted, no legs and no collider). **In the game:** 
 | --- | --- | --- | --- | --- |
 | `rotation` | angle | `0` | step 15° | |
 | `opts.boards` | int | `2` | 1–3 | Arrow boards. |
-| `speaker` | text | `"Signpost"` | | Name plate of the text window. |
+| `speaker` | text | `"Signpost"` | | Name plate of the text window, a name translated as a term; `""` = no plate. |
 | `text` | lines | `["↑ Somewhere nice"]` | | Sign text, one page per entry. Empty = not interactive. |
 
 **In the game:** circle collider (0.22); with text: interactable "Read" (radius 1.35).
+
+## Interior
+
+The furniture of rooms (`interior: true`, category **Interior**; builders in
+[`props/Furniture.js`](../../src/engine/world/props/Furniture.js)): enough to make a room read as a
+home, an inn, a barn or a mill. Rooms are small tile levels flagged `environment.interior: true`
+([LEVEL_FORMAT.md](LEVEL_FORMAT.md)): a floor, walls as raised tiles 2.5–3 units high on the north,
+west and east, a low south wall so the camera (looking north, 32–38° down) sees in.
+
+Shared rules:
+
+- **(x, z) is the centre of the footprint** on the floor — except the wall window, which sits on
+  the wall face like a wall torch. **Rotation 0 turns the front toward +Z** (the camera); a wall
+  piece's back is its local −Z side, flush with a north wall when placed `depth / 2` south of the
+  wall face. Turned π/2 its back is on a west wall (the front faces +X), −π/2 an east wall, π the
+  low south wall (avoid: the camera then sees its back).
+- **Footprints** are `interiorFootprint(obj)` in [`ObjectCatalog.js`](../../src/engine/level/ObjectCatalog.js):
+  the local rectangle the collider covers (`solid`), round for a chair and a round table. The
+  editor's picking, outlines and 2D map and the level checks (`levelgen.collidersOf`) read it; the
+  builders return exactly it (`sandbox/props.html?mode=interior` → `__props.furnitureCheck()`).
+  Colliders follow a turned piece (`PropFactory.boxColliders`). Rugs and windows have none.
+- **Snap** 0.25 (wall pieces of depth 0.5 sit 0.25 off the wall).
+- **Textures**: the library's on-demand furniture set (`furniture_wood`, `books`, `pantry`,
+  `linen`, `quilt_*`, `rug_*`, `rug_border`, `embers`, `window_inside`, `light_beam`, `burlap`;
+  [pixel.md](../architecture/modules/pixel.md)) — painted only when a level places furniture, so
+  no other level paints or loads anything new.
+- All furniture is static and merged into the level's batches; a hearth's and a table candle's
+  flames stay separate (two draw calls each). Every type is a live story type (`when` / `unless`).
+
+| Type | Footprint (w × d, local) | Against | Collider | Light / glow |
+| --- | --- | --- | --- | --- |
+| `bed` | (width + 0.1) × length | the head on a wall | box | — |
+| `table` | width × depth (round: ⌀ width + 0.04) | free | box (round: circle) | candle: a flame, no light |
+| `chair` | ⌀ 0.54 (stool ⌀ 0.44) | free | circle | — |
+| `shelf` | width × 0.5 | a wall | box | — |
+| `hearth` | (width + 0.3) × 1.0 | a wall | box | lit: 1 point light (priority 0), embers emissive |
+| `counter` | width × 0.76 (z −0.35…0.41) | free (keeper north of it) | box | — |
+| `rug` | width × (length + 0.3 tassels) | floor | none | — |
+| `staircase` | up: steps × 0.4 by width (+0.04); down: (width + 0.2) × (steps × 0.38 + 0.1) | up: a wall | box | — |
+| `wardrobe` | (width + 0.08) × 0.64 (drawers 0.54) | a wall | box | — |
+| `wallWindow` | (panes + 1) × 0.3, in front of the wall line | on a wall face | none | panes and a light shaft emissive, no point light |
+| `sacks` | (min(count, 3) × 0.52 + 0.1) × 0.66 | free | box | — |
+
+### bed
+
+A wooden bed: corner posts with finials, a boarded head (local −Z) taller than the foot, side
+rails, a linen mattress, a patchwork quilt hanging over the sides, the sheet turned down and one
+pillow — two from a width of 1.6.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | 0: the head on a north wall. |
+| `opts.width` | number | `1.2` | 0.8–2.4, step 0.1 | 1.2 a single bed, 1.9 a double. |
+| `opts.length` | number | `2.2` | 1.6–2.8, step 0.1 | Head to foot. |
+| `opts.blanket` | select | `red` | `BLANKET_COLORS` | The quilt (`quilt_<colour>`). |
+| `opts.seed` | int | (none) | 0–9999 | Pillow tilt. |
+
+**Placement:** head against a north wall: `z = wall + length / 2`. Heights: mattress 0.56, head
+1.2, foot 0.75.
+
+### table
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | |
+| `opts.shape` | select | `rect` | `rect`, `round` | Four legs and an apron, or a pedestal on a cross foot. |
+| `opts.width` | number | `1.6` | 0.6–3.2, step 0.1 | Round: the diameter. A level object always carries a width (the catalog's 1.6 is written in), so set it for a smaller round table (1.2 suits four chairs); the builder's own 1.2 applies only to `PropFactory.table` called without one. |
+| `opts.depth` | number | `0.9` | 0.6–2, step 0.1 | Rect only. |
+| `opts.cloth` | bool | `false` | | A linen cloth hanging 0.22 over the edges. |
+| `opts.items` | bool | `true` | | Seeded tableware: plates (some with bread), pewter mugs, a terracotta jug. |
+| `opts.candle` | bool | `false` | | A candle in the middle with a small animated flame (no point light: add a `light` for its glow). |
+| `opts.seed` | int | (none) | 0–9999 | Where the tableware stands. |
+
+Height 0.82. Chairs go 0.3 beyond its edge, turned to face it.
+
+### chair
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | 0: the seat faces +Z, the slatted back to the north. North of a table: 0; south: π (its back to the camera); west: π/2; east: −π/2. |
+| `opts.style` | select | `chair` | `chair`, `stool` | A round three-legged stool ignores the rotation. |
+| `opts.seed` | int | (none) | 0–9999 | The stool's legs. |
+
+Seat 0.47 high, back to ≈ 1.1. Collider: a circle (0.27; stool 0.22).
+
+### shelf
+
+An open shelf 0.5 deep: sides, a dark back, cornice and plinth, boards every compartment (0.5 high
++ headroom shared out), each compartment one seeded slice of the `books` texture (spines, gilt
+bands, lying stacks) or the `pantry` texture (jars of pickles / jam / honey, bottles, a crock, a
+sack, cheese); a crate and two books (pantry: a jug and a sack) on top.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | 0: the back on a north wall. |
+| `opts.kind` | select | `books` | `books`, `pantry` | |
+| `opts.width` | number | `1.6` | 0.8–3.2, step 0.1 | |
+| `opts.height` | number | `2.2` | 1–3, step 0.1 | 2.2: three compartments; 1.2: one. |
+| `opts.seed` | int | (none) | 0–9999 | Which slice of the texture each compartment shows. |
+
+**Placement:** `z = wall + 0.25`.
+
+### hearth
+
+A stone fireplace against a wall: jambs and a lintel of `stone_brick` 0.7 deep around a sooty
+firebox, a hearthstone 0.3 in front, a mantel shelf at 1.6 with candles and a jug, the chimney
+breast up to `height`. A lit one is a fire to the game like a campfire: the ambience's crackle
+near it (`World.fires`) and a fire on the world map.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | 0: the back on a north wall. |
+| `opts.width` | number | `2.2` | 1.6–3.6, step 0.1 | The collider is 0.3 wider (the hearthstone). |
+| `opts.height` | number | `2.6` | 1.8–4.5, step 0.1 | The top of the chimney breast: match the wall height (the wall tiles' top above the floor). The default 2.6 stands 0.1 above the 2.5-unit walls of File › New › Room (5 levels): set 2.5 there, or raise the walls. |
+| `opts.lit` | bool | `true` | | Logs on glowing embers, an animated flame and one point light. Unlit: cold ash, no light. |
+| `opts.embers` | bool | `true` | | Sparks (`embers` emitter, rate 3) while lit. |
+| `opts.pot` | bool | `false` | | An iron pot hanging over the fire. |
+| `opts.seed` | int | (none) | 0–9999 | |
+
+Builder extras: `intensity` (10), `distance` (9).
+
+**In the game (lit):** one flickering point light `#ff8a3a`, intensity 10, range 9, flicker 0.5,
+day and night (priority 0, like a campfire), 0.35 in front of the firebox at 0.75 high; the
+`embers` texture's material glows `{ day: 1.3, night: 1.9 }` (deep orange, shared by every
+hearth); the flame is two draw calls. **Placement:** `z = wall + 0.5`; the footprint is 1.0 deep.
+
+### counter
+
+A long counter 0.7 deep and 1.05 high: a kick plinth, a panelled front (upright boards between dark
+posts) toward the customers (local +Z), a planed top overhanging the front.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | 0: the front faces +Z (the camera); the keeper stands north of it. |
+| `opts.style` | select | `bar` | `bar` (Inn bar), `shop` (Shop counter) | Bar: pewter mugs, bottles, a keg on a cradle (from a width of 1.8). Shop: scales, an open ledger, jars. |
+| `opts.width` | number | `2.6` | 1.2–6, step 0.1 | |
+| `opts.items` | bool | `true` | | The things on top. |
+| `opts.seed` | int | (none) | 0–9999 | |
+
+**Placement:** a keeper (`npc`, behaviour `post`) 0.8 north of it; put a pantry shelf on the wall
+behind. A villager's `talkOffset` (e.g. `[0, 1.6]` for a keeper 0.8 north of a counter at rotation 0) lets the player talk across it.
+
+### rug
+
+A woven rug flat on the floor (0.025 high, under everything): a diamond field inside a woven border,
+cream tassels at the two short ends (local ±Z). Walked over; casts no shadow; no collider.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | π/2 runs the length along x. |
+| `opts.color` | select | `red` | `RUG_COLORS` | The field (`rug_<colour>`). |
+| `opts.width` | number | `2` | 1–6, step 0.25 | |
+| `opts.length` | number | `3` | 1–8, step 0.25 | Plus 0.15 of tassels at each end. |
+| `opts.seed` | int | (none) | 0–9999 | The tassels. |
+
+Builder extra: `fringe` (tassels; on unless `false`).
+
+### staircase
+
+An interior staircase that **marks where a `use` exit leads up or down** (`exit` with
+`mode: "use"`, label "Climb up" / "Go down", [CAMPAIGN_FORMAT.md](CAMPAIGN_FORMAT.md)). It is not
+walkable: its footprint is one collider, the exit rectangle lies at its foot.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | Up, 0: along a north wall. Down, 0: the open end toward +Z. |
+| `opts.dir` | select | `up` | `up`, `down` | |
+| `opts.width` | number | `1.2` | 0.8–2.4, step 0.1 | Up: the flight's depth from the wall. Down: the stairwell's width. |
+| `opts.steps` | int | `7` | 3–14 | Up: tread 0.4 (run = steps × 0.4). Down: 0.38 each. |
+| `opts.height` | number | `2.5` | 1–5, step 0.1 | Up: the top step — match the wall height, the flight then leaves the room over the wall top. |
+| `opts.flip` | bool | `false` | | Up: rises toward local −X (west at rotation 0) instead of +X. |
+| `opts.rail` | bool | `true` | | Up: a banister on the open front side (newel post at the foot). Down: rails on three sides. |
+| `opts.seed` | int | (none) | 0–9999 | |
+
+**Up** is a solid flight of boarded steps, back on the wall, its sawtooth side toward the camera.
+**Down** is a framed stairwell in the floor whose treads recede (each shorter, darker) into the
+dark — the floor tiles stay whole under it; nothing below the floor is drawn.
+**The foot** — where the player stands, and where to put the `use` exit — is
+`staircaseFoot(obj)` (ObjectCatalog.js: `{ x, z, dx, dz }`, the point and the facing): up, 0.5
+beyond the first step (local x = −run / 2 − 0.5; `flip`: +run / 2 + 0.5), facing along the rise;
+down, 0.55 in front of the open end (local z = steps × 0.19 + 0.55), facing −Z. An exit rectangle
+of about 1.2 × 1.2 centred there works. **Placement (up, north wall):** `z = wall + width / 2`;
+keep the 1.2 in front of the foot clear.
+
+### wardrobe
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | 0: the back on a north wall. |
+| `opts.kind` | select | `wardrobe` | `wardrobe`, `drawers` (Chest of drawers) | Wardrobe: 2.2 high, 0.6 deep, two panelled doors with knobs, a cornice. Drawers: 1.0 high, 0.5 deep, two small over two wide drawers, a candle or a jug and folded cloths on top. |
+| `opts.width` | number | `1.4` | 0.6–2.6, step 0.1 | A level object always carries a width (the catalog's 1.4 is written in): set 1.2 for a chest of drawers' usual size; the builder's own 1.2 applies only to `PropFactory.wardrobe` called with `kind: 'drawers'` and no width. |
+| `opts.seed` | int | (none) | 0–9999 | What stands on a chest of drawers. |
+
+**Placement:** `z = wall + 0.3` (drawers `wall + 0.25`).
+
+### wallWindow
+
+A window in a room's wall seen from inside: `panes` casements (1 wide, 1.5 high) of sky in a dark
+frame with a deep sill, curtains on a rod, optionally a flower box on the sill, and by day a soft
+shaft of light falling from it onto the floor.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | Local +Z points into the room: 0 on a north wall, π/2 a west wall, −π/2 an east wall. |
+| `opts.panes` | int | `1` | 1–3 | Casements side by side (width = panes). |
+| `opts.sill` | number | `0.9` | 0.3–2, step 0.05 | The sill's height above the floor (the panes' top is sill + 1.5; the curtain rod and its finials reach ≈ 0.3 higher). Keep that under the wall's top: with the default 0.9 a window reaches 2.69 — above the 2.5-unit walls of File › New › Room; a sill of 0.7 fits them. |
+| `opts.glow` | select | `daylight` | `daylight`, `warm` | Daylight: pale sky light `{ day: 1.15, night: 0.03 }` (a dusky blue sky at night). Warm: golden `{ day: 0.95, night: 1.1 }` — a late-sun or lamplit glow that holds through the night. |
+| `opts.curtains` | select | `red` | `red`, `linen`, `none` | |
+| `opts.beam` | bool | `true` | | The light shaft: two additive sheets from the opening to the floor (a 45° sun) and the lit patch, emissive only (`light_beam`), `{ day: 0.32, night: 0 }` (warm 0.36): gone at night, no shadow, no point light. |
+| `opts.flowers` | bool | (none) | | A flower box on the sill. |
+
+**Placement:** `(x, wall face)`: on a north wall whose face is at `z = Z`, place it at `(x, Z)`; the
+floor height is sampled 0.6 into the room. The footprint (`(panes + 1) × 0.3`) lies in front of
+the wall line. The panes and the shaft are one shared material each per `glow` (one emissive
+descriptor each); add a `light` object near it if the room should be lit by it.
+
+### sacks
+
+Tied burlap grain / flour sacks: a row of up to three standing 0.52 apart, a fourth lying across
+their shoulders.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | The row runs along local x. |
+| `opts.count` | int | `3` | 1–4 | |
+| `opts.seed` | int | (none) | 0–9999 | Lumps, lean and turn of each sack. |
 
 ## Structures (line objects)
 
@@ -519,9 +803,11 @@ height of its **midpoint**, so keep a fence on level ground (split it where the 
 | `x0`, `z0`, `x1`, `z1` | number | | | Bank to bank. |
 | `opts.width` | number | `2` | 1.2–3.5, step 0.1 | Deck width. |
 | `opts.arch` | number | `0.25` | 0–0.6, step 0.02 | Arch height (the builder's default when absent is `min(0.4, 0.05 × length)`). |
-| `deckY` | number or `null` | `null` | −2–20, step 0.05, blank = auto | Deck height. |
+| `deckY` | number or `null` | `null` | −2–20, step 0.05, blank = auto | Deck height in world units (height level × 0.5; inspector: *Deck height, world units*). |
 
-Builder extras: `postDepth` (1.4), `rails` (true).
+Builder extras: `postDepth` (1.4), `rails` (true). `rails: false` leaves out only the rail
+planks: the posts stay, and so do the box colliders along both edges — a rail-less deck or pier
+still keeps the walker out of the water (no shipped level uses it).
 
 **Deck height** (`bridgeDeckHeight`) when `deckY` is null: the ground just outside the start
 point (0.5 units beyond `x0, z0`), or outside the end point if the start is not solid ground;
@@ -565,10 +851,11 @@ A villager who idles, walks, turns to the player and talks.
 
 | Field | Type | Default | Editor range / options | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | text | `"Villager"` | | Speaker name plate. Blank → `Villager`. |
+| `name` | text | `"Villager"` | | Speaker name plate, a name translated as a term. Blank → `Villager` (shown as the UI string `game.default.villager`). |
+| `title` | text | (none) | | *(Optional, absent by default; additive 2026-10-10.)* The small title beside the name plate when this villager speaks (Sela's "Warden of the Cinderwatch"); translated at display by the key the object holds for it, `textKeyOf(obj, 'title')` (`speakerTitle`, [I18N.md §4.8](I18N.md#48-call-sites); extracted as kind `title`). Blank or absent = no title. |
 | `dialogue` | dialogue | `["Hello, traveler!"]` | | Pages ([§13](#13-text-fields-and-dialogue-syntax)). Ignored when `script` names a known script. |
 | `action` | select | `none` | `NPC_ACTIONS` | Built-in action after the dialogue ([§14](#14-npc-actions-behaviours-and-scripts)). |
-| `item` | text | `""` | | What a `shop` NPC hands out; blank = `Crisp Apple`. Any text is an item name (the inventory has no prototype, so `constructor` is an ordinary item). |
+| `item` | text | `""` | | What a `shop` NPC hands out; blank = `Crisp Apple` (its identity in the inventory and the story; the offer shows the UI string `game.default.item`). Any text is an item name (the inventory has no prototype, so `constructor` is an ordinary item), translated as a term where a conversation offers it: the shop action, or a `shop` command in the villager's talk script. |
 | `preset` | select | `villager` | `CHARACTER_PRESET_NAMES` | Look (procedural sprite sheet). Unknown → `villager`. |
 | `facing` | select | `down` | `FACINGS` | Start / home facing. |
 | `behaviour` | select | `wander` | `NPC_BEHAVIOURS` | How it moves ([§14.2](#142-behaviours)). |
@@ -579,9 +866,13 @@ A villager who idles, walks, turns to the player and talks.
 | `talkOffset` | `[dx, dz]` | (none) | (no inspector field) | Where the player talks to the NPC, relative to `x, z` (e.g. across a counter). Legacy absolute: `talkPoint: [x, z]`. |
 | `talkRadius` | number | `1.6` | (no inspector field) | Talk distance; the game's floor is 0.5. |
 | `area` | rect | square of `max(0.5, wander)` round home | (no inspector field) | The rect a `chase` NPC roams, relative to `x, z`. Legacy absolute: `bounds`. |
+| `spec` | object | (none) | (no inspector field) | Sprite overrides merged over the preset (`createCharacterSheet` spec fields: `hair`, `hairStyle`, `hat`, `outfit: { top, bottom, accent }` …; palette ramp names or hex). Drawn by the game (since 2026-10-07) and the editor preview; anything but an object is ignored. |
+| `talk` | script | (none) | the script editor | A talk script ([STORY_SCRIPT.md §7](STORY_SCRIPT.md#7-talk-scripts-and-actors)): when it holds a line it replaces `dialogue`, `action` and `script`. |
+| `actor` | text | (none) | | The story character this villager is (story files' `actors`): its talk script when `talk` is empty, its name as a speaker, one visit count across levels. |
+| `flag` | text | (none) | | The story flag set when a conversation with this villager ends (a level with a story, or a campaign). |
 
-**In the game:** a `Sprite3D` with the preset's sheet (sheets are shared between NPCs with the
-same preset), a blob contact shadow and a sun-facing shadow; a moving circle collider (0.34) that
+**In the game:** a `Sprite3D` with the preset's sheet, `spec` merged over it (sheets are shared
+between NPCs with the same preset and `spec`), a blob contact shadow and a sun-facing shadow; a moving circle collider (0.34) that
 the player and other characters bump into; ground foliage keeps a clearing of
 `min(8, wander) + 0.8` round the home spot. The "Talk" prompt appears above the head (lower for
 the `child` preset). While talking the NPC stops, faces the player and resumes afterwards. The
@@ -671,7 +962,7 @@ A named rectangle: the HUD location plate, arrival banners and world-map labels.
 | `minX`, `maxX`, `minZ`, `maxZ` | number | 4 × 4 round the click | drag | World units. |
 | `name` | text | `"New area"` | | HUD plate title and world-map label. |
 | `sub` | text | `""` | | HUD plate sub-line; blank = the level name. |
-| `minY` | number or `null` | `null` | −5–20, step 0.1, blank = any | Only counts while the player stands **above** this world height (a plateau region over a lower one). |
+| `minY` | number or `null` | `null` | −5–20, step 0.1, blank = any | Only counts while the player stands **above** this world height (height level × 0.5; inspector: *Only above height, world units*) — a plateau region over a lower one. |
 | `banner` | text | `""` | | Arrival banner subtitle; blank = no banner. |
 
 **In the game** (checked every 0.3 s): the first region, in object order, with
@@ -684,6 +975,63 @@ map, one label per region name; a region that contains a smaller region's centre
 letter-spaced "area" style, and labels move (or, for areas, are set compact) to avoid overlaps
 (`WorldMap` in [`src/engine/ui/Minimap.js`](../../src/engine/ui/Minimap.js)). The level's own
 banner (name + subtitle, 3.2 s) shows when play starts.
+
+### exit
+
+A campaign exit: where the player leaves for another level of the campaign. A level played on its
+own ignores it, so only a campaign's level files have their exits' texts translated: the `label`
+of a `use` exit and the `locked` pages of one with `requires`.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `minX`, `maxX`, `minZ`, `maxZ` | number | 4 × 4 round the click | drag | World units; must cover walkable ground (usually the road where it meets the map edge). |
+| `to` | text | `""` | | The target level: its file name in the campaign's `levels/` folder, without `.json`. |
+| `entrance` | text | `""` | | An entrance's name in the target level. Blank: across the seam when the campaign places both levels (`at`), else the target's player start. |
+| `mode` | select | `walk` | `EXIT_MODES` | `walk`: walking into the rect travels; `use`: a prompt (`label`) and Space travel — a door, a cave mouth. |
+| `label` | text | `"Enter"` | | The prompt's verb of a `use` exit. A built-in verb (Enter, Look, Read … — I18N.md §4.8) is shown as the UI string; any other label (*Climb up*) is a unit translated by its key. |
+| `requires` | condition | `""` | | A story condition the exit needs (a flag name, `item:cellar-key` …); blank = always open. Checked whenever the player tries it. |
+| `locked` | lines | `[]` | | What the player reads while the condition does not hold, one page per entry (blank: "The way is closed.", the UI string `campaign.exit.closed`). |
+
+### entrance
+
+A campaign arrival point that exits of other levels name.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `name` | text | `""` | | What exits call it; blank = its id. Two entrances with one name: exits find the first (the editor and `level:check` say so) — except two story variants of one entrance (conditions that can never hold together: one's `when` is the other's `unless`, `a and b` / `unless: a` …), which may share a name. |
+| `facing` | select | `down` | `FACINGS` | The player's facing on arrival. |
+
+The editor's "Check for problems" lists an exit without a target or over no walkable ground, two
+entrances sharing a name and an entrance off walkable ground (`travelIssues` in
+[`src/engine/level/Travel.js`](../../src/engine/level/Travel.js)); its "walkable ground reaches the
+map edge" warning skips the tiles inside exits.
+
+### event
+
+A story event ([STORY_SCRIPT.md §6](STORY_SCRIPT.md#6-events-and-triggers)): a rectangle whose
+script runs when its trigger fires. Builds nothing; the editor draws it (`!`, gold).
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `minX`, `maxX`, `minZ`, `maxZ` | number | 4 × 4 round the click | drag | World units: the area of `use`, `enter`, `leave`; where the editor draws the others. |
+| `on` | select | `use` | `EVENT_TRIGGERS` | `use` (Space inside it) · `enter` · `leave` · `arrive` · `change` (its `if` becomes true) · `time` (`at`) · `cleared` (`group`). |
+| `once` | bool | `false` | | Never runs again after it ran (saved). |
+| `run` | script | `[]` | the script editor | What happens ([STORY_SCRIPT.md §4–5](STORY_SCRIPT.md#4-scripts)). |
+| `background` | bool | (none) | *Runs in the background* | A background run ([STORY_SCRIPT.md §6](STORY_SCRIPT.md#6-events-and-triggers)): the script plays while the player keeps walking — it holds no one and opens no dialog window — so it may use only lines that need no input and move no one but villagers (`bark`, `emote`, villagers' walks, `set`, `toast` …; no dialogue or `choice`). The checks report every other line as an error. Read as `=== true`; absent unless set (no default, so files that do not use it do not change). |
+| `label` | text | (none) | | The Space prompt's verb (`use`); blank = "Look". A built-in verb (Look, Read …) is shown as the UI string; any other label (*Search*) is a unit translated by its key. |
+| `if` | condition | (none) | | A guard (the event runs only while it holds; a `use` prompt shows only then) — for `change`, the condition whose becoming true fires it. |
+| `at` | number | (none) | 0–24, step 0.25 | `time`: the hour. |
+| `group` | text | (none) | | `cleared`: the enemy group object's id. |
+
+### marker
+
+A named spot for the story's staging commands (`walk ilse well-side`, `camera well-side`,
+`teleport player well-side`). Invisible in the game; the editor draws it (`✦`, gold).
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `name` | text | `""` | | What scripts call it; blank = its id. |
+| `facing` | select | `down` | `FACINGS` | How an actor put here faces (`teleport`). |
 
 ## Combat
 
@@ -701,7 +1049,7 @@ group with its sprites, home ring and, for the boss, the arena).
 
 | Field | Type | Default | Editor range / options | Notes |
 | --- | --- | --- | --- | --- |
-| `kind` | select | `slime` | `ENEMY_KINDS` (labels from `ENEMY_INFO`) | Unknown: the editor previews slimes, the game spawns nothing for the group. Stats per kind: `src/demo/combat/defs.js` (COMBAT.md §7.1). |
+| `kind` | select | `slime` | `ENEMY_KINDS` (labels from `ENEMY_INFO`) | Unknown: the editor previews slimes, the game spawns nothing for the group. Stats per kind: `src/game/combat/defs.js` (COMBAT.md §7.1). |
 | `count` | int | `3` | 1–8 | The game accepts 0–8 (a `golem` group: 0–1). `null` or `""` = the number of `spotOffsets` (as for critters). |
 | `radius` | number | `3` | 0.5–12, step 0.1 | Home radius: the default scatter square, the idle wander area, the leash's base. |
 | `level` | int | `1` | 1–10 | Scales non-boss HP ×(1 + 0.2 (L − 1)), ATK ×(1 + 0.12 (L − 1)), XP, gold; display only for the boss. |
@@ -740,7 +1088,7 @@ A rune pillar with a floating crystal: the combat checkpoint (`PropFactory.wayst
 
 | Field | Type | Default | Editor range / options | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | text | `"Waystone"` | | Toasts (`<name> attuned`, `Rested at <name>`) and the examine speaker. |
+| `name` | text | `"Waystone"` | | Toasts (`<name> attuned`, `Rested at <name>`) and the examine speaker; a name translated as a term (blank: the UI string `game.default.waystone`). |
 
 **In the game:** ~2.1 u pillar (the crystal floats to ≈ 3 u), a circle collider r 0.5, the interact
 point at the stone (radius 1.5). The crystal and its runes wear a per-instance emissive material
@@ -756,7 +1104,8 @@ combat level walking within 2 u attunes the stone (the respawn point is 1.2 u so
 ### 13.1 In the file
 
 - `text` (house, well, signpost): `string[]`, one dialog page per entry. Blank entries are
-  dropped; a single string is accepted as one page.
+  skipped (they keep their index: [§13.3](#133-translations)); a single string is accepted as one
+  page.
 - `dialogue` (npc): an array of pages; a page is either a **string** or a **choice page**
   `{ "text": "Question?", "choices": ["First answer", "Second answer"] }`.
 - Markup in any page: `{word}` is drawn in gold; `\n` (a newline character in the JSON string)
@@ -768,6 +1117,20 @@ combat level walking within 2 u attunes the stone (the respawn point is 1.2 u so
 - The **first choice is the non-committal answer** on pages with two or more choices: built-in
   actions run on any choice but the first, so mashing the confirm key never buys, rests or changes
   the music by accident. A one-choice closing page runs the action with its only answer.
+- `textKeys` (optional, every type with translatable text): the text keys of the object's
+  translatable fields, side by side with them ([§13.3](#133-translations)): one key for `title`,
+  `sub`, `banner` and `label`; for `text` and `locked` a list parallel to the raw list
+  (`null` for a blank entry); for `dialogue` per raw page a key, or `{ "key", "choices" }` for a
+  choice page (`"key": null` when its question is blank):
+
+  ```json
+  "text": ["{Tobin's Farm}. Mind the chickens.", "Someone has added, …"],
+  "textKeys": {"text": ["FD16B8743DD5A4C70BD9A04DC5BB7FCC", "638FE502B9DB304DBD5816D5B68E29CD"]}
+  ```
+- Script fields (an npc's `talk`, an event's `run`): each line that holds text ends with its key
+  as a tag, `- Good morning! #line:9F2A…` ([STORY_SCRIPT.md §4](STORY_SCRIPT.md#4-scripts)). The
+  editor shows and compares scripts without their tags.
+- Keys and tags are made by the editor, a generator or `npm run i18n:keys`, never by hand.
 
 ### 13.2 In the editor (inspector text)
 
@@ -795,11 +1158,46 @@ Fancy a pear? [No thanks | Yes, please]
 "dialogue": ["Morning! The {pond} is full of frogs this year.", {"text": "Fancy a pear?", "choices": ["No thanks", "Yes, please"]}]
 ```
 
+### 13.3 Translations
+
+The game shows a level's text in the page's language at display, from the content tables
+([I18N.md §4](I18N.md#4-content-text)); the level file stays English. Every catalog field flagged
+`i18n: true` is one of two kinds:
+
+- **Names** (a villager's `name`, a sign's `speaker`, a region's, enemy's or waystone's `name`,
+  a villager's `item`) are **terms**, translated by the name itself: the same name reads the same
+  wherever it appears. A blank villager or waystone name, or a sign without a `speaker`, shows the
+  UI's default (`game.default.*`); a blank enemy name shows its kind's label.
+- **Text** (`text`, `dialogue` and its choices, a villager's `title`, a region's `sub` and
+  `banner`, an exit's or event's own `label`, an exit's `locked`, the `talk` and `run` scripts)
+  is made of **units**, each keyed by the GUID the object holds for it
+  ([I18N.md §4.2](I18N.md#42-keys-and-lookup)): the `textKeys` entry of its field and raw index
+  ([§13.1](#131-in-the-file)), or a script line's `#line:` tag
+  ([STORY_SCRIPT.md §4](STORY_SCRIPT.md#4-scripts)). A key is made when its text is made — by the
+  editor, a generator or `npm run i18n:keys` — and kept through every edit.
+
+What an edit does to the translations:
+- **Editing a line's English** keeps its key: the line shows English until a translator reviews it
+  (`npm run i18n:check` reports it as changed).
+- **Inserting, removing or reordering** pages, choices or script lines keeps every other text's key
+  and translation. An inserted text gets a new key and stays English until it is translated; a
+  removed text takes its key with it (its unit becomes an orphan, which `--prune` drops). Nothing
+  moves, so there is no `--sync` step.
+- **Renaming an object's `id`** keeps its keys and translations.
+- **Copying an object** (paste, duplicate) gives the copy fresh keys (new units: English until
+  translated); a cut and paste keeps its own. A level saved under another name keeps its keys, and a text whose English is then changed
+  gets a new key while the original keeps the shared one (copy on write,
+  [I18N.md §4.10](I18N.md#410-keys-through-edits-the-editor-the-generators-the-tools)).
+- **Renaming a villager or a place** is a new term, untranslated until a translator adds it.
+- A level played from browser storage (`local:`) carries its keys but has no table of its own, so
+  its text stays English — except the editor's play-test, which passes the table of the project
+  file the level came from (`&i18n=levels/<name>`).
+
 ## 14. NPC actions, behaviours and scripts
 
 ### 14.1 Built-in actions (`action`)
 
-`conversationFor(obj)` in [`src/demo/dialogue.js`](../../src/demo/dialogue.js) uses the NPC's
+`conversationFor(obj)` in [`src/game/dialogue.js`](../../src/game/dialogue.js) uses the NPC's
 `script` when it names a known one; otherwise `levelConversation(obj)`: the `dialogue` pages,
 then the action. If the dialogue **ends with its own choice page**, that choice decides the action
 (any answer but the first runs it; with a one-choice closing page, its only answer). Otherwise
@@ -817,7 +1215,7 @@ Emberfall's merchant script adds to `apples`, a `shop` NPC adds to the lower-cas
 
 ### 14.2 Behaviours
 
-| Behaviour | What the NPC does ([`Npc.js`](../../src/demo/Npc.js)) |
+| Behaviour | What the NPC does ([`Npc.js`](../../src/game/Npc.js)) |
 | --- | --- |
 | `wander` | Idles 2.5–6.5 s, then walks (≤ 6 s) to a random walkable point within `wander` of home; glances at the player within 2.4 units. `wander ≤ 0.2` never walks. |
 | `post` | Stands at home (walks back if pushed more than 0.15), faces the player within 2.2 units, otherwise looks around every 2.5–5 s (down, left, right or its home facing). |
@@ -826,7 +1224,7 @@ Emberfall's merchant script adds to `apples`, a `shop` NPC adds to the lower-cas
 
 ### 14.3 Hand-written scripts (`script`)
 
-Scripts are Emberfall's conversations in `CONVERSATIONS` ([`dialogue.js`](../../src/demo/dialogue.js)),
+Scripts are Emberfall's conversations in `CONVERSATIONS` ([`dialogue.js`](../../src/game/dialogue.js)),
 available to any level. An unknown script id (an `Object.prototype` name such as `"__proto__"`
 too) logs a warning and falls back to the dialogue.
 
@@ -841,7 +1239,7 @@ too) logs a warning and falls back to the dialogue.
 | `bard` | Introduces the song and starts the music if it is silent. Later visits: while the music plays, a choice [Keep playing · Rest a while] — the second stops it; while it is off, the bard starts it again. |
 | `scholar` | Explains the controls in character (T, R, P, Q/E, Z/X or wheel, ~, H). |
 | `drillmaster` | The combat tutor (combat levels): explains the controls for the keyboard or the pad, asks for a 3-hit combo on a dummy and a dodge, rewards 2 draughts once, and has post-victory pages after the boss falls. On a peaceful level it falls back to the NPC's `dialogue` (COMBAT.md §6.12). |
-| `shopkeeper` | The combat shop (combat levels; added 2026-09-28): the NPC's `dialogue` pages (all on the first visit, then the last page, with *Tell me again* in the menu for the others), then a menu — *Nothing more* first, then the Healing Draught (25 gold) and the one-time wares not yet bought (Whetstone ATK +2 for 120, Ironbark Tonic max HP +15 for 90, Warding Charm DEF +3 for 150; `SHOP_WARES` in `src/demo/combat/rules.js`), marked *(not enough)* when the gold does not reach — repeated after each purchase. Refused while enemies are engaged. On a peaceful level it plays the NPC's own `dialogue` and `action` (COMBAT.md §6.12). |
+| `shopkeeper` | The combat shop (combat levels; added 2026-09-28): the NPC's `dialogue` pages (all on the first visit, then the last page, with *Tell me again* in the menu for the others), then a menu — *Nothing more* first, then the Healing Draught (25 gold) and the one-time wares not yet bought (Whetstone ATK +2 for 120, Ironbark Tonic max HP +15 for 90, Warding Charm DEF +3 for 150; `SHOP_WARES` in `src/game/combat/rules.js`), marked *(not enough)* when the gold does not reach — repeated after each purchase. Refused while enemies are engaged. On a peaceful level it plays the NPC's own `dialogue` and `action` (COMBAT.md §6.12). |
 
 A conversation is `async (ctx) => void` with `ctx = { say(lines, opts?) → Promise<choiceIndex|undefined>, toast(text), sfx(name), visits, game, npc }`.
 
@@ -856,7 +1254,7 @@ keep loading and looking the same). To add an object type:
 2. For a prop: a `PropFactory` method ([`Props.js`](../../src/engine/world/Props.js), builders in
    [`props/`](../../src/engine/world/props/)) and a case in `LevelObjectBuilder.build`; add a
    `LIGHT_PRIORITY` entry if it casts light. For an actor or marker: handle it in
-   [`World.js`](../../src/demo/World.js) / [`Game.js`](../../src/demo/Game.js).
+   [`World.js`](../../src/game/World.js) / [`Game.js`](../../src/game/Game.js).
 3. Optional: draw it on the 2D maps ([`LevelMap.js`](../../src/engine/level/LevelMap.js)), give it
    an editor preview for non-prop kinds ([`src/editor/viewport3d/`](../../src/editor/viewport3d/)),
    extend `objectBounds` for picking.
@@ -873,6 +1271,8 @@ keep loading and looking the same). To add an object type:
    ([`tools/make-starfall-vale.mjs`](../../tools/make-starfall-vale.mjs), whose `coverage()` fails
    until it is); a type with `combat: true`, a new `ENEMY_KINDS` kind or a new `CHEST_UPGRADES`
    value must be placed in Cinderwatch Pass
-   ([`tools/make-cinderwatch-pass.mjs`](../../tools/make-cinderwatch-pass.mjs)).
+   ([`tools/make-cinderwatch-pass.mjs`](../../tools/make-cinderwatch-pass.mjs)); a type with
+   `campaign: true` or `story: true` in the demo campaign; a piece of furniture
+   (`interior: true`, with its `interiorFootprint` case) in the interiors demo.
 
 Step-by-step recipes: [../ai/TASK_PLAYBOOKS.md](../ai/TASK_PLAYBOOKS.md).

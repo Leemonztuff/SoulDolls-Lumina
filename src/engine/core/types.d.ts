@@ -6,7 +6,7 @@ import type * as THREE from 'three';
 import './Engine.js';
 import './Input.js';
 
-/** Action names a level adds at runtime with `Input.addBindings` (combat: src/demo/combat/types.d.ts). */
+/** Action names a level adds at runtime with `Input.addBindings` (combat: src/game/combat/types.d.ts). */
 export interface ExtraActions {}
 
 declare module './Engine.js' {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const STYLE_ID = 'lumina-vp3d-style';
+const STYLE_ID = 'luminati-vp3d-style';
 const CSS = `
 .lvp3d-root { position: relative; width: 100%; height: 100%; overflow: hidden; }
 .lvp3d-root > canvas { position: absolute; inset: 0; }
@@ -22,6 +22,12 @@ const CSS = `
   content: ''; position: absolute; left: 50%; bottom: -7px; width: 1px; height: 6px;
   background: rgba(227, 179, 92, 0.7);
 }
+.lvp3d-label.region.exit { border-left-color: #7fd6a8; }
+.lvp3d-label.region.exit::after { background: rgba(127, 214, 168, 0.7); }
+.lvp3d-label.entrance { font-weight: 500; font-size: 11px; padding: 2px 7px; border-color: rgba(127, 214, 168, 0.6); }
+.lvp3d-label.region.event { border-left-color: #e8c25a; }
+.lvp3d-label.region.event::after { background: rgba(232, 194, 90, 0.7); }
+.lvp3d-label.marker { font-weight: 500; font-size: 11px; padding: 2px 7px; border-color: rgba(232, 194, 90, 0.6); }
 .lvp3d-label.selected { border-color: #ffc94d; box-shadow: 0 0 0 1px rgba(255, 201, 77, 0.45), 0 2px 10px rgba(0, 0, 0, 0.5); }
 .lvp3d-label.npc { font-weight: 500; font-size: 11px; padding: 2px 7px; border-color: rgba(143, 227, 255, 0.5); }
 .lvp3d-label.tool {
@@ -47,6 +53,31 @@ export function ensureStyles() {
 }
 
 const _p = new THREE.Vector3();
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+/**
+ * Screen box (CSS px) of a label's world `area` rect at its height, or null when a corner lies
+ * behind the camera (or beyond its far plane) and the box cannot be trusted.
+ * @param {{ minX: number, maxX: number, minZ: number, maxZ: number, y: number }} a
+ * @param {THREE.Camera} camera
+ * @param {number} width
+ * @param {number} height
+ */
+function areaBox(a, camera, width, height) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let k = 0; k < 4; k++) {
+    _p.set(k & 1 ? a.maxX : a.minX, a.y, k & 2 ? a.maxZ : a.minZ).project(camera);
+    if (!(_p.z > -1 && _p.z < 1)) return null;
+    const x = (_p.x * 0.5 + 0.5) * width;
+    const y = (-_p.y * 0.5 + 0.5) * height;
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  return { minX, maxX, minY, maxY };
+}
 
 /**
  * An HTML label pinned to a world point (`LabelLayer.create`); the owner moves `world`, sets
@@ -61,6 +92,9 @@ const _p = new THREE.Vector3();
  * @property {'above'|'cursor'} anchor
  *   'above' (centred above the point) | 'cursor' (to the lower right, like a tooltip)
  * @property {string} [id]                          the level object it names (hit tests)
+ * @property {{ minX: number, maxX: number, minZ: number, maxZ: number, y: number }|null} [area]
+ *   the world rect a region-style label names (at height y): the label stays inside the view —
+ *   shown while the rect is in view, kept over its visible part and never cut at an edge
  * @property {(t: string, sub?: string) => void} setText   text and optional second line
  * @property {string|null} _text                    (internal) the text last set
  * @property {number} [_x]                          (internal) the position last written
@@ -90,6 +124,9 @@ export class LabelLayer {
   create(className, text = '') {
     const el = document.createElement('div');
     el.className = `lvp3d-label ${className}`;
+    // hidden until `update` places it on screen (`screen.on` starts false): a label created out
+    // of view would otherwise sit unplaced in the layer's corner
+    el.style.display = 'none';
     this.el.appendChild(el);
     /** @type {Label} */
     const label = {
@@ -128,7 +165,9 @@ export class LabelLayer {
   }
 
   /**
-   * Project every label (call once per rendered frame).
+   * Project every label (call once per rendered frame). A label with an `area` (region names)
+   * is kept inside the view like the tool labels: over the part of its rect in view (its point
+   * may be off-screen) and whole, 4 px from the edges.
    * @param {THREE.Camera} camera
    * @param {number} width  view size in CSS px
    * @param {number} height
@@ -136,6 +175,8 @@ export class LabelLayer {
   update(camera, width, height) {
     for (const l of this.labels) {
       let on = l.visible;
+      /** where an area label's point is kept (CSS px): its rect's part in view, or the view */
+      let keep = null;
       if (on) {
         if (l.screenOffset) {
           l.screen.x = l.screenOffset.x;
@@ -145,6 +186,13 @@ export class LabelLayer {
           on = _p.z > -1 && _p.z < 1 && Math.abs(_p.x) < 1.2 && Math.abs(_p.y) < 1.2;
           l.screen.x = (_p.x * 0.5 + 0.5) * width;
           l.screen.y = (-_p.y * 0.5 + 0.5) * height;
+          if (l.area) {
+            const b = areaBox(l.area, camera, width, height);
+            if (b) {
+              keep = { minX: Math.max(b.minX, 0), maxX: Math.min(b.maxX, width), minY: Math.max(b.minY, 0), maxY: Math.min(b.maxY, height) };
+              on = keep.minX <= keep.maxX && keep.minY <= keep.maxY;
+            } else if (on) keep = { minX: 0, maxX: width, minY: 0, maxY: height };
+          }
         }
       }
       if (on !== l.screen.on) {
@@ -152,6 +200,13 @@ export class LabelLayer {
         l.screen.on = on;
       }
       if (!on) continue;
+      if (keep) {
+        if (!l._size || l._size === true) l._size = { w: l.el.offsetWidth, h: l.el.offsetHeight };
+        const { w, h } = l._size;
+        // over the rect's visible part, then the whole label in the view (hitTest reads l.screen)
+        l.screen.x = clamp(clamp(l.screen.x, keep.minX, keep.maxX), w / 2 + 4, width - w / 2 - 4);
+        l.screen.y = clamp(clamp(l.screen.y, keep.minY, keep.maxY), h + 4, height - 4);
+      }
       // write the style only when the label moved (no per-frame style recalcs while idle)
       const x = Math.round(l.screen.x * 2) / 2;
       const y = Math.round(l.screen.y * 2) / 2;

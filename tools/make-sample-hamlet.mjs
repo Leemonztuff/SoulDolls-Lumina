@@ -12,11 +12,13 @@
  *     --check       write nothing; compare the generated text with the --out file and exit 1 if
  *                   it differs (says whether the data differs or only the key order / formatting;
  *                   CRLF line endings count as identical — git stores the file with LF)
- *   then play it at index.html?level=sample-hamlet
+ *   then play it at game.html?level=sample-hamlet
  *
  * The output is deterministic (no randomness; a second run is byte-identical) and each object
  * line has a canonical key order of its own (see `canonicalObject`), so the file does not change
- * when `createObject` changes the key order it builds objects in.
+ * when `createObject` changes the key order it builds objects in. Every text carries its
+ * content-text key (`textKeys`, docs/specs/I18N.md §4.10): carried from the current file at the
+ * default path (never --out), a new text's minted from the file and the text.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +27,7 @@ import {
   createEmptyLevel, setTile, setHeightLevel, addObject, normalizeLevel, parseLevel, validateLevel, serializeLevel, levelStats,
 } from '../src/engine/level/LevelFormat.js';
 import { OBJECT_TYPES } from '../src/engine/level/ObjectCatalog.js';
+import { keyLevel, keyIssueLines } from './lib/levelgen.mjs';
 
 /** @import { LevelObject } from '../src/engine/level/types.js' */
 
@@ -43,7 +46,7 @@ const W = 28;
 const D = 22;
 const level = createEmptyLevel({ name: 'Willowmere', width: W, depth: D, fill: 'g', level: 2, border: 2 });
 level.subtitle = 'A Hamlet by the Pond';
-level.author = 'Lumina';
+level.author = 'Luminati';
 level.description = 'A small sample level: a green with a well, three cottages, a pond with fireflies and a raised orchard terrace.';
 level.environment = { ...level.environment, timeOfDay: 16.8 };
 
@@ -193,7 +196,10 @@ function canonicalObject(o) {
 
 const { level: out, warnings } = normalizeLevel(level);
 out.objects = out.objects.map(canonicalObject);
-const errors = validateLevel(out);
+// the content-text keys (docs/specs/I18N.md §4.10): carried from the current file at the default
+// path (never --out), new ones seeded by the file and the text
+keyLevel(out, { root, file: 'public/levels/sample-hamlet.json' });
+const errors = [...validateLevel(out), ...keyIssueLines(out)];
 const text = serializeLevel(out);
 // what the editor does on open → save unchanged: must give the same bytes
 if (serializeLevel(parseLevel(text).level) !== text) errors.push('the output does not re-serialise byte-identically (parseLevel → serializeLevel)');

@@ -1,12 +1,11 @@
-# Module notes for integration (from builder + auditor reports)
+# Module implementation notes
 
-> **Purpose.** A descriptive record of what each engine module *actually* implements, condensed
-> from the reports of the agents that built and audited it (workflow 01), plus the integration
-> notes appended later (Emberfall review, big-level scalability, Starfall Vale). It records
+> **Purpose.** A descriptive record of engine implementation choices, integration details,
+> and performance observations from the original build and later reviews. It records
 > deviations from the contract, extras, caveats and measurements at the time they were written.
 > It is **not binding** and it lags the code in places (see the errata below).
 >
-> **Audience.** Developers and AI agents who want the history and the caveats of a module before
+> **Audience.** Developers and AI agents who want the rationale and caveats of a module before
 > wiring or changing it. For the current API, read the module pages first.
 >
 > **Source of truth.** The code under [`src/engine/`](../../src/engine/). Canonical, verified
@@ -14,9 +13,9 @@
 > contract: [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §4.
 >
 > **Related.** [contracts/README.md](README.md) (what is binding, precedence) ·
-> [ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md) · [history/PROJECT_HISTORY.md](../history/PROJECT_HISTORY.md)
+> [ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md) · [Architecture overview](../architecture/OVERVIEW.md)
 >
-> **Combat modules are not in this file.** The combat builders' reports (2026-09-28) are condensed
+> **Combat modules are not in this file.** Combat implementation decisions are recorded
 > in [COMBAT.md §27](COMBAT.md#27-deviations-integration) instead, and their pieces are described in
 > the module pages (`FxQuads` / `GroundMarkers` in fx.md, `MonsterSprites` / `FxSprites` in pixel.md,
 > the `Sprite3D` combat variant in sprite.md, the combat UI in ui.md). Where a note below says
@@ -34,12 +33,16 @@
 > | lighting (deviation 5) | God-ray shafts `frustumCulled = false` | Culled per shaft with a sphere test (`frustumCulled = true`) |
 > | lighting (API summary) | `uSunColor` ≈ 1.43 at golden hour | ≈ 1.71 (sunI 6.0 / 3.5) |
 > | ui | Sentence-end pause 0.3 s | 0.22 s for `. ! ?`, 0.16 s for `; :`, 0.14 s for `—` (`DialogBox` `PAUSES`) |
+> | ui (2026-10-10) | The look of every UI note below: `@fontsource` faces imported by `UI.js` (Cinzel, Crimson Pro, Pixelify Sans), gold double borders, `clamp()` / `vw` sizes, SVG arrows falling back to Georgia | The UI is pixel art after mockup G in three languages: fonts from `FontLoader.js` (Google first, else `dist/`), art px at `--px`, pixel glyph fonts ([PIXEL_UI.md](../specs/PIXEL_UI.md), [ui.md](../architecture/modules/ui.md)) |
 > | core (audio) | Harp "about 18 notes, roughly 5 MB" | 23 notes, ≈ 7.7 MB once all are rendered ([audio.md](../architecture/modules/audio.md)) |
 > | terrain | Option lists | `TileMap` also takes `wallBounce`, `Water` also `deferShore` ([world.md](../architecture/modules/world.md)) |
+> | core (2026-10-11) | "index.html should keep overflow: hidden" | The game page is `game.html` and keeps it; `index.html` is the launcher ([Launcher architecture](../architecture/OVERVIEW.md)) |
 > | textures | "door, window and lantern_glass look the same for every seed; the other 43 vary" | Only `window` and `lantern_glass` ignore the library seed; `door`'s wood grain uses it (44 vary) ([pixel.md](../architecture/modules/pixel.md)) |
 >
 > *Paths in the "Files" lists were made repository-relative in the documentation pass (they were
-> absolute Windows paths copied from the agent reports); nothing else in the notes was changed.*
+> absolute Windows paths copied from the agent reports). On 2026-10-07 each stale statement in
+> the table above also got a short inline* [Errata: …] *mark with the current value where it
+> stands (KNOWN_ISSUES DOC-09, DOC-11). Nothing else in the notes was changed.*
 
 ## core
 
@@ -87,7 +90,7 @@ Input(target = window, opts)
 - Window blur and hidden visibility release every key (release edges fire).
 - Wheel deltaY is accumulated and normalised for deltaMode. Wheel events over lil-gui panels, form fields or [data-input-ignore] are ignored.
 - pointer is {x, y, down}, plus extras buttons and inside.
-- Gamepad (standard mapping) is polled in update() once a gamepadconnected event has been seen. The left stick uses a 0.2 radial, rescaled deadzone. Buttons appear as virtual codes (GamepadA, GamepadB, GamepadLB, GamepadRB, GamepadRT (analog, threshold 0.35), GamepadDpadUp, …), usable with isDown/wasPressed and through the new padBindings table: A = confirm, B = cancel, LB/RB = camLeft/camRight, RT = run, d-pad = move, Y/X = zoomIn/zoomOut, Start = help, Back = photo.
+- Gamepad (standard mapping) is polled in update() once a gamepadconnected event has been seen. The left stick uses a 0.2 radial, rescaled deadzone. Buttons appear as virtual codes (GamepadA, GamepadB, GamepadLB, GamepadRB, GamepadRT (analog, threshold 0.35), GamepadDpadUp, …), usable with isDown/wasPressed and through the new padBindings table: A = confirm, B = cancel, LB/RB = camLeft/camRight, RT = run, d-pad = move, Y/X = zoomIn/zoomOut, Start = help, Back = photo. *[Errata: Back / View = `map` and the right-stick click (`GamepadRS`) = `photo` — see the table at the top.]*
 - getMoveVector(out?) combines keys and stick, with length ≤ 1. It returns a reused object.
 - Extras: anyPressed(), consumeAction(name) (swallows a pressed edge, e.g. for a dialog), getLookVector() (right stick), gamepad info object, reset(), deadzone, triggerThreshold.
 
@@ -209,7 +212,7 @@ No foundation files were modified.
 - **Mild pluck transients.** The harp plucks show broadband attack transients in the spectrogram. I softened the excitation (two-pole lowpass plus a pluck-position comb) and they now look like normal pluck onsets, not clicks.
 - **Background-tab audio.** Music and ambience are scheduled from both a 40 ms timer and update(). In a throttled background tab late events are skipped rather than played in a burst. By default the AudioContext is suspended while the tab is hidden anyway.
 - **Gamepad needs a first press.** Polling starts only after the browser fires gamepadconnected, which needs a button press on that page (the standard Gamepad API rule). The simulated-pad test covers the logic.
-- **Harp buffer memory.** Plucks are pre-rendered lazily per MIDI note at 32 kHz, about 18 notes and roughly 5 MB total for the whole song.
+- **Harp buffer memory.** Plucks are pre-rendered lazily per MIDI note at 32 kHz, about 18 notes and roughly 5 MB total for the whole song. *[Errata: 23 notes, ≈ 7.7 MB once all are rendered.]*
 - **Engine.dispose() frees the whole scene.** It walks the scene and disposes all geometries, materials and textures, including shared ones. Pass {disposeScene: false} to skip that.
 - **Button activation and Space.** preventDefault on bound keys also stops Space/Enter from activating a focused button (intended: confirm should not click UI). The sandbox blurs its buttons after a click.
 - **FPS.** The GPU was shared with other agents during checks; the sandbox measured about 60 fps.
@@ -218,8 +221,8 @@ No foundation files were modified.
 - Audio has only been checked by numbers, not by ear. Offline renders show no NaNs, music about -22 dB RMS (peak -9), sfx peaks -8 to -10 dB, ambience -27 to -41 dB RMS. Someone should still listen to judge the mix and the melody.
 - Before-unlock no-ops are an interpretation of the contract. setAmbience() only changes the layers you pass. To fade out the layers you leave out, pass {replace: true}. musicPlaying reports intent: it is already true if startMusic() was called before unlock().
 - Some cleanup uses wall-clock timers. SFX panners and the music bus disconnect via setTimeout, not the audio clock. If the tab is hidden while an sfx tail is still ringing (the context suspends), that tail can be cut when the tab comes back. This is minor.
-- Harp pluck buffers are rendered synchronously the first time each note is used, about 0.5 to 1 ms per note and about 18 notes in total. This happens during the first bars of the music, not at unlock.
-- In full-window mode (container = document.body), size comes from window.innerWidth/innerHeight. If the page has a visible scrollbar the canvas is stretched by the scrollbar width. index.html should keep overflow: hidden.
+- Harp pluck buffers are rendered synchronously the first time each note is used, about 0.5 to 1 ms per note and about 18 notes in total *[Errata: 23]*. This happens during the first bars of the music, not at unlock.
+- In full-window mode (container = document.body), size comes from window.innerWidth/innerHeight. If the page has a visible scrollbar the canvas is stretched by the scrollbar width. index.html should keep overflow: hidden. *[Errata: the game page is `game.html` (2026-10-11); it keeps `overflow: hidden`.]*
 - The Q/E yaw limit is ±60° around the initial yaw given to the constructor, not around world yaw 0.
 
 ## postfx
@@ -271,7 +274,7 @@ Orthographic cameras are handled in the CoC.
 
 Shader modules: DofShaders.js exports `createCocUniforms`, `DOF_COC_GLSL`, `DofPrefilterShader`, `goldenAngleKernel`, `createDofGatherShader(taps)`, `DofTentShader`, `DofBokehSpriteShader`, `DofCompositeShader`. The others are GradeShader.js (`GradeShader`), BloomShaders.js (`BloomBrightPassShader`) and PostCommon.js (`FULLSCREEN_VERTEX`, `POST_COMMON_GLSL`, `CopyShader`).
 
-Measured best-case GPU time at 1600x900 on the GTX 1060 (shared GPU, so minimum over frames): scene about 1.1 ms, DOF chain 0.75–1.05 ms (highlight sprites about 0.25 ms of that), bloom 0.30 ms, output + grade 0.25 ms.
+Measured best-case GPU time at 1600x900 on the reference desktop GPU (shared GPU, so minimum over frames): scene about 1.1 ms, DOF chain 0.75–1.05 ms (highlight sprites about 0.25 ms of that), bloom 0.30 ms, output + grade 0.25 ms.
 
 ### Deviations / additions
 No contract names or signatures changed. The following are behaviour choices and additions:
@@ -287,7 +290,7 @@ No contract names or signatures changed. The following are behaviour choices and
    - Fully sharp within focusDistance ± focusRange/2, then a smoothstep ramp to 1 over 1.5 × focusRange, times nearScale or farScale.
    - Tilt term: tiltShift, ramped in over `tiltFeather` (0.3 uv) outside tiltCenter ± tiltWidth/2. The final value is the larger magnitude; its sign follows the depth side, or the screen side inside the focus band.
    - Kernel radius = maxBlur × H/1080 × max(scales) × dofScale.
-5. **Gather tap count** steps 48 → 64 → 96 (bounded by maxTaps) to keep about 0.3 taps/px² when maxBlur is raised. 48 is used at the defaults.
+5. **Gather tap count** steps 48 → 64 → 96 (bounded by maxTaps) to keep about 0.3 taps/px² when maxBlur is raised. 48 is used at the defaults. *[Errata: the count follows the drawing-buffer height — 48 only up to ~917 px, then 64 and 96; the game caps it at 64.]*
 6. **Composite small-CoC blur.** For |CoC| of 0.3–4 px the composite adds a 12-tap full-res, depth-aware disc blur. The half-res layer only takes over above 2–4 px, so the focus falloff is gradual while the in-focus band stays pixel-exact.
 7. **Debug view** renders straight to the screen, skipping bloom and grade. It works even when dof.enabled is false.
 8. **DOF off with bloom on** copies the resolved scene into a non-MSAA HDR target first. three invalidates the MSAA colour buffer after resolve, so blending into it is invalid.
@@ -561,26 +564,26 @@ SpriteManager.js and Foliage.js were audited and left unchanged.
 - sandbox/lighting.shadow.json
 
 ### API summary (builder)
-All three modules are written and match the contract. The sandbox check reports 0 page errors, 0 console errors and 0 warnings, at 60 fps on the GTX 1060.
+All three modules are written and match the contract. The sandbox check reports 0 page errors, 0 console errors and 0 warnings, at 60 fps on the reference desktop GPU.
 
 **LightingSystem(engine, { timeOfDay=17.2, timeSpeed=0, shadowMapSize=2048, shadowExtent=22 })**
 - Uses only engine.renderer, engine.scene and engine.camera. It has name 'lighting', so it can be added with engine.addSystem.
 - Members: sun, hemi, sky, timeOfDay, timeSpeed, paused, setTime(h), nightFactor, sunDirection, settings { sunMul, ambientMul, fogMul, shadows, exposureMul, pointLightMul, flicker }, followTarget(obj | Vector3 | null), addPointLight(...) → { light, dispose() }, registerEmissive(mat, { day=0, night=1.6 }), update(dt), dispose().
-- **Palette:** 12 keyframes across 24h (night, late night, pre-dawn, pink dawn, sunrise, morning, noon, afternoon, golden hour 17.2, sunset, purple dusk, blue hour). They are interpolated with a monotone cubic spline that wraps at midnight, colours in linear space, so it never overshoots.
+- **Palette:** 12 keyframes *[Errata: 13 — night at 0.0 h and 21.4 h]* across 24h (night, late night, pre-dawn, pink dawn, sunrise, morning, noon, afternoon, golden hour 17.2, sunset, purple dusk, blue hour). They are interpolated with a monotone cubic spline that wraps at midnight, colours in linear space, so it never overshoots.
 - **What the palette drives:**
   - sun colour and intensity; shadow intensity and radius (2.5 by day, 3.2 at night)
   - hemisphere sky/ground colours and intensity
   - FogExp2 colour and density (fog colour equals the horizon colour)
   - toneMappingExposure
   - the sky state
-  - uNight, uSunDirection and uSunColor (colour × intensity / 3.5: about 1.0 at noon, 1.43 at golden hour), and uFogColor
+  - uNight, uSunDirection and uSunColor (colour × intensity / 3.5: about 1.0 at noon, 1.43 at golden hour *[Errata: ≈ 1.71 — sunI 6.0 / 3.5]*), and uFogColor
 - **Sun and moon paths:** each moves on a tilted circle, rotated so the sun sits behind-left (azimuth -125°, about 16° up) at 17.2. Golden-hour shadows therefore run long and diagonally toward the lower-right of screen. The moon culminates behind-right at night.
 - **Light direction:** blended from sun to moon in azimuth/elevation space during twilight, when direct intensity is low. Elevation is softly clamped to 10–68°. Measured over a full 24h, the largest change is 0.31° per 0.01h, so there is no jump.
 - **Shadows:** 2048 map, orthographic ±22, bias -0.0002, normalBias 0.055. The frustum is centred on the follow target (or the camera's look-at point) and snapped to shadow texels in light space; the measured snap error is about 1e-13.
 - **Point lights:** intensity = base × lerp(dayIntensity, 1, night) (when nightOnly) × smooth fbm flicker × pointLightMul. Lights are never added, removed or hidden after creation, and the shader program count stayed at 21 through a full day cycle.
 
 **Sky({ radius=180 })**
-- object is a back-side sphere with depthWrite and depthTest off, no fog, renderOrder -1000. It re-centres on whichever camera renders it, just before drawing.
+- object is a back-side sphere with depthWrite and depthTest off, no fog, renderOrder -1000 *[Errata: the default is `earlyZ: true` — depth test on, `renderOrder` 1e6, `Sky.EARLY_Z_RENDER_ORDER`]*. It re-centres on whichever camera renders it, just before drawing.
 - setState({ top, horizon, bottom, sunDirection, sunColor, night }); update(dt); dispose().
 - The shader draws:
   - the top/horizon/bottom gradient
@@ -611,8 +614,8 @@ All three modules are written and match the contract. The sandbox check reports 
 1. **Renderer settings touched.** LightingSystem sets renderer.shadowMap.enabled = true. If the shadow type is PCFSoftShadowMap it switches it to PCFShadowMap: three r186 has removed PCFSoft for WebGL and would make the same switch itself, but with a console warning. shadow.radius provides the soft look.
 2. **Shadows toggle.** settings.shadows sets sun.shadow.intensity to 0 and shadow.autoUpdate to false, rather than turning castShadow off, so toggling never forces a shader recompile.
 3. **What "sun direction" means at night.** The sunDirection getter and uSunDirection give the directional light's direction (the moon at night, softly clamped to 10–68° elevation), so shadows, sprite shadow proxies and water glints stay consistent. The true sun and moon directions are separate getters (trueSunDirection, moonDirection).
-4. **God-ray default direction.** Without a direction, a shaft follows the live sun azimuth but its elevation is steepened by `steepness` (0.45) to keep the Octopath-style diagonal. Set steepness to 0 for an exact -sunDirection. Beams also fade out as the light approaches its 10° elevation clamp, i.e. at sunset and sunrise.
-5. **Shaft geometry.** Each shaft is one axis-billboarded quad instead of crossed quads or a tapered box, so it is never seen edge-on as a hard plane. Only the mesh's world translation is used (orientation comes from the shader), and frustumCulled is false.
+4. **God-ray default direction.** Without a direction, a shaft follows the live sun azimuth but its elevation is steepened by `steepness` (0.45) to keep the slanted diagonal of Square Enix's HD-2D games. Set steepness to 0 for an exact -sunDirection. Beams also fade out as the light approaches its 10° elevation clamp, i.e. at sunset and sunrise.
+5. **Shaft geometry.** Each shaft is one axis-billboarded quad instead of crossed quads or a tapered box, so it is never seen edge-on as a hard plane. Only the mesh's world translation is used (orientation comes from the shader), and frustumCulled is false. *[Errata: each shaft is culled with a sphere test, `frustumCulled = true`.]*
 6. **Colour scaling.** uSunColor = sun colour × intensity / 3.5.
 7. **Extra members.** Additional optional fields and return values are listed in the API summary; no contract member was renamed or changed.
 
@@ -681,7 +684,7 @@ All three modules are written and match the contract. The sandbox check reports 
 The UI module is finished and matches contract 4.8. The sandbox runs with 0 page errors, 0 console errors, 0 warnings and 0 failed requests at 1280x720, 1600x900 and 2560x1440. Scripted checks confirmed: choice index resolves (Down + Space returned 1), onChar fires, the fader promises settle, clicking the dialog completes and then advances a line, clicking the title resolves 'pointer', and title.visible turns false after the fade.
 
 UI.js — `new UI(container = document.body)`
-- Members: `root` (#lumina-ui.lu-root; the pointer passes through except on interactive children), `dialog`, `banner`, `title`, `hud`, `prompt`, `fader`, `debug`.
+- Members: `root` (#luminati-ui.lu-root; the pointer passes through except on interactive children), `dialog`, `banner`, `title`, `hud`, `prompt`, `fader`, `debug`.
 - `setVisible(bool)` is photo mode: everything fades except the fader. There is also a `visible` getter.
 - `update(dt, {camera, input})` calls `dialog.update` (input is passed only while the overlay is visible and no title is showing), then `prompt.update(camera)`, then `hud.update`.
 - It sets root classes automatically: `lu-root--dialog` hides the controls legend and the prompt while talking; `lu-root--title` hides the HUD and prompt while the title is up.
@@ -697,7 +700,7 @@ DialogBox — `new DialogBox(parent)`
   - Input is handled before the typewriter.
   - `confirm` while typing completes the line, otherwise it advances or selects the choice; `cancel` while typing completes the line; `up`/`down` move the choice cursor.
   - Confirm is ignored for 0.15 s after open, so the Talk press doesn't skip text.
-- Typewriter: `speed` defaults to 45 chars/s. Punctuation pauses are `,` 0.12 s and `.`/`!`/`?` 0.3 s, and `…` or `...` 0.42 s.
+- Typewriter: `speed` defaults to 45 chars/s. Punctuation pauses are `,` 0.12 s and `.`/`!`/`?` 0.3 s, and `…` or `...` 0.42 s. *[Errata: `.`/`!`/`?` 0.22 s; also `;`/`:` 0.16 s and `—` 0.14 s (`DialogBox` `PAUSES`).]*
 - `onChar(char)` fires for each visible character; `close()`.
 - Extras: `onSound(name)` hook with names matching AudioSystem ('open', 'close', 'confirm', 'blip'), `isTyping`, `isChoosing`, `skip()`, `speed`, `inputGuard`, `dispose()`.
 - Markup: `{word}` shows the word highlighted in gold; `\n` is a line break. Clicking the window acts as confirm; hovering or clicking a choice selects it.
@@ -707,7 +710,7 @@ Banner — `new Banner(parent)`
 - Extras: `hide()`, `visible`, `dispose()`.
 
 TitleScreen — `new TitleScreen(parent)`
-- `show({title = 'Lumina', subtitle, prompt = 'Press any key', credit = 'Lumina HD-2D Engine — three.js'})` resolves with 'key' | 'pointer' | 'gamepad' as soon as the player presses; the screen then fades out over about 1.1 s.
+- `show({title = 'Luminati', subtitle, prompt = 'Press any key', credit = 'Luminati 2.5D Pixel-Art Engine — three.js'})` resolves with 'key' | 'pointer' | 'gamepad' as soon as the player presses; the screen then fades out over about 1.1 s.
   - Input is accepted after `armDelay` (0.45 s).
   - The key listener runs in the capture phase and calls stopPropagation, so the dismissing key doesn't reach gameplay input.
   - Gamepads are polled with requestAnimationFrame only while the title is visible, and only a newly pressed button counts.
@@ -882,7 +885,7 @@ Sandbox (sandbox/textures.html + textures.js):
 - Views, chosen with `?view=` or `window.__tex.setView()`:
   - `atlas`: DOM grid of every texture tiled 2×2, pixelated, with labels plus normal and emissive thumbnails. Filters: `&group=`, `&only=`, `&scale=`.
   - `gallery0`–`gallery3`: 3D pages for terrain slabs; walls and sides; roofs, door, window, cloth, hay, metal, rope and sign; trees and props.
-  - `diorama`: grass plateau with grass_side lip over cliff, stone stairs cut into the cliff, cobblestone path, timber_frame house with roof_red, door, windows and flowerbox, chimney, lantern, oak, autumn tree and pine, barrel, crate and fence. HD-2D camera: fov 28, pitch 32°, distance 24.
+  - `diorama`: grass plateau with grass_side lip over cliff, stone stairs cut into the cliff, cobblestone path, timber_frame house with roof_red, door, windows and flowerbox, chimney, lantern, oak, autumn tree and pine, barrel, crate and fence. Diorama camera: fov 28, pitch 32°, distance 24.
 - Lighting: a low warm sun with shadows, a hemisphere fill and an orbiting warm point light. `setNight(true)` switches to night lighting with glowing windows and lantern.
 - `window.__tex` exposes `lib, renderer, scene, camera, sun, hemi, point, state`, plus:
   - `setView`, `setNight`, `setLightAngle`, `frame(dx, dz, dist)`
@@ -929,20 +932,20 @@ Files changed: src/engine/pixel/Textures.js and sandbox/textures.js. No foundati
 
 ### Known limitations
 - **1×1 side textures repeat every unit.** cliff, grass_side and dirt_side stay at the contract's 1×1 size, so some regularity is visible along long cliff faces. I reduced it with partial fissures and two tones per layer, but it can't be removed at this size.
-- **Alpha textures on distant foliage.** Alpha textures are uploaded from a 2D canvas, which throws away the colour under fully transparent pixels. So colour can't be bled into the gaps: at distant mip levels leaf edges come out slightly darker, and alphaTest 0.5 can thin foliage far away. It is invisible at the normal HD-2D zoom, where textures are magnified. I removed a "bleed colour into transparent pixels" step because the canvas upload discarded its result anyway.
+- **Alpha textures on distant foliage.** Alpha textures are uploaded from a 2D canvas, which throws away the colour under fully transparent pixels. So colour can't be bled into the gaps: at distant mip levels leaf edges come out slightly darker, and alphaTest 0.5 can thin foliage far away. It is invisible at the normal diorama zoom, where textures are magnified. I removed a "bleed colour into transparent pixels" step because the canvas upload discarded its result anyway.
 - **Normal strength is tuned for sandbox lights only.** normalScale was tuned under the sandbox's lights, without PostFX or LightingSystem. If the final lighting shows it too strong or weak, callers can override per material, e.g. `material(name, { normalScale: 0.4 })`.
 - **Generation cost.** Painting all 46 textures takes about 150–190 ms in the browser. Painting happens per texture on first use; `preload()` exists for a loading screen.
-- **Hand-drawn decals are seed-independent.** door, window and lantern_glass look the same for every seed; the other 43 vary with the seed.
+- **Hand-drawn decals are seed-independent.** door, window and lantern_glass look the same for every seed; the other 43 vary with the seed. *[Errata: only `window` and `lantern_glass` ignore the seed; `door`'s wood grain uses it (44 vary).]*
 - **Sign lettering.** sign_board carries carved pseudo-lettering, not real text.
 - **Night window brightness.** Windows look near white-hot at emissiveIntensity 1.6 without bloom and grading; LightingSystem controls that intensity.
 - **Verification.** Visual checks were in the sandbox only, with raw three.js and ACES tone mapping and no depth of field or bloom. A Node run confirmed all 46 textures are deterministic and match their meta sizes, and that alpha textures have real cut-outs while opaque ones have no holes.
 
 ### Remaining audit issues
 - All 1×1 side textures (cliff, grass_side, dirt_side) still repeat every world unit horizontally because the contract fixes them at 1×1. The redesign makes the repeat much quieter (continuous strata instead of hot spots), but it can't be removed at 16 px. If the team accepts a contract change, a 64×16 cliff/grass_side/dirt_side (units [4,1]) would remove it; TileMap already has to read meta.units for stone_wall and all tops.
-- Alpha foliage (leaves, leaves_autumn, pine, fence_wood, flowerbox) is uploaded from a 2D canvas, so colour under fully transparent texels is lost. At mip levels ≥ 1 edges darken slightly. In practice mip 0 is always used at the HD-2D zoom (about 3–5 screen px per texel at distances 24–36), so this is left as is. Uploading an ImageData with bled colour would fix it but would change the type of texture.image.
+- Alpha foliage (leaves, leaves_autumn, pine, fence_wood, flowerbox) is uploaded from a 2D canvas, so colour under fully transparent texels is lost. At mip levels ≥ 1 edges darken slightly. In practice mip 0 is always used at the diorama zoom (about 3–5 screen px per texel at distances 24–36), so this is left as is. Uploading an ImageData with bled colour would fix it but would change the type of texture.image.
 - The grass_side lip uses the PALETTE.grass ramp. It matches the grass and grass_flowers tops but will look brighter than grass_dark tops if a map puts grass_side under grass_dark.
 - normalScale values were tuned under raw sandbox lighting only (no PostFX or LightingSystem). Override per material if needed, e.g. material(name, { normalScale: 0.4 }).
-- The seam heuristic in my Node validation flags stone_tiles, stone_wall, stone_brick, wood_deck, well_stone, roof_red, farmland and wood_planks_dark on the y axis. These are false positives: block rows start at y=0, so the wrap seam coincides with a mortar or shadow row, exactly like the interior rows. The 2×2 tiled atlas confirms they tile cleanly.
+- The seam heuristic in the Node validation flags stone_tiles, stone_wall, stone_brick, wood_deck, well_stone, roof_red, farmland and wood_planks_dark on the y axis. These are false positives: block rows start at y=0, so the wrap seam coincides with a mortar or shadow row, exactly like the interior rows. The 2×2 tiled atlas confirms they tile cleanly.
 
 ## terrain
 
@@ -959,7 +962,7 @@ Files changed: src/engine/pixel/Textures.js and sandbox/textures.js. No foundati
 ### API summary (builder)
 TileMap.js exports TileMap, plus helpers ORGANIC_TOPS, GRASS_TOPS, FRINGE_RECEIVERS, FRINGE_PRIORITY and paintDecalMask(seed).
 
-TileMap(map, { textures, seed?, baseDepth = 2, chunkSize = 32, uvVariation = true, fringes = true, overhangs = true, aoStrength = 1.1, tintStrength = 1, sideVariation = false }).
+TileMap(map, { textures, seed?, baseDepth = 2, chunkSize = 32, uvVariation = true, fringes = true, overhangs = true, aoStrength = 1.1, tintStrength = 1, sideVariation = false }). *[Errata: also `wallBounce`.]*
 
 Contract members, all implemented:
 - object: a Group of merged meshes, one per (material, 32×32 chunk). The sandbox map uses 26 meshes. All cast and receive shadows, except ground fringes, which only receive.
@@ -1005,7 +1008,7 @@ Optional legend extras:
 
 Water.js exports Water and createWaterfall.
 
-Water(tileMap, { level?, flow = [0, 0.3], resolution = 8, opacity = 0.9, shallowOpacity = 0.58, glint = 1, foam = 1, brightness = 1.15, deepAt = 0.34, reflect = 0.1, saturation = 1.12, neutral = 0.35, maxDistance = 2, maxDepth = 1.5 }).
+Water(tileMap, { level?, flow = [0, 0.3], resolution = 8, opacity = 0.9, shallowOpacity = 0.58, glint = 1, foam = 1, brightness = 1.15, deepAt = 0.34, reflect = 0.1, saturation = 1.12, neutral = 0.35, maxDistance = 2, maxDepth = 1.5 }). *[Errata: also `deferShore`.]*
 - object: one mesh with surface quads plus cross-section faces at map edges and at drops to lower water.
 - ShaderMaterial with fog, lights, transparent, depthWrite true, renderOrder RENDER_ORDER.WATER, receives shadows.
 - Baked shore DataTexture (R = shore/obstacle distance, G = depth, BA = flow; chamfer distance, blurred).
@@ -1217,6 +1220,10 @@ Extras beyond the contract
 - `result.dispose()`, `windmill.sails`, `bridge.walkRects`, `PropFactory.mergeStatic`.
 - `createGlowMaterial({ baseV })`.
 - Many optional opts, as listed in the builder's report.
+- *Added 2026-10-07 (additive):* the interior furniture methods `bed`, `table`, `chair`, `shelf`,
+  `hearth`, `counter`, `rug`, `staircase`, `wardrobe`, `wallWindow`, `sacks`
+  (`props/Furniture.js`; the catalog's `interior: true` types) — see
+  [world.md §4.2](../architecture/modules/world.md#42-factory-methods).
 
 ### Known limitations
 - **Draw calls per house.** Houses are 10–13 draw calls: 2-story brick houses with a sign reach 13 because every texture is its own material, and chimney_stone and sign_board each add one.
@@ -1239,7 +1246,6 @@ Extras beyond the contract
 - `house` stories are clamped to 1–2. Story heights other than the defaults (3 and 2) can misalign the timber_frame beams.
 - The sandbox renders without PostFX (raw ACES), so bloom and grading on flames and windows are untested here. Values were chosen so that only the cores exceed the bloom threshold.
 - Outside this module: ARCHITECTURE §4.1 asks for PCFSoftShadowMap, but r186 removed it. WebGLShadowMap warns and falls back to PCFShadowMap. This is for the Engine owner.
-- Process note: a shell-quoting slip in one of my check runs wiped the builder's `.check/props/*.png`. I regenerated them with the same names from the fixed code, so they now show the post-fix state.
 
 ## scalability (big levels, 128 × 128)
 

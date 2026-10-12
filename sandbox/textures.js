@@ -5,7 +5,7 @@
  *   atlas            DOM atlas: every texture tiled 2×2 at 4× (pixelated) + normal/emissive maps
  *                    (&group=terrain|sides|buildings|props, &scale=N, &only=a,b,c)
  *   gallery0..3      three.js gallery pages (terrain / walls / roofs & openings / props & nature)
- *   diorama          HD-2D camera on a mini diorama (grass cliff, cobble path, timber house)
+ *   diorama          the diorama camera on a mini diorama (grass cliff, cobble path, timber house)
  *   (&night=1 or __tex.setNight(true) for the night lighting with glowing windows)
  */
 import * as THREE from 'three';
@@ -674,7 +674,7 @@ requestAnimationFrame(frame);
  * @property {number} genMs  generation time of every texture
  * @property {typeof setView} setView
  * @property {typeof setNight} setNight
- * @property {(dx?: number, dz?: number, distance?: number) => void} frame  move the HD-2D camera
+ * @property {(dx?: number, dz?: number, distance?: number) => void} frame  move the diorama camera
  *   (focus offset in world units, distance)
  * @property {(a: number) => void} setLightAngle  freeze the orbiting light at angle `a` (rad)
  * @property {typeof TEXTURE_NAMES} names
@@ -684,7 +684,7 @@ requestAnimationFrame(frame);
 window.__tex = {
   lib, THREE, renderer, scene, camera, sun, hemi, point, pages, state, genMs,
   setView, setNight,
-  /** Move the HD-2D camera (focus offset in world units, distance). */
+  /** Move the diorama camera (focus offset in world units, distance). */
   frame(dx = 0, dz = 0, distance = state.distance) { state.focus.x += dx; state.focus.z += dz; state.distance = distance; placeCamera(); },
   /** Freeze the orbiting point light at a given angle (for deterministic shots). */
   setLightAngle(a) { state.t = a / 0.6; },
@@ -707,7 +707,7 @@ window.__tex = {
     }
     // material cache: same params → same material; different onBeforeCompile hooks / textures → different materials
     const hookA = (sh) => sh;
-    const hookB = (sh) => { sh.defines = { LUMINA_TEST: 1 }; };
+    const hookB = (sh) => { sh.defines = { LUMINATI_TEST: 1 }; };
     const keyed = lib.material('grass', { side: THREE.DoubleSide }) === lib.material('grass', { side: THREE.DoubleSide })
       && lib.material('leaves', { onBeforeCompile: hookA }) !== lib.material('leaves', { onBeforeCompile: hookB })
       && lib.material('plaster', { map: lib.get('brick') }) !== lib.material('plaster', { map: lib.get('stone_brick') })

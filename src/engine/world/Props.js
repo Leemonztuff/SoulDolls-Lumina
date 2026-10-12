@@ -5,8 +5,9 @@ import { MeshBuilder } from './props/MeshBuilder.js';
 import { applyWind } from './props/Wind.js';
 import { createFlame } from './props/Flame.js';
 import { PropTextureSet } from './props/PropTextures.js';
-import { kdSplit, triangleCount } from './SpatialSplit.js';
-import { buildShadowCasters } from './ShadowCasters.js';
+import { kdSplit, triangleCount, groupByTag, taggedRanges } from './SpatialSplit.js';
+import { shadowCasterSteps } from './ShadowCasters.js';
+import { runSteps } from '../utils/steps.js';
 import { buildHouse } from './props/House.js';
 import { buildTree } from './props/Trees.js';
 import { buildLamppost, buildWallTorch, buildCampfire } from './props/LightProps.js';
@@ -16,16 +17,23 @@ import {
   buildHaystack, buildFlowerbox,
 } from './props/SmallProps.js';
 import { buildChest, buildWaystone } from './props/CombatProps.js';
+import {
+  buildBed, buildTable, buildChair, buildShelf, buildHearth, buildCounter, buildRug, buildStaircase, buildWardrobe,
+  buildWallWindow, buildSacks,
+} from './props/Furniture.js';
 
 /**
  * @import { TextureLibrary } from '../pixel/Textures.js'
  * @import { HouseOptions } from './props/House.js'
  * @import { TreeOptions } from './props/Trees.js'
+ * @import { BedOptions, TableOptions, ChairOptions, ShelfOptions, HearthOptions, CounterOptions, RugOptions,
+ *   StaircaseOptions, WardrobeOptions, WallWindowOptions, SacksOptions } from './props/Furniture.js'
  * @import { Collider } from './TileMap.js'
+ * @import { TaggedRange } from './SpatialSplit.js'
  */
 
 /**
- * Props.js — procedural HD-2D diorama props.
+ * Props.js — procedural 2.5D diorama props.
  *
  * Every factory method builds chunky, slightly irregular low-poly geometry wearing the shared
  * pixel textures at a constant 16 px / unit (world-space UVs scaled by `textures.meta(name).units`),
@@ -91,6 +99,25 @@ import { buildChest, buildWaystone } from './props/CombatProps.js';
 const _v = new THREE.Vector3();
 const _rel = new THREE.Matrix4();
 const _mw = new THREE.Matrix4();
+
+/**
+ * The AABB of a prop's box colliders together (a house's one box, or the strips of one turned by
+ * other than a quarter turn — `PropFactory.boxColliders`); null without any.
+ * @param {readonly { type: string, minX?: number, maxX?: number, minZ?: number, maxZ?: number }[]} colliders
+ * @returns {{ minX: number, maxX: number, minZ: number, maxZ: number }|null}
+ */
+export function boxUnion(colliders) {
+  let r = null;
+  for (const c of colliders ?? []) {
+    if (c.type !== 'box') continue;
+    if (!r) r = { minX: c.minX, maxX: c.maxX, minZ: c.minZ, maxZ: c.maxZ };
+    else {
+      r.minX = Math.min(r.minX, c.minX); r.maxX = Math.max(r.maxX, c.maxX);
+      r.minZ = Math.min(r.minZ, c.minZ); r.maxZ = Math.max(r.maxZ, c.maxZ);
+    }
+  }
+  return r;
+}
 
 export class PropFactory {
   /** @param {{ textures: TextureLibrary, seed?: number }} opts */
@@ -234,6 +261,104 @@ export class PropFactory {
    */
   waystone(x, y, z, opts = {}) { return buildWaystone(this, x, y, z, opts); }
 
+  // ---- interior furniture (props/Furniture.js; the catalog's `interior: true` types). (x, y, z):
+  // the footprint's centre on the floor (a wall window: the wall face); front = local +Z, a wall
+  // piece's back on local −Z.
+
+  /**
+   * Bed: posts, head and foot panels, mattress, a patchwork quilt (`blanket` colour), pillows.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {BedOptions} [opts] width (1.2), length (2.2), blanket ('red'), rotation, seed
+   * @returns {PropResult}
+   */
+  bed(x, y, z, opts = {}) { return buildBed(this, x, y, z, opts); }
+
+  /**
+   * Table, rect on four legs or round on a pedestal; optional cloth, tableware and a candle flame.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {TableOptions} [opts] shape ('rect'), width (1.6; round 1.2), depth (0.9), cloth, items
+   *   (true), candle, rotation, seed
+   * @returns {PropResult}
+   */
+  table(x, y, z, opts = {}) { return buildTable(this, x, y, z, opts); }
+
+  /**
+   * Chair (slatted back at local −Z) or round stool.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {ChairOptions} [opts] style ('chair' | 'stool'), rotation, seed
+   * @returns {PropResult}
+   */
+  chair(x, y, z, opts = {}) { return buildChair(this, x, y, z, opts); }
+
+  /**
+   * Open shelf against a wall, filled with books or pantry stores.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {ShelfOptions} [opts] kind ('books' | 'pantry'), width (1.6), height (2.2), rotation, seed
+   * @returns {PropResult}
+   */
+  shelf(x, y, z, opts = {}) { return buildShelf(this, x, y, z, opts); }
+
+  /**
+   * Stone fireplace against a wall; lit: flame, glowing embers (emissive), sparks, one flickering
+   * point light day and night.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {HearthOptions} [opts] width (2.2), height (2.6), lit (true), embers (true), pot,
+   *   intensity (10), distance (9), rotation, seed
+   * @returns {PropResult}
+   */
+  hearth(x, y, z, opts = {}) { return buildHearth(this, x, y, z, opts); }
+
+  /**
+   * Inn bar or shop counter, the panelled front toward local +Z.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {CounterOptions} [opts] style ('bar' | 'shop'), width (2.6), items (true), rotation, seed
+   * @returns {PropResult}
+   */
+  counter(x, y, z, opts = {}) { return buildCounter(this, x, y, z, opts); }
+
+  /**
+   * Woven rug flat on the floor (no collider, no shadow).
+   * @param {number} x @param {number} y @param {number} z
+   * @param {RugOptions} [opts] color ('red'), width (2), length (3), fringe (true), rotation, seed
+   * @returns {PropResult}
+   */
+  rug(x, y, z, opts = {}) { return buildRug(this, x, y, z, opts); }
+
+  /**
+   * Interior staircase marking a `use` exit: a flight up along a wall or a stairwell going down.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {StaircaseOptions} [opts] dir ('up' | 'down'), width (1.2), steps (7), height (2.5),
+   *   flip, rail (true), rotation, seed
+   * @returns {PropResult}
+   */
+  staircase(x, y, z, opts = {}) { return buildStaircase(this, x, y, z, opts); }
+
+  /**
+   * Wardrobe or chest of drawers against a wall.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {WardrobeOptions} [opts] kind ('wardrobe' | 'drawers'), width (1.4; drawers 1.2), rotation, seed
+   * @returns {PropResult}
+   */
+  wardrobe(x, y, z, opts = {}) { return buildWardrobe(this, x, y, z, opts); }
+
+  /**
+   * Window in a room's wall seen from inside (emissive panes, curtains, a light shaft by day).
+   * (x, y, z): the wall face at floor height; local +Z points into the room.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {WallWindowOptions} [opts] panes (1), sill (0.9), glow ('daylight' | 'warm'), curtains
+   *   ('red'), beam (true), flowers, rotation
+   * @returns {PropResult}
+   */
+  wallWindow(x, y, z, opts = {}) { return buildWallWindow(this, x, y, z, opts); }
+
+  /**
+   * Grain / flour sacks: up to three standing in a row, a fourth lying on top.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {SacksOptions} [opts] count (3), rotation, seed
+   * @returns {PropResult}
+   */
+  sacks(x, y, z, opts = {}) { return buildSacks(this, x, y, z, opts); }
+
   /** Dispose every geometry, material and texture this factory created (not the TextureLibrary's). */
   dispose() {
     for (const g of this._geometries) g.dispose();
@@ -273,14 +398,38 @@ export class PropFactory {
    * drawn by a few shadow-only proxy meshes per region instead (ShadowCasters.buildShadowCasters —
    * the depth pass needs no materials), and those batches stop casting: the same shadows for a
    * handful of shadow-pass draw calls.
+   *
+   * `tags` (Map result → tag; a game's live story groups): the meshes of a tagged result are merged
+   * like any other — the same batches, cut the same way — but within each batch (and shadow proxy)
+   * the vertices of one tag lie next to each other, and the returned `ranges` say where
+   * (`position`: these materials place a vertex by it alone), so SpatialSplit.CollapsibleRanges
+   * can hide and show a tag without a draw call of its own. Without tags nothing changes.
    * @param {(PropResult|THREE.Object3D)[]} results
    * @param {{ name?: string, maxTriangles?: number, maxExtent?: number, minTriangles?: number,
-   *           shadowCasters?: { lights: THREE.Light[], maxTriangles?: number, maxExtent?: number }|null }} [opts]
-   * @returns {{ object: THREE.Group, meshes: THREE.Mesh[], dispose: () => void }}
+   *           shadowCasters?: { lights: THREE.Light[], maxTriangles?: number, maxExtent?: number }|null,
+   *           tags?: Map<PropResult|THREE.Object3D, any>|null }} [opts]
+   * @returns {{ object: THREE.Group, meshes: THREE.Mesh[], ranges: TaggedRange[], dispose: () => void }}
+   *   ranges: the tagged results' vertices in the batches and proxies ([] without tags)
    */
-  mergeStatic(results, { name = 'props:static', maxTriangles = Infinity, maxExtent = Infinity, minTriangles = 0, shadowCasters = null } = {}) {
+  mergeStatic(results, opts = {}) {
+    return runSteps(this.mergeStaticSteps(results, opts));
+  }
+
+  /**
+   * {@link mergeStatic} as a step generator (src/engine/utils/steps.js): a step per result
+   * gathered, per shadow proxy and per batch merged. Run to its end it returns what mergeStatic
+   * returns; the props' merged meshes leave their objects at the end of each material's batches,
+   * as in mergeStatic.
+   * @param {Parameters<PropFactory['mergeStatic']>[0]} results
+   * @param {Parameters<PropFactory['mergeStatic']>[1]} [opts]
+   * @returns {Generator<undefined, ReturnType<PropFactory['mergeStatic']>>}
+   */
+  * mergeStaticSteps(results, { name = 'props:static', maxTriangles = Infinity, maxExtent = Infinity, minTriangles = 0, shadowCasters = null, tags = null } = {}) {
     const buckets = new Map();
     const merged = [];
+    /** @type {TaggedRange[]} */
+    const ranges = [];
+    const tagged = !!tags?.size;
     const visit = (o, fn) => {
       if (o.userData.dynamic) return;
       fn(o);
@@ -289,6 +438,7 @@ export class PropFactory {
     for (const r of results) {
       const root = /** @type {THREE.Object3D} */ (/** @type {PropResult} */ (r)?.object ?? r);
       if (!root?.isObject3D) continue;
+      const tag = tagged ? (tags.get(r) ?? null) : null;
       root.updateWorldMatrix(true, true);
       const rel = root.parent ? _rel.copy(root.parent.matrixWorld).invert() : null;
       visit(root, (o) => {
@@ -301,13 +451,15 @@ export class PropFactory {
         const key = `${m.uuid}|${+o.castShadow}|${+o.receiveShadow}`;
         let bk = buckets.get(key);
         if (!bk) {
-          bk = { material: m, castShadow: o.castShadow, receiveShadow: o.receiveShadow, depth: o.customDepthMaterial, geos: [], meshes: [], pos: [] };
+          bk = { material: m, castShadow: o.castShadow, receiveShadow: o.receiveShadow, depth: o.customDepthMaterial, geos: [], meshes: [], pos: [], tags: [] };
           buckets.set(key, bk);
         }
         bk.geos.push(o.geometry.clone().applyMatrix4(_mw));
         bk.meshes.push(o);
         bk.pos.push([_mw.elements[12], _mw.elements[14]]);
+        bk.tags.push(tag);
       });
+      yield;
     }
     const group = new THREE.Group();
     group.name = name;
@@ -318,25 +470,31 @@ export class PropFactory {
         const m = bk.material;
         if (!bk.castShadow || bk.depth || m.isShaderMaterial || (m.alphaTest > 0 && (m.map || m.alphaMap)) || m.alphaToCoverage) continue;
         bk.proxied = true;
-        for (const g of bk.geos) pieces.push({ geometry: g, side: m.side });
+        bk.geos.forEach((g, i) => pieces.push({ geometry: g, side: m.side, tag: bk.tags[i] }));
       }
-      casters = buildShadowCasters(pieces, { name: `${name}:shadow`, ...shadowCasters });
+      casters = yield* shadowCasterSteps(pieces, { name: `${name}:shadow`, ...shadowCasters });
       group.add(casters.object);
+      ranges.push(...casters.ranges);
     }
     for (const bk of buckets.values()) {
       const idx = bk.geos.map((_, i) => i);
-      const parts = Number.isFinite(maxTriangles) || Number.isFinite(maxExtent)
+      let parts = Number.isFinite(maxTriangles) || Number.isFinite(maxExtent)
         ? kdSplit(idx, {
           x: (i) => bk.pos[i][0], z: (i) => bk.pos[i][1], weight: (i) => triangleCount(bk.geos[i]),
           maxWeight: maxTriangles, maxExtent, minWeight: minTriangles,
         })
         : [idx];
+      // (a tag's pieces next to each other in each batch: one vertex range per tag and batch)
+      if (tagged) parts = parts.map((part) => groupByTag(part, (i) => bk.tags[i]));
       const label = `${name}:${bk.material.userData.texture || bk.material.name || 'mat'}`;
       let ok = true;
       const made = [];
+      /** @type {TaggedRange[]} */
+      const madeRanges = [];
       for (let p = 0; p < parts.length && ok; p++) {
         const g = mergeGeometries(parts[p].map((i) => bk.geos[i]), false);
         if (!g) { ok = false; break; } // incompatible attribute sets: leave these meshes as they are
+        if (tagged) madeRanges.push(...taggedRanges(g, parts[p].map((i) => bk.geos[i].attributes.position.count), parts[p].map((i) => bk.tags[i]), ['position']));
         g.computeBoundingSphere();
         g.computeBoundingBox();
         const mesh = new THREE.Mesh(g, bk.material);
@@ -346,6 +504,7 @@ export class PropFactory {
         if (bk.depth) mesh.customDepthMaterial = bk.depth;
         mesh.matrixAutoUpdate = false;
         made.push(mesh);
+        yield;
       }
       for (const c of bk.geos) c.dispose();
       if (!ok) {
@@ -357,6 +516,7 @@ export class PropFactory {
         merged.push(mesh);
         this._geometries.add(mesh.geometry);
       }
+      ranges.push(...madeRanges);
       for (const o of bk.meshes) {
         o.removeFromParent();
         o.geometry.dispose();
@@ -366,6 +526,7 @@ export class PropFactory {
     return {
       object: group,
       meshes: merged,
+      ranges,
       dispose: () => {
         for (const mesh of merged) {
           mesh.geometry.dispose();
@@ -421,6 +582,63 @@ export class PropFactory {
   boxCollider(group, minX, maxX, minZ, maxZ) {
     const r = this.localRect(group, minX, maxX, minZ, maxZ);
     return { type: 'box', ...r };
+  }
+
+  /**
+   * Colliders of a local-space rectangle that follow it when the prop is turned by other than a
+   * quarter turn (`localRects` as box colliders): a house turned 45° is covered to within ≈ 0.18 u
+   * of its outline, where one AABB covered its door step too (KNOWN_ISSUES PROP-15). Unturned or
+   * turned by a quarter turn: the one collider `boxCollider` gives.
+   * @param {THREE.Object3D} group @param {number} minX @param {number} maxX
+   * @param {number} minZ @param {number} maxZ @param {number} [strip]
+   * @returns {{ type: 'box', minX: number, maxX: number, minZ: number, maxZ: number }[]}
+   */
+  boxColliders(group, minX, maxX, minZ, maxZ, strip = 0.25) {
+    return this.localRects(group, minX, maxX, minZ, maxZ, strip).map((r) => ({ type: /** @type {'box'} */ ('box'), ...r }));
+  }
+
+  /**
+   * World rects of a local-space rectangle that follow it when the prop is turned by other than a
+   * quarter turn: strips at most `strip` units wide along world X, each the AABB of its slice of
+   * the rectangle (a bridge deck's walk surfaces, KNOWN_ISSUES PROP-02). Unturned or turned by a
+   * quarter turn: `[localRect(…)]`.
+   * @param {THREE.Object3D} group @param {number} minX @param {number} maxX
+   * @param {number} minZ @param {number} maxZ @param {number} [strip]
+   * @returns {{ minX: number, maxX: number, minZ: number, maxZ: number }[]}
+   */
+  localRects(group, minX, maxX, minZ, maxZ, strip = 0.25) {
+    /** @type {[number, number][]} the corners in world space, in order around the rectangle */
+    const pts = [[minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ]].map(([lx, lz]) => {
+      _v.set(lx, 0, lz).applyMatrix4(group.matrixWorld);
+      return [_v.x, _v.z];
+    });
+    const ex = Math.abs(pts[1][0] - pts[0][0]);
+    const ez = Math.abs(pts[1][1] - pts[0][1]);
+    if (Math.min(ex, ez) <= 1e-6 * Math.max(ex, ez, 1e-9)) return [this.localRect(group, minX, maxX, minZ, maxZ)];
+    const x0 = Math.min(...pts.map((p) => p[0]));
+    const x1 = Math.max(...pts.map((p) => p[0]));
+    const n = Math.max(1, Math.ceil((x1 - x0) / strip - 1e-9));
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const xa = x0 + ((x1 - x0) * k) / n;
+      const xb = k === n - 1 ? x1 : x0 + ((x1 - x0) * (k + 1)) / n;
+      let z0 = Infinity;
+      let z1 = -Infinity;
+      for (let e = 0; e < 4; e++) {
+        const [ax, az] = pts[e];
+        const [bx, bz] = pts[(e + 1) % 4];
+        if (ax >= xa && ax <= xb) { z0 = Math.min(z0, az); z1 = Math.max(z1, az); }
+        // where the edge crosses the strip's sides
+        for (const xs of [xa, xb]) {
+          if ((ax - xs) * (bx - xs) >= 0) continue;
+          const z = az + ((bz - az) * (xs - ax)) / (bx - ax);
+          z0 = Math.min(z0, z);
+          z1 = Math.max(z1, z);
+        }
+      }
+      if (z0 <= z1) out.push({ minX: xa, maxX: xb, minZ: z0, maxZ: z1 });
+    }
+    return out;
   }
 
   /** World AABB {minX,maxX,minZ,maxZ} of a local-space rectangle. */
@@ -503,7 +721,7 @@ export class PropFactory {
     return this._cachedMaterial(`wind:${name}`, () => {
       const src = this._source(name);
       const m = new THREE.MeshLambertMaterial({ map: src.map, normalMap: src.normalMap, normalScale: src.normalScale.clone(), vertexColors: true });
-      m.name = `lumina:wind:${name}`;
+      m.name = `luminati:wind:${name}`;
       m.userData.units = src.units;
       return applyWind(m, { foliage: false });
     });
@@ -520,7 +738,7 @@ export class PropFactory {
         map: src.map, normalMap: src.normalMap, normalScale: src.normalScale.clone().multiplyScalar(0.8),
         vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide,
       });
-      m.name = `lumina:foliage:${name}`;
+      m.name = `luminati:foliage:${name}`;
       m.userData.units = src.units;
       return applyWind(m, { foliage: true, wrap: 0.5, billboard });
     });
@@ -534,7 +752,7 @@ export class PropFactory {
         map: t.map, normalMap: t.normal, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
       });
-      m.name = `lumina:decal:${name}`;
+      m.name = `luminati:decal:${name}`;
       m.userData.units = t.units;
       m.userData.castShadow = false;
       return m;

@@ -380,7 +380,7 @@ export class SpriteBatch {
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= diffuseColor.rgb;');
     };
-    material.customProgramCacheKey = () => 'lumina-editor-sprite-batch-v1';
+    material.customProgramCacheKey = () => 'luminati-editor-sprite-batch-v1';
     const fill = this.lighting && this.fill ? this.lighting.registerEmissive(material, this.fill) : null;
     // the sun-facing proxies: alpha-tested depth with the instance's frame (the shadow pass copies
     // the side, alpha test and map of the mesh's material onto it)
@@ -393,7 +393,7 @@ export class SpriteBatch {
           .replace('#include <common>', `#include <common>\n${UV_RECT_PARS}`)
           .replace('#include <uv_vertex>', `#include <uv_vertex>\n${UV_RECT}`);
       };
-      depthMaterial.customProgramCacheKey = () => 'lumina-editor-sprite-batch-depth-v1';
+      depthMaterial.customProgramCacheKey = () => 'luminati-editor-sprite-batch-depth-v1';
     }
     /** @type {SpriteGroup} */
     const g = {

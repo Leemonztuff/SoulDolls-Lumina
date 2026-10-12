@@ -1,6 +1,6 @@
 # Audio module: AudioSystem
 
-> **Purpose.** This is the reference for Lumina's fully procedural WebAudio engine. It
+> **Purpose.** This is the reference for Luminati's fully procedural WebAudio engine. It
 > synthesises every sound at runtime, with no audio files: eight UI and gameplay sound effects,
 > five crossfading ambience layers (wind, birds, crickets, fire, water) and "Emberfall Evening",
 > a looping harp, string-pad and flute folk tune. Combat levels add 35 combat sound effects, two
@@ -11,7 +11,7 @@
 > **Audience:** game programmers wiring sound, anyone extending the sound set, and AI agents.
 >
 > **Source of truth:** [`src/engine/audio/AudioSystem.js`](../../../src/engine/audio/AudioSystem.js)
-> (single file). Game-side mixing lives in [`src/demo/AudioDirector.js`](../../../src/demo/AudioDirector.js).
+> (single file). Game-side mixing lives in [`src/game/AudioDirector.js`](../../../src/game/AudioDirector.js).
 > Contract: [ARCHITECTURE.md §4.1 (audio)](../../../ARCHITECTURE.md).
 >
 > **Related:** [modules index](README.md) · [core.md](core.md) (Engine systems) · [GAME.md](../GAME.md)
@@ -156,14 +156,14 @@ flowchart LR
 
 How the demo uses them (see [GAME.md](../GAME.md)):
 
-- `step` from the player's footsteps ([`src/demo/Player.js`](../../../src/demo/Player.js)).
+- `step` from the player's footsteps ([`src/game/Player.js`](../../../src/game/Player.js)).
 - `blip` from the dialog typewriter (`ui.dialog.onChar`, every other character).
 - The dialog's own sounds through `ui.dialog.onSound`.
 - `open` / `close` when the world map opens or closes.
 - `chime` when resting at the inn.
 
 Scripted conversations can also play sounds (`sfx('chime')` in
-[`src/demo/dialogue.js`](../../../src/demo/dialogue.js)), and so can examinable level objects
+[`src/game/dialogue.js`](../../../src/game/dialogue.js)), and so can examinable level objects
 through their `sfx` field. Emberfall's well has `"sfx": "splash"`.
 
 ### 4.1 Combat sound effects (`COMBAT_SFX_NAMES`, combat levels)
@@ -379,12 +379,13 @@ sound belongs in its `GAME_VOL` and `ROLE` tables ([TASK_PLAYBOOKS §17](../../a
   is done by the game through ambience levels.
 - **Not heard by the harness.** Anyone changing timbres should do a listening pass in a real
   browser (`npm run dev`, open the core sandbox, press the sfx buttons, M for music; combat sounds
-  in `sandbox/combat_audio.html`). Two peaceful sounds are cut before their tails end (KNOWN_ISSUES
-  AUD-06), left as they are so the peaceful audio stays identical.
+  in `sandbox/combat_audio.html`). Since 2026-10-07 `step` and `blip` stop only after their tails
+  have decayed 60 dB (they were cut 45 / 50 dB under the peak, KNOWN_ISSUES AUD-06); what they sound
+  like is unchanged (the recorded peaceful numbers still match).
 
-## 9. History and decisions
+## 9. Design notes
 
-- **Phase 1** (built together with core; see [core.md §10](core.md#10-history-and-decisions)).
+- **Core integration** (see [core.md §10](core.md#10-design-notes)).
   Verified by offline renders (levels, NaN checks, spectrograms) and a live oscilloscope, not
   by ear.
 - **Audit fix:** a `playSfx(…, { delay })` voice was cut off before it sounded, because
@@ -401,7 +402,7 @@ sound belongs in its `GAME_VOL` and `ROLE` tables ([TASK_PLAYBOOKS §17](../../a
     7.7 MB.
 - **Later (Phase 4 review):** the demo's `AudioDirector` keeps its water sample points in a
   `Float32Array` (no per-call garbage).
-- **Combat (fx-audio-input package, COMBAT.md §12):** `COMBAT_SFX_NAMES` synths, the `battle` /
+- **Combat ( COMBAT.md §12):** `COMBAT_SFX_NAMES` synths, the `battle` /
   `boss` tracks with per-instance tempo, crossfading `startMusic({ track })`, the remembered
   track, `setMusicSection`, `playStinger` and `AudioDirector.combatIntensity`. All additive; the
   default song's construction and scheduled events are unchanged. The combat tracks were balanced

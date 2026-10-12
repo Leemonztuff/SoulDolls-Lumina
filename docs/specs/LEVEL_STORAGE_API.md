@@ -1,11 +1,11 @@
 # Level storage API
 
-> **Purpose.** How Lumina levels are stored, found, loaded and saved: the `LevelStorage` functions,
+> **Purpose.** How Luminati levels are stored, found, loaded and saved: the `LevelStorage` functions,
 > every browser-storage key and slot (user slots, the play-test slot, the editor's autosave and
 > recovered copies, preferences), the dev-server REST API that writes `public/levels/`
 > (methods, origin and content-type checks, validation, errors, atomic writes), how the game
-> resolves `?level=` URLs, file import and export, the editor's save flows, and the security
-> limits of all this.
+> resolves `?level=` URLs and the launcher lists the project's levels, file import and export,
+> the editor's save flows, and the security limits of all this.
 >
 > **Audience.** Editor and tool developers, anyone scripting level I/O, AI agents that need to put
 > a level where the game or the editor can open it.
@@ -15,12 +15,13 @@
 > [`vite.config.js`](../../vite.config.js)), [`src/editor/autosave.js`](../../src/editor/autosave.js),
 > [`src/editor/EditorApp.js`](../../src/editor/EditorApp.js) (open / save / play-test / autosave
 > flows), [`src/editor/ui/dialogs.js`](../../src/editor/ui/dialogs.js) (Open and Save as dialogs),
-> [`src/main.js`](../../src/main.js) (game level loading). Binding contract:
+> [`src/main.js`](../../src/main.js) (game level loading),
+> [`tools/vite-launcher.js`](../../tools/vite-launcher.js) (the launcher's list). Binding contract:
 > [contracts/LEVEL_EDITOR.md §4 and §8](../contracts/LEVEL_EDITOR.md). Every status code and
 > message below was checked against the running dev server.
 >
 > **Related.** [LEVEL_FORMAT.md](LEVEL_FORMAT.md) (what is stored) ·
-> [AUTOMATION_API.md](AUTOMATION_API.md) (`window.__lumina.playLocal`, query parameters) ·
+> [AUTOMATION_API.md](AUTOMATION_API.md) (`window.__luminati.playLocal`, query parameters) ·
 > [../user/LEVEL_EDITOR_GUIDE.md](../user/LEVEL_EDITOR_GUIDE.md) (saving and opening in the editor) ·
 > [../architecture/EDITOR.md](../architecture/EDITOR.md) ·
 > [../architecture/modules/level.md](../architecture/modules/level.md)
@@ -47,8 +48,9 @@
 flowchart LR
   subgraph BROWSER ["Browser"]
     ED["Level editor<br/>(editor.html)"]
-    GAME["Game<br/>(index.html)"]
-    LS[("localStorage<br/>lumina.level.‹slot›")]
+    GAME["Game<br/>(game.html)"]
+    LAUNCH["Launcher<br/>(index.html)"]
+    LS[("localStorage<br/>luminati.level.‹slot›")]
   end
   subgraph DEV ["Dev server (npm run dev)"]
     API["/api/levels<br/>tools/vite-level-api.js"]
@@ -64,12 +66,15 @@ flowchart LR
   PUB -- "loadProjectLevel<br/>?level=‹name›" --> GAME
   PUB --> ED
   LS -- "?level=local:‹slot›<br/>(play-test: __playtest__)" --> GAME
+  DISK -- "listed by<br/>tools/vite-launcher.js" --> LAUNCH
+  LAUNCH -. "Play" .-> GAME
+  LAUNCH -. "Edit" .-> ED
 ```
 
 | Place | Written by | Read by | Available |
 | --- | --- | --- | --- |
-| **Project folder** `public/levels/<name>.json` | the editor (Save as › Project folder) through the dev-server API; generators (`tools/make-*.mjs`) directly | the game (`?level=<name>`), the editor (`?open=<name>`, Open › Project) | writing: only under `npm run dev`; reading: dev server, `npm run preview` and any static host of `dist/` (Vite copies `public/` into the build) |
-| **Browser storage** `localStorage` | the editor (Save as › This browser, autosave, play-test), `window.__lumina.playLocal`, `sandbox/game_levels.html` | the game (`?level=local:<slot>`), the editor (Open › This browser, `?local=<slot>`) | always; per browser and per origin |
+| **Project folder** `public/levels/<name>.json` | the editor (Save as › Project folder) through the dev-server API; generators (`tools/make-*.mjs`) directly | the game (`?level=<name>`), the editor (`?open=<name>`, Open › Project), the launcher's list ([§6](#6-published-levels-and-url-resolution)) | writing: only under `npm run dev`; reading: dev server, `npm run preview` and any static host of `dist/` (Vite copies `public/` into the build) |
+| **Browser storage** `localStorage` | the editor (Save as › This browser, autosave, play-test), `window.__luminati.playLocal`, `sandbox/game_levels.html` | the game (`?level=local:<slot>`), the editor (Open › This browser, `?local=<slot>`) | always; per browser and per origin |
 | **Files** `*.level.json` | the editor (Save as › Download, File › Download .json) | the editor (Open › File, drag and drop) | always |
 
 Every load goes through `parseLevel` (normalisation + warnings,
@@ -86,17 +91,20 @@ Every load goes through `parseLevel` (normalisation + warnings,
 | `RESERVED_FILE_NAMES` | RegExp | `/^(con\|prn\|aux\|nul\|com[0-9]\|lpt[0-9])$/` — Windows device names. |
 | `PLAYTEST_SLOT` | `"__playtest__"` | The play-test slot. |
 | `listLocalLevels()` | `{ slot, name, savedAt, width, depth }[]` | Levels saved in this browser (from the index), newest first, **without** the play-test slot. Autosave and recovered copies are not in it. |
-| `saveLocalLevel(slot, level)` | the slot | Writes `serializeLevel(level)` to `lumina.level.<slot>` and updates the index. The slot is slugified, except `__playtest__`. **Throws** when storage is full or unavailable. |
-| `loadLocalLevel(slot)` | `{ level, warnings }` or `null` | Reads `lumina.level.<slot>` (the slot is used as is — no slugify) and parses it; `null` when missing or storage is unavailable. Throws if the stored text is not a valid level. |
+| `saveLocalLevel(slot, level)` | the slot | Writes `serializeLevel(level)` to `luminati.level.<slot>` and updates the index. The slot is slugified, except `__playtest__`. **Throws** when storage is full or unavailable. |
+| `loadLocalLevel(slot)` | `{ level, warnings }` or `null` | Reads `luminati.level.<slot>` (the slot is used as is — no slugify) and parses it; `null` when missing or storage is unavailable. Throws if the stored text is not a valid level. |
 | `deleteLocalLevel(slot)` | — | Removes the slot and its index entry. |
+| `levelsApi(campaign?)` | string | The level API folder under the site's base: `<BASE_URL>api/levels`, or `<BASE_URL>api/campaigns/<c>/levels` ([§5](#5-the-dev-server-rest-api-apilevels)); every call below goes there. |
 | `hasProjectApi()` | `Promise<boolean>` | `true` when `GET /api/levels` answers OK with a JSON content type (i.e. under `npm run dev`). Never throws. |
-| `listProjectLevels()` | `Promise<{ name, file, title, size, modified }[]>` | `GET /api/levels`. Throws `Level API: HTTP <status>` on failure. |
-| `saveProjectLevel(name, level)` | `Promise<string>` — the file written (`levels/<slug>.json`) | `PUT /api/levels/<slugify(name)>` with `serializeLevel(level)`. Throws with the server's `error` text (or `HTTP <status>`). |
-| `deleteProjectLevel(name)` | `Promise<void>` | `DELETE /api/levels/<slugify(name)>`. Throws `Delete failed: HTTP <status>`. |
-| `loadProjectLevel(name)` | `Promise<{ level, warnings }>` | Fetches `<BASE_URL>levels/<slugify(name)>.json` (no cache). Throws `Level "<name>" not found` (plus ` (HTTP <status>)` for HTTP errors) when the answer is an error or an HTML page (the dev server's fallback for unknown paths). Works in dev and production. |
+| `listProjectLevels({ campaign }?)` | `Promise<{ name, file, title, size, modified }[]>` | `GET /api/levels` — or, with `campaign`, `GET /api/campaigns/<c>/levels`. Throws `Level API: HTTP <status>` on failure. |
+| `listProjectCampaigns()` | `Promise<{ name, title, file, levels }[]>` | `GET /api/campaigns`: every campaign folder with its levels ([§5.4](#54-campaigns-apicampaigns)). |
+| `saveProjectLevel(name, level, { campaign }?)` | `Promise<string>` — the file written (`levels/<slug>.json`, or `campaigns/<c>/levels/<slug>.json`) | `PUT /api/levels/<slugify(name)>` (or the campaign's route) with `serializeLevel(level)`. Throws with the server's `error` text (or `HTTP <status>`). |
+| `deleteProjectLevel(name, { campaign }?)` | `Promise<void>` | `DELETE /api/levels/<slugify(name)>` (or the campaign's route). Throws `Delete failed: HTTP <status>`. |
+| `loadProjectLevel(name, { campaign }?)` | `Promise<{ level, warnings }>` | Fetches `<BASE_URL>levels/<slugify(name)>.json` — or `<BASE_URL>campaigns/<c>/levels/<slug>.json` — (no cache). Throws `Level "<name>" not found` (plus ` (HTTP <status>)` for HTTP errors) when the answer is an error or an HTML page (the dev server's fallback for unknown paths). Works in dev and production. |
+| `projectLevelPath(name, { campaign }?)` | string | The file's path below the site root: `levels/<slug>.json` or `campaigns/<c>/levels/<slug>.json` (the editor shows `public/` + it). |
 | `downloadLevel(level, filename = '<slug>.level.json')` | — | Saves the serialised level as a file download (`application/json`). |
 | `readLevelFile(file)` | `Promise<{ level, warnings }>` | Parses a `File` (from a file input or drag and drop). |
-| `openLevelFileDialog()` | `Promise<{ level, warnings, fileName } \| null>` | Shows a file picker (`.json,application/json`); resolves with the parsed file, rejects if it is not a level. It resolves `null` only when a `change` event arrives without a file; a cancelled picker normally fires no event, so the promise then simply never settles (harmless for the editor, but do not `await` it in a script). |
+| `openLevelFileDialog()` | `Promise<{ level, warnings, fileName } \| null>` | Shows a file picker (`.json,application/json`); resolves with the parsed file, rejects if it is not a level. It resolves `null` when the picker is cancelled (the input's `cancel` event) or a `change` event arrives without a file. |
 | `resolveLevelFromURL(search = location.search)` | `Promise<{ level, warnings, source } \| null>` | The game's `?level=` resolver ([§6](#6-published-levels-and-url-resolution)). |
 
 ### 2.1 `slugify`
@@ -128,18 +136,21 @@ run, not to the next run).
 
 | Key | Content | Written by |
 | --- | --- | --- |
-| `lumina.level.<slot>` | a level, as `serializeLevel` text | `saveLocalLevel`; the editor autosave (below) |
-| `lumina.levels` | the index: JSON array of `{ slot, name, savedAt, width, depth }` | `saveLocalLevel`, `deleteLocalLevel` |
-| `lumina.level.__playtest__` | the level being play-tested (in the index, hidden from `listLocalLevels`) | the editor's Play / F5 |
-| `lumina.level.__autosave__` | the editor's working copy (not in the index) | `autosave.writeAutosave` |
-| `lumina.editor.autosave` | autosave meta: `{ sid, savedAt, name, width, depth, fileRef, exported? }` | `autosave.writeAutosave` |
-| `lumina.level.__recovered_<id>__` | recovered copies of other sessions' unsaved work (at most 3) | `autosave.archiveAutosave` |
-| `lumina.editor.recovered` | list of recovered copies: `{ id, sid, savedAt, name, width, depth, fileRef, exported }[]` | `autosave.archiveAutosave`, `deleteRecovered` |
-| `lumina.editor.prefs` | editor preferences: `{ view: { layout, grid, split, textured2d, showObjects, showMarkers, cameraMode, postfx, atmosphere }, inspector }` | `EditorApp._savePrefs` |
-| `lumina.level.test` / `lumina.level.test-<case>` | test levels | `window.__lumina.playLocal` (default slot `test`), `sandbox/game_levels.html` |
+| `luminati.level.<slot>` | a level, as `serializeLevel` text | `saveLocalLevel`; the editor autosave (below) |
+| `luminati.levels` | the index: JSON array of `{ slot, name, savedAt, width, depth }` | `saveLocalLevel`, `deleteLocalLevel` |
+| `luminati.level.__playtest__` | the level being play-tested (in the index, hidden from `listLocalLevels`) | the editor's Play / F5 |
+| `luminati.level.__autosave__` | the editor's working copy (not in the index) | `autosave.writeAutosave` |
+| `luminati.editor.autosave` | autosave meta: `{ sid, savedAt, name, width, depth, fileRef, exported? }` | `autosave.writeAutosave` |
+| `luminati.level.__recovered_<id>__` | recovered copies of other sessions' unsaved work (at most 3) | `autosave.archiveAutosave` |
+| `luminati.editor.recovered` | list of recovered copies: `{ id, sid, savedAt, name, width, depth, fileRef, exported }[]` | `autosave.archiveAutosave`, `deleteRecovered` |
+| `luminati.editor.prefs` | editor preferences: `{ view: { layout, grid, split, textured2d, showObjects, showMarkers, cameraMode, postfx, atmosphere }, inspector }` | `EditorApp._savePrefs` |
+| `luminati.level.test` / `luminati.level.test-<case>` | test levels | `window.__luminati.playLocal` (default slot `test`), `sandbox/game_levels.html` |
 
 Slots written through `saveLocalLevel` are always slugs (`[a-z0-9-]`), so they never collide with
 the reserved `__…__` slots. `fileRef` is `{ kind: 'new' | 'local' | 'project' | 'file', name }`.
+The engine's other keys: the campaigns' saved games (`luminati.campaign.<name>`, play-tests
+`….test`; [CAMPAIGN_FORMAT.md](CAMPAIGN_FORMAT.md)), the language (`luminati.lang`), the font source
+(`luminati.fonts`, `luminati.fonts.fail`) and the harness's seed mark (`luminati.check.seeded`).
 
 Capacity: browsers typically allow about 5 MB of `localStorage` per origin (strings count twice
 in some browsers). Shipped level sizes: Willowmere (28 × 22) 10 KB, Brightwater Crossing (36 × 28)
@@ -178,10 +189,14 @@ overwriting another session's work:
 
 ## 5. The dev-server REST API (`/api/levels`)
 
-[`tools/vite-level-api.js`](../../tools/vite-level-api.js) is a Vite plugin (`lumina-level-api`,
+[`tools/vite-level-api.js`](../../tools/vite-level-api.js) is a Vite plugin (`luminati-level-api`,
 `apply: 'serve'`): it exists only while the Vite dev server runs (`npm run dev`, and the servers
 the check harness starts). It is not part of `npm run build` output and not served by
-`npm run preview`. It reads and writes `public/levels/` (created if missing).
+`npm run preview`. It reads and writes `public/levels/` (created if missing) and the levels of the
+campaigns in `public/campaigns/` ([§5.4](#54-campaigns-apicampaigns)). Its routes live under the dev
+server's base, like the site's files: `/api/…` by default, `/project/api/…` under
+`npm run dev -- --base=/project/` (nothing answers at the site root then); the paths below are
+the default server's.
 
 ### 5.1 Endpoints
 
@@ -194,7 +209,7 @@ middleware is switched off in `vite.config.js`, [§5.3](#53-origin-check); with 
 | Method and path | Success | Errors |
 | --- | --- | --- |
 | `GET /api/levels` | `200 { "levels": [{ "name", "file", "title", "size", "modified" }] }` — every `*.json` in `public/levels/`, newest first. `file` = `levels/<name>.json`, `title` = the file's `name` field (the file name if it cannot be read), `size` in bytes, `modified` = mtime in ms. | `405 {"error":"method not allowed"}` with `Allow: GET` for any other method on the list |
-| `GET /api/levels/<name>` | `200` the level as **compact** JSON (parsed and re-stringified — not the file's bytes; fetch `/levels/<name>.json` for the exact file) | `404 {"error":"not found"}` — also when the file exists but is not valid JSON |
+| `GET /api/levels/<name>` | `200` the **file's bytes** as they are on disk (`content-type: application/json`; the same bytes as `/levels/<name>.json`), once they parse as JSON (a leading UTF-8 BOM is allowed and kept). Until 2026-10-07 the answer was the level parsed and re-stringified (compact). | `404 {"error":"not found"}` when there is no such file; `422 {"error":"public/levels/<name>.json is not valid JSON (<parse error>)"}` when the file exists but does not parse |
 | `PUT /api/levels/<name>` | `200 { "ok": true, "file": "levels/<name>.json" }` | see §5.2 (`415` without `content-type: application/json`) |
 | `DELETE /api/levels/<name>` | `200 { "ok": true }` — also when the file did not exist | — |
 | `POST` and any other method on `/api/levels/<name>` | — | `405 {"error":"method not allowed"}` with `Allow: GET, PUT, DELETE` — writes go only through `PUT` |
@@ -207,7 +222,7 @@ on `/api/levels/<name>`, the **name rules** below (`400`), then the method (`405
 the content type (`415`) and the body steps of §5.2. So a `POST` or a `text/plain` `PUT` to an
 invalid name gets `400`, not `405` / `415`.
 
-Name rules (for every method on `/api/levels/<name>`, after the origin check):
+Name rules (for every method on `/api/levels/<name>` and `/api/campaigns/<c>/levels/<name>`, after the origin check):
 
 | Rule | Error |
 | --- | --- |
@@ -215,8 +230,9 @@ Name rules (for every method on `/api/levels/<name>`, after the origin check):
 | must not be a Windows device name (`con`, `prn`, `aux`, `nul`, `com0`–`com9`, `lpt0`–`lpt9`) | `400 {"error":"“con” is a reserved file name on Windows — choose another name"}` |
 
 Because of the name rule no request can reach a path outside `public/levels/` (no `/`, `.`, `%2F`
-or `..` survive it). A malformed percent-escape in the name (e.g. `%E0%A4%A`) makes
-`decodeURIComponent` throw, which ends as `500 {"error":"URI malformed"}`.
+or `..` survive it). A name whose percent-escapes do not decode (`%E0%A4%A`, `%`, `%zz`) is an
+invalid name too: `400 {"error":"invalid level name (use a-z, 0-9 and -)"}` (it was a
+`500 {"error":"URI malformed"}` until 2026-10-07).
 
 ### 5.2 Writing (`PUT`)
 
@@ -228,8 +244,8 @@ or `..` survive it). A malformed percent-escape in the name (e.g. `%E0%A4%A`) ma
 1. The body is read up to **4 MiB** (`MAX_BYTES` = 4 × 1024 × 1024); larger →
    `413 {"error":"level too large"}`.
 2. It must parse as JSON → else `400 {"error":"body is not valid JSON"}`.
-3. It must look like a level: `format === "lumina-level"` and `tiles` and `heights` arrays → else
-   `400 {"error":"body is not a lumina-level"}`. There is **no further validation or
+3. It must look like a level: `format === "luminati-level"` and `tiles` and `heights` arrays → else
+   `400 {"error":"body is not a luminati-level"}`. There is **no further validation or
    normalisation** on the server: the text that was sent is the text that is written (the editor
    always sends `serializeLevel` output of a normalised level).
 4. **Atomic write:** the text (with a final `\n` added if missing) is written to
@@ -242,7 +258,8 @@ or `..` survive it). A malformed percent-escape in the name (e.g. `%E0%A4%A`) ma
    The editor shows this message as is.
 6. Any other unexpected failure: `500 {"error":"<message>"}`.
 
-Example (from the page console of the dev server, or `curl`):
+Example (from the page console of the default dev server — under `--base=/project/` both paths start
+with `/project/` — or `curl`):
 
 ```js
 const { createEmptyLevel, serializeLevel } = await import('/src/engine/level/LevelFormat.js');
@@ -303,13 +320,39 @@ Consequences: behind a reverse proxy that rewrites the `Host` header, the editor
 with `403` (the editor then reports the project folder as unavailable). Opening the editor as
 `http://localhost:5173` works like `http://127.0.0.1:5173`.
 
+### 5.4 Campaigns (`/api/campaigns`)
+
+The same plugin serves the campaigns in `public/campaigns/` ([CAMPAIGN_FORMAT.md](CAMPAIGN_FORMAT.md)),
+with the same origin check, headers and preflight answer:
+
+| Method and path | Success | Errors |
+| --- | --- | --- |
+| `GET /api/campaigns` | `200 { "campaigns": [{ "name", "title", "file", "levels": [{ "name", "file", "title", "size", "modified" }] }] }` — every folder (name rule above) holding a readable `campaign.json`, by name; `title` = its `name` field; `levels` its `levels/*.json`, newest first, `file` = `campaigns/<c>/levels/<name>.json` | `405` with `Allow: GET` for any other method |
+| `GET` / `PUT` / `DELETE /api/campaigns/<c>/levels[/<name>]` | exactly as `/api/levels[/<name>]` (§5.1, §5.2), on `public/campaigns/<c>/levels/` (a GET answers the file's bytes, `422` for a file that is not JSON) | `404 {"error":"no campaign \"<c>\" (public/campaigns/<c>/campaign.json)"}` when the folder has no `campaign.json` — the API never creates a campaign; `400 {"error":"invalid campaign name (use a-z, 0-9 and -)"}` when `<c>` holds a malformed percent-escape; `404` for any other path below `/api/campaigns/` |
+
+The campaign name follows the level name rule, so no request leaves `public/campaigns/<c>/levels/`.
+
+### 5.5 Self-test
+
+`npm run api:test` ([`tools/test-level-api.mjs`](../../tools/test-level-api.mjs)) checks this
+section without touching the project: it starts a throwaway Vite server in its own process with only
+this plugin, on a temporary folder in the OS temp directory (a pretty-printed level, a file that is
+not JSON, one with a BOM, a campaign with a good and a broken level), sends raw HTTP requests and
+checks the answers — the list, the bytes of a GET (also after a PUT), `404` / `422`, the name rules
+with malformed escapes, `415` / `405` / the PUT validation, the atomic write leaving no `.tmp`,
+`DELETE`, the origin check (`403` for another `Origin` and for `Sec-Fetch-Site: cross-site`, the
+`204` preflight) and the campaign routes; then a second server under a sub-path (`base: '/project/'`):
+the routes under it, nothing at the site root. Exit code 1 on a failed check; the server and the folder
+are gone when it ends.
+
 ## 6. Published levels and URL resolution
 
 Files in `public/` are served as-is by the dev server and copied into `dist/` by `npm run build`,
 so a level saved to the project folder is playable everywhere at `levels/<name>.json`.
 
 `loadProjectLevel(name)` fetches `${import.meta.env.BASE_URL}levels/<slugify(name)>.json`
-(`BASE_URL` is `/` with this project's Vite config). The dev server answers unknown paths with
+(`BASE_URL` is `/` on the dev server, `/project/` under `--base=/project/`, and `./` in the build —
+`base: './'` in `vite.config.js`, resolved against the page, so `dist/` works under any sub-path). The dev server answers unknown paths with
 `index.html` (HTTP 200), so the loader also treats an HTML content type as "not found".
 
 The game ([`src/main.js`](../../src/main.js)) resolves its level with
@@ -317,9 +360,10 @@ The game ([`src/main.js`](../../src/main.js)) resolves its level with
 
 | URL | Loads | `source` |
 | --- | --- | --- |
-| `index.html` | `levels/emberfall.json` (the default) | `levels/emberfall.json` |
-| `index.html?level=<name>` | `levels/<slugify(name)>.json` | `levels/<slug>.json` |
-| `index.html?level=local:<slot>` | browser slot `<slot>` (exact, not slugified) | `local:<slot>` |
+| `game.html` | `levels/emberfall.json` (the default) | `levels/emberfall.json` |
+| `game.html?level=<name>` | `levels/<slugify(name)>.json` | `levels/<slug>.json` |
+| `game.html?level=local:<slot>` | browser slot `<slot>` (exact, not slugified) | `local:<slot>` |
+| `game.html?campaign=<c>` (+ `&level=`, `&as=`, `&new=`) | a campaign: `campaigns/<c>/campaign.json` and its level files, through `CampaignStorage` ([CAMPAIGN_FORMAT.md §6.1](CAMPAIGN_FORMAT.md#61-starting)) | `campaigns/<c>/levels/<id>.json` |
 
 Errors: a missing browser slot throws `No level "<slot>" in this browser's storage`; a missing
 project level `Level "<name>" not found`; invalid JSON is reported as "the file is not valid level
@@ -328,9 +372,23 @@ links to Emberfall and the editor. A level that loads with warnings plays; the w
 `validateLevel` errors go to the console.
 
 The editor opens project levels the same way (`editor.html?open=<name>`, File › Open › Project
-folder). Without the dev server (a static host), the Open dialog's Project tab explains that the
+folder; a campaign's level with `editor.html?open=<c>/<name>`, listed under its campaign). Without the dev server (a static host), the Open dialog's Project tab explains that the
 folder needs `npm run dev`, Save as disables the "Project folder" destination, and
 `?open=<name>` still opens published levels (read-only: save them to the browser or a file).
+
+**The launcher.** `index.html` is the site's front page: a plain HTML page (no script, English)
+listing every project level (`public/levels/*.json`) with Play (`game.html?level=<name>`) and Edit
+(`editor.html?open=<name>`) links, every campaign (`public/campaigns/<c>/campaign.json`) with Play
+(`game.html?campaign=<c>`) and an Edit link per file in its `levels/`
+(`editor.html?open=<c>/<name>`), and the editor.
+[`tools/vite-launcher.js`](../../tools/vite-launcher.js) writes the list into the page: the dev
+server on every request (a level saved from the editor is listed on the next reload), a build once
+(baked into `dist/index.html`). Only current formats are listed (`luminati-level`,
+`luminati-campaign`); any other file is named in a "Not listed" note. Browser slots are not
+listed. Links are relative. The launcher takes no query
+([Launcher architecture](../architecture/OVERVIEW.md)).
+`sandbox/launcher.json` checks the list against the level API's (dev server:
+`npm run check -- --page=index.html --query= --fps=0 --script=sandbox/launcher.json`).
 
 ## 7. Files: download, open, drag and drop, clipboard
 
@@ -345,9 +403,9 @@ folder needs `npm run dev`, Save as disables the "Project folder" destination, a
   document.
 - **Drag and drop** — dropping files anywhere on the editor window opens the first `.json` (or
   JSON-typed) file.
-- **Paste** — pasting text that is a whole `lumina-level` JSON replaces the document (after the
+- **Paste** — pasting text that is a whole `luminati-level` JSON replaces the document (after the
   unsaved-changes question; the pasted level stays unsaved). Copying objects puts
-  `{ "format": "lumina-objects", "objects": [ … ] }` on the clipboard (as text); pasting it inserts
+  `{ "format": "luminati-objects", "objects": [ … ] }` on the clipboard (as text); pasting it inserts
   the objects at the pointer (fresh ids).
 - Opening a file written by a newer engine version works with a warning; saving back to that same
   project file or browser slot asks first ("Overwrite a newer level file?").
@@ -377,7 +435,7 @@ state; `document.title` starts with `●` while dirty.
 
 **Play-test** (Play ▶ / F5): `validateLevel` → on errors a problems dialog (with a "fix the player
 start" shortcut for spawn problems) → `saveLocalLevel('__playtest__', level)` → opens
-`index.html?level=local:__playtest__&autostart=1` in the window named `lumina-playtest` (the same
+`game.html?level=local:__playtest__&autostart=1` in the window named `luminati-playtest` (the same
 tab is reused on the next play-test). If the pop-up is blocked, the level is still saved in the
 slot. The play-test does not save the document anywhere else and does not change its dirty state.
 

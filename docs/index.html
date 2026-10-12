@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lumina Documentation</title>
-<meta name="description" content="Documentation for Lumina, an HD-2D (Octopath Traveler II style) game engine on three.js with a playable demo, a 128×128 showcase level and a visual level editor. Every asset is procedural.">
+<title>Luminati Documentation — a 2.5D pixel-art engine for three.js</title>
+<meta name="description" content="Documentation for Luminati, a 2.5D pixel-art engine for three.js with procedural game art and audio, lit 3D environments, dynamic shadows and depth of field. Explore six levels, two campaigns and a visual level editor.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' rx='3' fill='%230e1424'/%3E%3Cpath fill='%23c9a45c' d='M7 2h2v1h1v2h1v2h1v4h-1v1h-1v1H6v-1H5v-1H4V7h1V5h1V3h1z'/%3E%3Cpath fill='%23f59a2e' d='M7 5h2v2h1v3H9v1H7v-1H6V7h1z'/%3E%3Cpath fill='%23fff6d0' d='M7 8h2v2H7z'/%3E%3C/svg%3E">
 <script>
   /* Apply a remembered theme before the first paint (storage may be unavailable, e.g. file:// in some browsers). */
   (function () {
     try {
-      var t = localStorage.getItem('lumina-docs-theme');
+      var t = localStorage.getItem('luminati-docs-theme');
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) { /* no storage: follow the system */ }
   })();
@@ -330,6 +330,7 @@
   }
   .chips a:hover { color: #fff1c8; border-color: #c9a45c; background: rgba(201, 164, 92, 0.15); }
   .layer.base { text-align: center; background: transparent; border-style: dashed; }
+  .layer.launcher { text-align: center; }
   .arrow-row { display: flex; justify-content: center; color: var(--accent); height: 14px; }
   .arrow-row svg { width: 14px; height: 14px; }
 
@@ -520,9 +521,9 @@
 
 <header class="topbar">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Lumina documentation, back to top">
+    <a class="brand" href="#top" aria-label="Luminati documentation, back to top">
       <svg aria-hidden="true"><use href="#ember"/></svg>
-      <b>LUMINA</b><span>documentation</span>
+      <b>LUMINATI</b><span>documentation</span>
     </a>
     <nav class="nav" aria-label="Page sections">
       <a href="#start">Start</a>
@@ -553,11 +554,11 @@
     </div>
     <div class="wrap hero-grid">
       <div>
-        <span class="eyebrow">HD-2D engine · three.js r186</span>
-        <h1 id="hero-title">Lumina</h1>
+        <span class="eyebrow">2.5D pixel-art engine · three.js r186</span>
+        <h1 id="hero-title">Luminati</h1>
         <svg class="ornament" aria-hidden="true"><use href="#orn"/></svg>
-        <p class="tagline">Pixel-art sprites in a lit, shadowed, tilt-shift diorama, in the spirit of Octopath&nbsp;Traveler&nbsp;II.</p>
-        <p class="lede">Every texture, character sheet, particle, sound effect and song is <strong>generated at runtime</strong>. The repository ships the engine, a playable game that runs level files, a <strong>128 × 128</strong> showcase world and a <strong>visual level editor</strong> with a live HD-2D preview.</p>
+        <p class="tagline">An engine combining pixel-art sprites with lit 3D environments, dynamic shadows and depth of field. Inspired by Square Enix's HD-2D games.</p>
+        <p class="lede">Every texture, character sheet, particle, sound effect and song is <strong>generated at runtime</strong>. The repository ships the engine, a playable game that runs level files, a <strong>128 × 128</strong> showcase world and a <strong>visual level editor</strong> with a live diorama preview.</p>
         <div class="cta">
           <a class="btn btn-gold" href="user/GETTING_STARTED.md"><svg aria-hidden="true"><use href="#i-play"/></svg>Get started</a>
           <a class="btn btn-ghost" href="features/FEATURES.md"><svg aria-hidden="true"><use href="#i-book"/></svg>Feature catalogue</a>
@@ -566,7 +567,7 @@
           <span>Plain JavaScript ES modules</span>
           <span>Vite dev server</span>
           <span>WebGL2 · WebAudio</span>
-          <span>No image, model or audio files</span>
+          <span>Procedural game art and audio</span>
         </div>
       </div>
       <figure class="hero-shot" style="margin:0">
@@ -579,14 +580,14 @@
     </div>
   </section>
 
-  <div class="stats" aria-label="Lumina in numbers">
+  <div class="stats" aria-label="Luminati in numbers">
     <ul>
       <li><b>46</b>procedural world textures</li>
       <li><b>14</b>character presets &amp; 4 creatures</li>
-      <li><b>27</b>level object types</li>
+      <li><b>42</b>level object types</li>
       <li><b>128²</b>tiles in the largest level</li>
       <li><b>12</b>point lights at most, shared by any number of lanterns</li>
-      <li><b>0</b>image or audio files loaded</li>
+      <li><b>3</b>languages: English, Japanese and Simplified Chinese</li>
     </ul>
   </div>
 
@@ -605,11 +606,12 @@
         <article class="path">
           <div class="path-icon"><svg aria-hidden="true"><use href="#i-play"/></svg></div>
           <h3>Play</h3>
-          <p>Install once, start the dev server, then walk Emberfall or the whole of Starfall Vale.</p>
-          <pre><code>npm install
+          <p>Install once, start the dev server, then pick a campaign or a level on the launcher: walk Emberfall or the whole of Starfall Vale.</p>
+          <pre><code># Node.js 24 recommended (minimum 22.12)
+npm ci
 npm run dev
-# http://127.0.0.1:5173/
-#   ?level=starfall-vale</code></pre>
+# http://127.0.0.1:5173/  the launcher
+# /game.html?level=starfall-vale</code></pre>
           <ul>
             <li><a href="user/GETTING_STARTED.md"><span>Getting started</span></a></li>
             <li><a href="user/PLAYING_THE_GAME.md"><span>Playing the game</span></a></li>
@@ -635,7 +637,7 @@ npm run dev
           <h3>Understand the code</h3>
           <p>The engine modules, the render pipeline, the game's frame and the editor's incremental 3D preview.</p>
           <pre><code>src/engine/  the engine
-src/demo/    the game
+src/game/    the game
 src/editor/  the level editor</code></pre>
           <ul>
             <li><a href="architecture/OVERVIEW.md"><span>Architecture overview</span></a></li>
@@ -648,13 +650,13 @@ src/editor/  the level editor</code></pre>
           <div class="path-icon"><svg aria-hidden="true"><use href="#i-agent"/></svg></div>
           <h3>For AI agents</h3>
           <p>A start-of-session briefing, the invariants that are easy to break, task playbooks and known issues.</p>
-          <pre><code>npm run check -- --page=index.html \
+          <pre><code>npm run check -- --page=game.html \
   --query=autostart=1 --out=game</code></pre>
           <ul>
             <li><a href="ai/AGENT_ONBOARDING.md"><span>Agent onboarding</span></a></li>
             <li><a href="ai/TASK_PLAYBOOKS.md"><span>Task playbooks</span></a></li>
             <li><a href="ai/KNOWN_ISSUES.md"><span>Known issues</span></a></li>
-            <li><a href="../CLAUDE.md"><span>CLAUDE.md</span><small>repo root</small></a></li>
+            <li><a href="../AGENTS.md"><span>AGENTS.md</span><small>repo root</small></a></li>
           </ul>
         </article>
       </div>
@@ -670,16 +672,18 @@ src/editor/  the level editor</code></pre>
         <span class="eyebrow">At the core</span>
         <h2 id="stack-title">One engine, three front ends</h2>
         <svg class="rule" aria-hidden="true" viewBox="0 0 320 14"><use href="#orn"/></svg>
-        <p>The game and the editor load the same plain-JSON level files and build them with the same engine code. Click a module to open its reference.</p>
+        <p>The game and the editor load the same plain-JSON level files and build them with the same engine code; the launcher in front lists them all. Click a module to open its reference.</p>
       </div>
       <div class="stack">
+        <a class="layer launcher" href="user/GETTING_STARTED.md#44-the-launcher"><b>The launcher</b><span>index.html · every campaign and level, with links into the game and the editor · written by tools/vite-launcher.js</span></a>
+        <div class="arrow-row" aria-hidden="true"><svg><use href="#i-down"/></svg></div>
         <div class="stack-row fronts">
-          <a class="layer" href="architecture/GAME.md"><b>The game</b><span>index.html → src/main.js → src/demo/</span></a>
+          <a class="layer" href="architecture/GAME.md"><b>The game</b><span>game.html → src/main.js → src/game/</span></a>
           <a class="layer" href="architecture/EDITOR.md"><b>Level editor</b><span>editor.html → src/editor/</span></a>
           <a class="layer" href="development/TESTING_AND_VERIFICATION.md"><b>Module sandboxes</b><span>sandbox/*.html · tools/check.mjs</span></a>
         </div>
         <div class="arrow-row" aria-hidden="true"><svg><use href="#i-down"/></svg></div>
-        <a class="layer data" href="specs/LEVEL_FORMAT.md"><b>Level files: “lumina-level” JSON v1</b><span>public/levels/*.json · browser storage · downloads</span></a>
+        <a class="layer data" href="specs/LEVEL_FORMAT.md"><b>Level files: “luminati-level” JSON v1</b><span>public/levels/*.json · browser storage · downloads</span></a>
         <div class="arrow-row" aria-hidden="true"><svg><use href="#i-down"/></svg></div>
         <div class="layer engine">
           <b>Engine: src/engine/</b>
@@ -724,7 +728,7 @@ src/editor/  the level editor</code></pre>
         </a>
         <a class="tile" href="features/FEATURES.md#weather">
           <div class="media"><img loading="lazy" src="assets/screenshots/emberfall-grove-rain.jpg" width="1280" height="720" alt="Rain streaks and blowing autumn leaves over a grove with a footbridge"></div>
-          <div class="body"><h3>Weather</h3><p>Clear, rain and snow blend light, fog, wind and grade. Snow settles on the ground, the grass and the roofs. The editor previews each weather.</p><span class="tag">src/demo/Weather.js</span></div>
+          <div class="body"><h3>Weather</h3><p>Clear, rain and snow blend light, fog, wind and grade. Snow settles on the ground, the grass and the roofs. The editor previews each weather.</p><span class="tag">src/game/Weather.js</span></div>
         </a>
         <a class="tile" href="features/FEATURES.md#pixel-art-generation">
           <div class="media"><img loading="lazy" src="assets/screenshots/module-character-sprites.jpg" width="1280" height="720" alt="Generated character sprite sheets: traveler, swordsman, merchant and cleric in four directions"></div>
@@ -743,16 +747,20 @@ src/editor/  the level editor</code></pre>
           <div class="body"><h3>Particles and atmosphere</h3><p>12 GPU presets, one draw call per emitter: fireflies, embers, smoke, leaves, petals, mist, rain, snow and sparkles.</p><span class="tag">src/engine/fx/</span></div>
         </a>
         <a class="tile" href="features/FEATURES.md#gameplay">
-          <div class="media"><img loading="lazy" src="assets/screenshots/emberfall-dialogue.jpg" width="1280" height="720" alt="The gold-bordered dialog box with the speaker Elder Maren over the village square"></div>
-          <div class="body"><h3>Villagers and dialogue</h3><p>Villagers wander, stand at posts, perform and chase. Dialogue types out with choices, and villagers can offer rest, a shop item or music.</p><span class="tag">src/demo/</span></div>
+          <div class="media"><img loading="lazy" src="assets/screenshots/emberfall-dialogue.jpg" width="1280" height="720" alt="The pixel-art dialogue window with Elder Maren's portrait and name plate over the village square"></div>
+          <div class="body"><h3>Villagers and dialogue</h3><p>Villagers wander, stand at posts, perform and chase. Dialogue types out with the speaker's portrait and choices, and villagers can offer rest, a shop item or music.</p><span class="tag">src/game/</span></div>
+        </a>
+        <a class="tile" href="specs/PIXEL_UI.md">
+          <div class="media"><img loading="lazy" src="assets/screenshots/emberfall-title-ja.jpg" width="1280" height="720" alt="The Emberfall title screen in Japanese: エンバーフォール in gilded pixel type, the language row EN · 日本語 · 中文"></div>
+          <div class="body"><h3>Pixel UI in three languages</h3><p>Every frame, gem and keycap painted as pixel art at whole device pixels, pixel type, and the whole game in English, Japanese and Simplified Chinese — fonts from Google first, else from the build.</p><span class="tag">src/engine/ui/ · PIXEL_UI.md · I18N.md</span></div>
         </a>
         <a class="tile" href="features/FEATURES.md#big-level-systems">
           <div class="media"><img loading="lazy" src="assets/screenshots/starfall-world-map.jpg" width="1280" height="720" alt="The world map overlay of Starfall Vale with region names and a legend"></div>
-          <div class="body"><h3>Built for big worlds</h3><p>A light pool, k-d batching, box culling and shadow proxies for 128 × 128 levels, plus a painted minimap and world map on every level.</p><span class="tag">LightPool · SpatialSplit · Minimap</span></div>
+          <div class="body"><h3>Built for big worlds</h3><p>A light pool, k-d batching, box culling and shadow proxies for 128 × 128 levels, plus a pixel-art minimap and world map on every level.</p><span class="tag">LightPool · SpatialSplit · Minimap</span></div>
         </a>
         <a class="tile" href="features/FEATURES.md#level-editor">
           <div class="media"><img loading="lazy" src="assets/screenshots/editor-split-view.jpg" width="1280" height="720" alt="The level editor with a live 3D preview, a textured 2D map, the inspector and the outliner"></div>
-          <div class="body"><h3>Visual level editor</h3><p>A live HD-2D 3D preview beside a textured 2D map, 10 tools, an inspector, undo, autosave and one-key play-testing.</p><span class="tag">src/editor/</span></div>
+          <div class="body"><h3>Visual level editor</h3><p>A live 3D diorama preview beside a textured 2D map, 10 tools, an inspector, undo, autosave and one-key play-testing.</p><span class="tag">src/editor/</span></div>
         </a>
         <a class="tile" href="features/FEATURES.md#audio-and-music">
           <div class="media art" aria-hidden="true">
@@ -779,9 +787,9 @@ src/editor/  the level editor</code></pre>
         </a>
         <a class="tile" href="features/FEATURES.md#tooling">
           <div class="media art" aria-hidden="true">
-<pre class="term"><span class="p">$</span> npm run check -- --page=index.html \
+<pre class="term"><span class="p">$</span> npm run check -- --page=game.html \
     --query=autostart=1 --out=game
-<span class="dim">GPU: ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 3GB …)</span>
+<span class="dim">GPU: &lt;detected WebGL renderer&gt;</span>
 Page errors <span class="ok">(0)</span>:
 Console errors <span class="ok">(0)</span>:
 Console warnings <span class="ok">(0)</span>:
@@ -791,8 +799,12 @@ Screenshots: .check/game/initial.png</pre>
           <div class="body"><h3>Headless verification</h3><p>A harness that drives Chrome on the real GPU with scripted keys, mouse drags and screenshots, plus 16 module sandboxes.</p><span class="tag">tools/check.mjs · sandbox/</span></div>
         </a>
         <a class="tile wide" href="features/FEATURES.md#combat">
-          <div class="media"><img loading="lazy" src="assets/screenshots/cinderwatch-ruins-fight.jpg" width="1280" height="720" alt="A fight in the Bramble Ruins: goblins close in while a shaman's hex-flame circle fills on the ground under the traveler, with damage numbers and enemy health bars"></div>
-          <div class="body"><h3>Real-time combat</h3><p>A sword combo with hit-stop, a dodge roll with a perfect-dodge slow motion, three skills and a lock-on; eight enemy kinds whose every attack is telegraphed — a wind-up glow and a red marker draped over the terrain; loot, levels, waystones and chests; and Cinderheart, a three-phase boss behind a wall of embers. It exists only on levels with enemies: the demo is Cinderwatch Pass.</p><span class="tag">src/demo/combat/ · COMBAT.md</span></div>
+          <div class="media"><img loading="lazy" src="assets/screenshots/cinderwatch-ruins-fight.jpg" width="1280" height="720" alt="A fight in the Bramble Ruins: goblins close in on the traveler, with damage numbers, enemy health bars and the combat HUD"></div>
+          <div class="body"><h3>Real-time combat</h3><p>A sword combo with hit-stop, a dodge roll with a perfect-dodge slow motion, three skills and a lock-on; eight enemy kinds whose every attack is telegraphed — a wind-up glow and a red marker draped over the terrain; loot, levels, waystones and chests; and Cinderheart, a three-phase boss behind a wall of embers. It exists only on levels with enemies: the demo is Cinderwatch Pass.</p><span class="tag">src/game/combat/ · COMBAT.md</span></div>
+        </a>
+        <a class="tile wide" href="specs/STORY_SCRIPT.md">
+          <div class="media"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-bridge-built.jpg" width="1280" height="720" alt="A cutscene at the Wolf Ford: the bridge Hollis has just built, in letterbox, with his line in the dialog window"></div>
+          <div class="body"><h3>The story as data</h3><p>A small line-based story language: conversations that follow the story and branch, conditions, items, gold and quests in a journal, events that run on Space, on walking in, on arriving, when a condition turns true, at an hour or after a fight; cutscenes with a directed camera, walking actors and emotes; objects that come and go while the player watches. Checked by the editor and <code>level:check</code>, loaded only where there is a story.</p><span class="tag">src/game/story/ · STORY_SCRIPT.md</span></div>
         </a>
       </div>
     </div>
@@ -805,9 +817,9 @@ Screenshots: .check/game/initial.png</pre>
     <div class="wrap">
       <div class="sec-head">
         <span class="eyebrow">Shipped worlds</span>
-        <h2 id="levels-title">Five levels to explore</h2>
+        <h2 id="levels-title">Six levels and two campaigns</h2>
         <svg class="rule" aria-hidden="true" viewBox="0 0 320 14"><use href="#orn"/></svg>
-        <p>All five are ordinary level files in <code>public/levels/</code>. The game plays them and the editor opens them. Play them with the query shown, on the dev server or in a production build.</p>
+        <p>Six standalone levels live in <code>public/levels/</code>, and two campaigns join places into stories or connected interiors. The launcher lists them all. Use the query shown with <code>game.html</code>, on the dev server or in a production build.</p>
       </div>
       <div class="levels">
         <article class="level">
@@ -815,9 +827,9 @@ Screenshots: .check/game/initial.png</pre>
           <div class="body">
             <h3>Emberfall</h3>
             <p class="sub">Riverside Village</p>
-            <dl><div><dt>Size</dt><dd>48 × 40</dd></div><div><dt>Objects</dt><dd>136</dd></div><div><dt>Villagers</dt><dd>8</dd></div></dl>
+            <dl><div><dt>Size</dt><dd>48 × 40</dd></div><div><dt>Objects</dt><dd>137</dd></div><div><dt>Villagers</dt><dd>8</dd></div></dl>
             <p>A dense village at golden hour, with Windmill Hill, two waterfalls, a river with bridges, a farm and an autumn grove. The villagers speak hand-written scripts.</p>
-            <div class="foot"><code>index.html</code><a href="design/levels/emberfall.md">Design notes ›</a></div>
+            <div class="foot"><code>game.html</code><a href="design/levels/emberfall.md">Design notes ›</a></div>
           </div>
         </article>
         <article class="level">
@@ -825,7 +837,7 @@ Screenshots: .check/game/initial.png</pre>
           <div class="body">
             <h3>Starfall Vale</h3>
             <p class="sub">Where the Stars Come Home</p>
-            <dl><div><dt>Size</dt><dd>128 × 128</dd></div><div><dt>Objects</dt><dd>874</dd></div><div><dt>Villagers</dt><dd>29</dd></div></dl>
+            <dl><div><dt>Size</dt><dd>128 × 128</dd></div><div><dt>Objects</dt><dd>875</dd></div><div><dt>Villagers</dt><dd>29</dd></div></dl>
             <p>The night of the Starfall Festival across a whole vale, from a market town to an observatory, a lake and a hidden glade. Generated and validated by <code>tools/make-starfall-vale.mjs</code>.</p>
             <div class="foot"><code>?level=starfall-vale</code><a href="design/levels/starfall-vale.md">Design notes ›</a></div>
           </div>
@@ -881,9 +893,39 @@ Screenshots: .check/game/initial.png</pre>
           <div class="body">
             <h3>Cinderwatch Pass</h3>
             <p class="sub">Where the Old Fires Wake</p>
-            <dl><div><dt>Size</dt><dd>96 × 120</dd></div><div><dt>Objects</dt><dd>277</dd></div><div><dt>Enemies</dt><dd>53</dd></div></dl>
-            <p>The ARPG level: a camp with training dummies, a glade of slimes, the Bramble Ruins or the Hollow Mire, the Cinder Quarry and the boss Cinderheart in its caldera. Generated and validated by <code>tools/make-cinderwatch-pass.mjs</code>.</p>
+            <dl><div><dt>Size</dt><dd>96 × 120</dd></div><div><dt>Objects</dt><dd>283</dd></div><div><dt>Enemies</dt><dd>58</dd></div></dl>
+            <p>The ARPG level: a camp with training dummies, a glade of slimes, the Bramble Ruins or the Hollow Mire, the Cinder Quarry and the boss Cinderheart in its caldera. Three villagers join your party — Sister Ilse and Rook at the camp, Sela at the crossroads — and the pass is balanced for that party of four. Generated and validated by <code>tools/make-cinderwatch-pass.mjs</code>.</p>
             <div class="foot"><code>?level=cinderwatch-pass</code><a href="design/levels/cinderwatch-pass.md">Design notes ›</a></div>
+          </div>
+        </article>
+        <article class="level">
+          <div class="media"><img loading="lazy" src="assets/screenshots/gildhaven-title.jpg" width="1280" height="720" alt="Gildhaven's title screen over its walled market town"><span class="badge soft">Market town</span></div>
+          <div class="body">
+            <h3>Gildhaven</h3>
+            <p class="sub">Market Day on the River Gild</p>
+            <dl><div><dt>Size</dt><dd>128 × 128</dd></div><div><dt>Objects</dt><dd>518</dd></div><div><dt>Villagers</dt><dd>68</dd></div></dl>
+            <p>A walled river town with a market square, high-town abbey, harbour, waterfall and fairground. Generated and validated by <code>tools/make-gildhaven.mjs</code>.</p>
+            <div class="foot"><code>?level=gildhaven</code><a href="design/levels/gildhaven.md">Design notes ›</a></div>
+          </div>
+        </article>
+        <article class="level">
+          <div class="media"><img loading="lazy" src="assets/screenshots/emberfall-interiors-taproom.jpg" width="1280" height="720" alt="The furnished inn taproom in Emberfall — Open Doors"><span class="badge">Campaign</span></div>
+          <div class="body">
+            <h3>Emberfall — Open Doors</h3>
+            <p class="sub">A room behind every door</p>
+            <dl><div><dt>Places</dt><dd>11</dd></div><div><dt>Rooms</dt><dd>10</dd></div></dl>
+            <p>Explore Emberfall's furnished cottages, inn, windmill and barn, including their upper floors. Connected entrances and retained rooms make returning through a door quick.</p>
+            <div class="foot"><code>?campaign=emberfall-interiors</code><a href="design/campaigns/emberfall-interiors.md">Design notes ›</a></div>
+          </div>
+        </article>
+        <article class="level">
+          <div class="media"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-wolf-ford.jpg" width="1280" height="720" alt="The Wolf Ford on the Mill Road in The Ferryman's Lantern, with the mended bridge across the river"><span class="badge">Campaign</span></div>
+          <div class="body">
+            <h3>The Ferryman's Lantern</h3>
+            <p class="sub">A Short Tale of Millbrook</p>
+            <dl><div><dt>Places</dt><dd>4</dd></div><div><dt>Chapters</dt><dd>2</dd></div><div><dt>Story flags</dt><dd>3</dd></div></dl>
+            <p>The demo campaign: Millbrook, the Mill Road and the Wolf Ford, the Old Quarry (combat) and the cellar under the mill, played in one page — seams, doors, a locked way, story flags, a second chapter at dusk, saved games and a campaign world map. Generated and checked by <code>tools/make-ferrymans-lantern.mjs</code>.</p>
+            <div class="foot"><code>?campaign=ferrymans-lantern</code><a href="design/campaigns/ferrymans-lantern.md">Design notes ›</a></div>
           </div>
         </article>
       </div>
@@ -899,7 +941,7 @@ Screenshots: .check/game/initial.png</pre>
         <span class="eyebrow">Gallery</span>
         <h2 id="gallery-title">Frames from the engine</h2>
         <svg class="rule" aria-hidden="true" viewBox="0 0 320 14"><use href="#orn"/></svg>
-        <p>Every image is an unedited frame captured by the headless harness on a GTX 1060. Select a thumbnail to enlarge it, and use the arrow keys to browse. The Emberfall frames were captured before the HUD minimap existed.</p>
+        <p>These screenshots show the engine, game and editor in use. Select a thumbnail to enlarge it, and use the arrow keys to browse. Appearance and performance vary with the scene, settings and browser.</p>
       </div>
       <div class="filters" role="toolbar" aria-label="Filter screenshots">
         <button type="button" data-filter="all" aria-pressed="true">All<span data-count="all"></span></button>
@@ -907,6 +949,7 @@ Screenshots: .check/game/initial.png</pre>
         <button type="button" data-filter="emberfall" aria-pressed="false">Emberfall<span data-count="emberfall"></span></button>
         <button type="button" data-filter="brightwater" aria-pressed="false">Brightwater<span data-count="brightwater"></span></button>
         <button type="button" data-filter="cinderwatch" aria-pressed="false">Cinderwatch Pass<span data-count="cinderwatch"></span></button>
+        <button type="button" data-filter="ferryman" aria-pressed="false">Ferryman's Lantern<span data-count="ferryman"></span></button>
         <button type="button" data-filter="editor" aria-pressed="false">Level editor<span data-count="editor"></span></button>
         <button type="button" data-filter="modules" aria-pressed="false">Module sandboxes<span data-count="modules"></span></button>
       </div>
@@ -933,12 +976,19 @@ Screenshots: .check/game/initial.png</pre>
         <figure data-cat="brightwater"><a href="assets/screenshots/brightwater-golden-hour.jpg"><img loading="lazy" src="assets/screenshots/brightwater-golden-hour.jpg" width="1280" height="720" alt="Brightwater Crossing at golden hour, reading a signpost"></a><figcaption><b>Brightwater Square</b> · reading a signpost</figcaption></figure>
         <figure data-cat="brightwater"><a href="assets/screenshots/brightwater-night.jpg"><img loading="lazy" src="assets/screenshots/brightwater-night.jpg" width="1280" height="720" alt="Brightwater Crossing square at night"></a><figcaption><b>Brightwater Square</b> · night</figcaption></figure>
         <figure data-cat="cinderwatch"><a href="assets/screenshots/cinderwatch-camp.jpg"><img loading="lazy" src="assets/screenshots/cinderwatch-camp.jpg" width="1280" height="720" alt="The Waystone Camp at golden hour: the lodge, the campfire square, three straw training dummies, the waystone and the combat HUD"></a><figcaption><b>Waystone Camp</b> · the combat HUD at rest</figcaption></figure>
-        <figure data-cat="cinderwatch"><a href="assets/screenshots/cinderwatch-ruins-fight.jpg"><img loading="lazy" src="assets/screenshots/cinderwatch-ruins-fight.jpg" width="1280" height="720" alt="A fight in the Bramble Ruins with a hex-flame telegraph, goblins, damage numbers and enemy bars"></a><figcaption><b>Bramble Ruins</b> · a telegraph and damage numbers</figcaption></figure>
-        <figure data-cat="cinderwatch"><a href="assets/screenshots/cinderwatch-boss.jpg"><img loading="lazy" src="assets/screenshots/cinderwatch-boss.jpg" width="1280" height="720" alt="Cinderheart's third phase: expanding shockwave rings, a magma pool, the ember wall and the boss bar"></a><figcaption><b>Cinderheart</b> · phase 3 shockwave</figcaption></figure>
+        <figure data-cat="cinderwatch"><a href="assets/screenshots/cinderwatch-ruins-fight.jpg"><img loading="lazy" src="assets/screenshots/cinderwatch-ruins-fight.jpg" width="1280" height="720" alt="A fight in the Bramble Ruins: goblins close in on the traveler, with damage numbers, enemy health bars and the combat HUD"></a><figcaption><b>Bramble Ruins</b> · damage numbers and enemy bars</figcaption></figure>
+        <figure data-cat="cinderwatch"><a href="assets/screenshots/cinderwatch-boss.jpg"><img loading="lazy" src="assets/screenshots/cinderwatch-boss.jpg" width="1280" height="720" alt="Cinderheart in the caldera: a magma pool under the traveler, the four braziers, the ember wall across the gate and the boss bar"></a><figcaption><b>Cinderheart</b> · the boss bar and a magma pool</figcaption></figure>
         <figure data-cat="cinderwatch"><a href="assets/screenshots/cinderwatch-title.jpg"><img loading="lazy" src="assets/screenshots/cinderwatch-title.jpg" width="1280" height="720" alt="The Cinderwatch Pass title screen with the level-destination row"></a><figcaption><b>Cinderwatch Pass</b> · title screen</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-title.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-title.jpg" width="1280" height="720" alt="The Ferryman's Lantern title screen over Millbrook green: the gilded logo, Press any key and the language row"></a><figcaption><b>The Ferryman's Lantern</b> · title screen</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-ford-cutscene.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-ford-cutscene.jpg" width="1280" height="720" alt="The ford cutscene in letterbox: the camera on Hollis at the broken bridge"></a><figcaption><b>The ford cutscene</b> · a story event</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-journal.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-journal.jpg" width="1280" height="720" alt="The journal: the quest The Missing Ferryman with its objectives and log"></a><figcaption><b>The journal</b> · quests and items</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-wolf-ford.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-wolf-ford.jpg" width="1280" height="720" alt="The Wolf Ford on the Mill Road with the mended bridge"></a><figcaption><b>Wolf Ford</b> · the bridge, by story flag</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-world-map.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-world-map.jpg" width="1280" height="720" alt="The campaign world map: Millbrook, the Mill Road and the Old Quarry side by side, unvisited places dimmed"></a><figcaption><b>Campaign world map</b> · every outdoor level</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-lanterns-home.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-lanterns-home.jpg" width="1280" height="720" alt="Chapter Two: Millbrook at dusk with lanterns over the green"></a><figcaption><b>Lanterns Home</b> · chapter two at dusk</figcaption></figure>
+        <figure data-cat="ferryman"><a href="assets/screenshots/ferrymans-lantern-mill-cellar.jpg"><img loading="lazy" src="assets/screenshots/ferrymans-lantern-mill-cellar.jpg" width="1280" height="720" alt="The cellar under the mill: an interior lit by a lantern and a torch"></a><figcaption><b>Mill cellar</b> · an interior with its own hour</figcaption></figure>
         <figure data-cat="editor"><a href="assets/screenshots/editor-combat-boss-arena.jpg"><img loading="lazy" src="assets/screenshots/editor-combat-boss-arena.jpg" width="1280" height="720" alt="The editor with Cinderwatch Pass open and the boss group selected: arena and gate in the 3D preview and on the 2D map"></a><figcaption><b>Enemy groups</b> · the boss arena and gate</figcaption></figure>
         <figure data-cat="editor"><a href="assets/screenshots/editor-split-view.jpg"><img loading="lazy" src="assets/screenshots/editor-split-view.jpg" width="1280" height="720" alt="Level editor split view with the 3D preview, the 2D map, the inspector and the outliner"></a><figcaption><b>Split view</b> · 3D preview + 2D map</figcaption></figure>
-        <figure data-cat="editor"><a href="assets/screenshots/editor-3d-preview-postfx.jpg"><img loading="lazy" src="assets/screenshots/editor-3d-preview-postfx.jpg" width="1280" height="720" alt="The editor 3D preview with the gameplay camera and HD-2D post effects"></a><figcaption><b>3D preview</b> · game camera and post FX</figcaption></figure>
+        <figure data-cat="editor"><a href="assets/screenshots/editor-3d-preview-postfx.jpg"><img loading="lazy" src="assets/screenshots/editor-3d-preview-postfx.jpg" width="1280" height="720" alt="The editor 3D preview with the gameplay camera and diorama post effects"></a><figcaption><b>3D preview</b> · game camera and post FX</figcaption></figure>
         <figure data-cat="editor"><a href="assets/screenshots/editor-2d-map.jpg"><img loading="lazy" src="assets/screenshots/editor-2d-map.jpg" width="1280" height="720" alt="The textured 2D map layout of the editor"></a><figcaption><b>2D map</b> · textured top-down view</figcaption></figure>
         <figure data-cat="editor"><a href="assets/screenshots/editor-inspector-npc.jpg"><img loading="lazy" src="assets/screenshots/editor-inspector-npc.jpg" width="1280" height="720" alt="The inspector editing a villager's dialogue and action"></a><figcaption><b>Inspector</b> · a villager's dialogue</figcaption></figure>
         <figure data-cat="editor"><a href="assets/screenshots/editor-placing.jpg"><img loading="lazy" src="assets/screenshots/editor-placing.jpg" width="1280" height="720" alt="Placing a lamppost with the translucent ghost preview"></a><figcaption><b>Place tool</b> · ghost preview</figcaption></figure>
@@ -971,7 +1021,8 @@ Screenshots: .check/game/initial.png</pre>
             <li><a href="GLOSSARY.md">Glossary</a><span class="d">The project's vocabulary, including the words with two meanings.</span></li>
             <li><a href="../README.md">Project README</a><span class="d">Features, controls, editor workflow and performance numbers.</span></li>
             <li><a href="../ARCHITECTURE.md">ARCHITECTURE.md</a> <span class="pill">Binding</span><span class="d">The visual target, engine conventions and module contracts.</span></li>
-            <li><a href="../CLAUDE.md">CLAUDE.md</a><span class="d">Commands, architecture and invariants for Claude Code sessions.</span></li>
+            <li><a href="../AGENTS.md">AGENTS.md</a><span class="d">Shared guidance, engineering safeguards and verification for coding agents.</span></li>
+            <li><a href="../CLAUDE.md">CLAUDE.md</a><span class="d">The Claude Code entry point to the shared guidance.</span></li>
           </ul>
         </div>
         <div class="toc-group">
@@ -1004,10 +1055,16 @@ Screenshots: .check/game/initial.png</pre>
           <h3>Specifications</h3>
           <p class="path-label">docs/specs/</p>
           <ul>
-            <li><a href="specs/LEVEL_FORMAT.md">Level format</a><span class="d">The lumina-level JSON, field by field. The canonical readable spec.</span></li>
-            <li><a href="specs/OBJECT_CATALOG.md">Object catalog</a><span class="d">All 24 object types, their fields, defaults and game behaviour.</span></li>
+            <li><a href="specs/LEVEL_FORMAT.md">Level format</a><span class="d">The luminati-level JSON, field by field. The canonical readable spec.</span></li>
+            <li><a href="specs/OBJECT_CATALOG.md">Object catalog</a><span class="d">Every object type, its fields, defaults and game behaviour.</span></li>
             <li><a href="specs/INPUT_AND_CONTROLS.md">Input and controls</a><span class="d">Actions, keyboard and gamepad bindings.</span></li>
-            <li><a href="specs/AUTOMATION_API.md">Automation API</a><span class="d">The <code>window.__game</code>, <code>__lumina</code> and <code>__editor</code> hooks for scripts and tests.</span></li>
+            <li><a href="specs/AUTOMATION_API.md">Automation API</a><span class="d">The <code>window.__game</code>, <code>__luminati</code> and <code>__editor</code> hooks for scripts and tests.</span></li>
+            <li><a href="specs/CAMPAIGN_FORMAT.md">Campaign format</a><span class="d">Connected levels, entrances, exits, chapters and saved games.</span></li>
+            <li><a href="specs/STORY_SCRIPT.md">Story scripts</a><span class="d">Dialogue, quests, conditions, cutscenes and live story state.</span></li>
+            <li><a href="specs/PARTY.md">Party</a><span class="d">Recruitment, following, companion combat and tactics.</span></li>
+            <li><a href="specs/PIXEL_UI.md">Pixel UI</a><span class="d">Art scale, type, layout and component contracts.</span></li>
+            <li><a href="specs/I18N.md">Internationalization</a><span class="d">Languages, fonts, text keys and translation tooling.</span></li>
+            <li><a href="specs/I18N_GLOSSARY.md">Translation glossary</a><span class="d">Shared names and terms across languages.</span></li>
             <li><a href="specs/LEVEL_STORAGE_API.md">Level storage API</a><span class="d">The project folder REST API, browser slots, files and level URLs.</span></li>
           </ul>
         </div>
@@ -1018,7 +1075,7 @@ Screenshots: .check/game/initial.png</pre>
             <li><a href="architecture/OVERVIEW.md">Overview</a><span class="d">The front ends, the engine layers and how a frame runs.</span></li>
             <li><a href="architecture/RENDER_PIPELINE.md">Render pipeline</a><span class="d">The HDR scene, DOF, bloom, tone mapping, grade and shader warm-up.</span></li>
             <li><a href="architecture/PERFORMANCE.md">Performance</a><span class="d">Budgets, measurements and the big-level design.</span></li>
-            <li><a href="architecture/GAME.md">The game</a><span class="d">src/demo/: world build, player, villagers, weather and audio direction.</span></li>
+            <li><a href="architecture/GAME.md">The game</a><span class="d">src/game/: world build, player, villagers, weather and audio direction.</span></li>
             <li><a href="architecture/EDITOR.md">The editor</a><span class="d">EditorState, tools, views and the incremental 3D preview.</span></li>
             <li><a href="architecture/diagrams.html">Diagrams</a><span class="d">Visual maps of the modules, the frame and the data flow.</span></li>
           </ul>
@@ -1037,19 +1094,22 @@ Screenshots: .check/game/initial.png</pre>
             <li><a href="architecture/modules/lighting.md">lighting</a><span class="d">LightingSystem, LightPool, Sky.</span></li>
             <li><a href="architecture/modules/world.md">world</a><span class="d">TileMap, Water, PropFactory, SpatialSplit, ShadowCasters.</span></li>
             <li><a href="architecture/modules/level.md">level</a><span class="d">LevelFormat, ObjectCatalog, ObjectBuilder, LevelStorage, LevelMap.</span></li>
-            <li><a href="architecture/modules/ui.md">ui</a><span class="d">UI, DialogBox, Banner, TitleScreen, HUD, maps, DebugPanel.</span></li>
+            <li><a href="architecture/modules/ui.md">ui</a><span class="d">UI (the pixel-art interface), DialogBox, Banner, TitleScreen, HUD, maps, DebugPanel.</span></li>
           </ul>
         </div>
         <div class="toc-group">
           <h3>Design</h3>
           <p class="path-label">docs/design/ · docs/design/levels/</p>
           <ul>
-            <li><a href="design/VISUAL_DESIGN.md">Visual design</a><span class="d">The HD-2D look, the palette, the lighting mood and the UI style.</span></li>
+            <li><a href="design/VISUAL_DESIGN.md">Visual design</a><span class="d">The 2.5D pixel-art look, the palette, the lighting mood and the UI style.</span></li>
             <li><a href="design/LEVEL_DESIGN_GUIDE.md">Level design guide</a><span class="d">Making levels that read well from the diorama camera.</span></li>
             <li><a href="design/levels/emberfall.md">Emberfall</a><span class="d">The demo village, area by area.</span></li>
             <li><a href="design/levels/starfall-vale.md">Starfall Vale</a><span class="d">The 128 × 128 showcase and its generator.</span></li>
             <li><a href="design/levels/cinderwatch-pass.md">Cinderwatch Pass</a><span class="d">The 96 × 120 combat level and its generator.</span></li>
             <li><a href="design/levels/brightwater-crossing.md">Brightwater Crossing</a><span class="d">The level built in the editor.</span></li>
+            <li><a href="design/levels/gildhaven.md">Gildhaven</a><span class="d">The 128 × 128 market town and its generator.</span></li>
+            <li><a href="design/campaigns/ferrymans-lantern.md">The Ferryman’s Lantern</a><span class="d">The story campaign and its connected places.</span></li>
+            <li><a href="design/campaigns/emberfall-interiors.md">Emberfall — Open Doors</a><span class="d">The town with furnished rooms behind its doors.</span></li>
             <li><a href="design/levels/sample-hamlet.md">Willowmere (sample hamlet)</a><span class="d">The small example level.</span></li>
           </ul>
         </div>
@@ -1063,21 +1123,13 @@ Screenshots: .check/game/initial.png</pre>
           </ul>
         </div>
         <div class="toc-group">
-          <h3>History</h3>
-          <p class="path-label">docs/history/</p>
-          <ul>
-            <li><a href="history/PROJECT_HISTORY.md">Project history</a><span class="d">How the engine, the demo, the editor and Starfall Vale were built.</span></li>
-            <li><a href="history/DECISIONS.md">Decisions</a><span class="d">Key design and performance decisions, and why they were made.</span></li>
-          </ul>
-        </div>
-        <div class="toc-group">
           <h3>Contracts</h3>
           <p class="path-label">docs/contracts/</p>
           <ul>
             <li><a href="contracts/README.md">Contracts index</a><span class="d">What is binding, and how to change it (additively).</span></li>
             <li><a href="contracts/LEVEL_EDITOR.md">LEVEL_EDITOR.md</a> <span class="pill">Binding</span><span class="d">The level format, catalog, builder, storage and editor contract.</span></li>
             <li><a href="contracts/COMBAT.md">COMBAT.md</a> <span class="pill">Binding</span><span class="d">The ARPG combat: rules, enemies, the boss, interfaces, Cinderwatch Pass.</span></li>
-            <li><a href="contracts/MODULE_NOTES.md">MODULE_NOTES.md</a><span class="d">What each engine module actually implements, from its builders.</span></li>
+            <li><a href="contracts/MODULE_NOTES.md">MODULE_NOTES.md</a><span class="d">Supplementary implementation notes; use the module references for current behavior.</span></li>
           </ul>
         </div>
       </div>
@@ -1087,11 +1139,11 @@ Screenshots: .check/game/initial.png</pre>
 
 <footer>
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Back to top"><svg aria-hidden="true"><use href="#ember"/></svg><b>LUMINA</b></a>
+    <a class="brand" href="#top" aria-label="Back to top"><svg aria-hidden="true"><use href="#ember"/></svg><b>LUMINATI</b></a>
     <svg class="rule" aria-hidden="true" viewBox="0 0 320 14" style="color:#c9a45c"><use href="#orn"/></svg>
-    <p>An HD-2D engine on three.js r186 with a demo game and a visual level editor. Every texture, sprite, sound and song is generated at runtime; only the UI fonts come from npm packages.</p>
-    <p>This page is self-contained: it works opened from disk or from the dev server at <code>/docs/index.html</code>. Links to <code>.md</code> files open the Markdown source. Start a dev server with <code>npm run dev</code> to play at <code>http://127.0.0.1:5173/</code>.</p>
-    <p><a href="README.md">Docs index</a> · <a href="features/FEATURES.md">Features</a> · <a href="../README.md">Project README</a> · <a href="../ARCHITECTURE.md">Architecture contract</a> · <a href="../CLAUDE.md">CLAUDE.md</a></p>
+    <p>A 2.5D pixel-art engine on three.js r186 with a demo game and a visual level editor. Every texture, sprite, sound and song is generated at runtime; UI fonts load from Google Fonts with bundled npm copies available. The repository also contains documentation screenshots and UI sandbox backdrops.</p>
+    <p>This page is self-contained: it works opened from disk or from the dev server at <code>/docs/index.html</code>. Links to <code>.md</code> files open the Markdown source. Start a dev server with <code>npm run dev</code> and open <code>http://127.0.0.1:5173/</code>: the launcher lists every campaign and level to play or edit.</p>
+    <p><a href="README.md">Docs index</a> · <a href="features/FEATURES.md">Features</a> · <a href="../README.md">Project README</a> · <a href="../ARCHITECTURE.md">Architecture contract</a> · <a href="../AGENTS.md">Agent guidance</a></p>
   </div>
 </footer>
 
@@ -1120,7 +1172,7 @@ Screenshots: .check/game/initial.png</pre>
   themeBtn.addEventListener('click', function () {
     var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
-    try { localStorage.setItem('lumina-docs-theme', next); } catch (e) { /* no storage */ }
+    try { localStorage.setItem('luminati-docs-theme', next); } catch (e) { /* no storage */ }
   });
 
   /* Gallery filters */

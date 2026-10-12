@@ -8,9 +8,9 @@
  *    cliff to the south and a gate with a 2-tile stair flight, holding two campfires as braziers.
  * Every group uses `spotOffsets`, so the enemies stand exactly where `FIXTURE` says.
  *
- * Scripts play it with `__lumina.playLocal(makeCombatFixture(), 'combat-fixture')` (from the game
+ * Scripts play it with `__luminati.playLocal(makeCombatFixture(), 'combat-fixture')` (from the game
  * page) or, from any page of the dev server, `saveCombatFixture()` and then
- * `index.html?level=local:combat-fixture&autostart=1`.
+ * `game.html?level=local:combat-fixture&autostart=1`.
  */
 import { createEmptyLevel, addObject, setTile, setHeightLevel, normalizeLevel } from '../src/engine/level/LevelFormat.js';
 import { saveLocalLevel } from '../src/engine/level/LevelStorage.js';
@@ -71,7 +71,7 @@ function group(level, id, kind, x, z, spots, extra = {}) {
 }
 
 /**
- * @returns {Level} a (raw) lumina-level object — normalise
+ * @returns {Level} a (raw) luminati-level object — normalise
  *   before use (`playLocal` does).
  */
 export function makeCombatFixture() {
@@ -145,7 +145,7 @@ export function makeCombatFixture() {
 
 /**
  * Save the fixture (normalised) into this browser's level storage; open it with
- * `index.html?level=local:<slot>&autostart=1`.
+ * `game.html?level=local:<slot>&autostart=1`.
  * @param {string} [slot]
  * @returns {string} the slot
  */
@@ -160,10 +160,10 @@ export function saveCombatFixture(slot = FIXTURE_SLOT) {
 // throws asynchronously (the harness exits 1, TOOL-01) and is listed in `result.failures`.
 // =============================================================================================
 
-/** Wait until the game page finished loading (`__lumina.loadMs`) and lock the resolution governor. */
+/** Wait until the game page finished loading (`__luminati.loadMs`) and lock the resolution governor. */
 export async function ready(timeoutMs = 60000) {
   const t0 = performance.now();
-  while (!(window.__lumina && window.__lumina.loadMs && window.__game)) {
+  while (!(window.__luminati && window.__luminati.loadMs && window.__game)) {
     if (performance.now() - t0 > timeoutMs) throw new Error('combat fixture: the game did not load');
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -214,7 +214,17 @@ const idle = () => {
 };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
-/** A clean, frozen fixture: seed 1, reset, AI frozen, no overrides, the player at (x, z). */
+/**
+ * A clean, frozen fixture: seed 1, reset, AI frozen, no overrides, the player at (x, z).
+ *
+ * It also marks combat as running in the frame before (`_wasActive`), which `reset()` leaves as it
+ * was: whether the real-time frames between two eval steps ran while combat was active is a matter
+ * of wall-clock timing. After a conversation (the shop) its dialog closes on a real 320 ms timeout;
+ * when no real frame ran between that and the next test, the next test's first stepped frame was a
+ * "resuming" one, and the resume guard dropped the press made before it — the flaky `[ledge]`
+ * "Ember Bolt from the floor hits a ledge archer" (`[]`, KNOWN_ISSUES TOOL-19). With the flag set
+ * the first frame never resumes (unless a dialog is really open: then it is inactive anyway).
+ */
 function fresh(x = P.spawn.x, z = P.spawn.z, { freeze = true } = {}) {
   const c = C();
   c.seed(1);
@@ -224,7 +234,33 @@ function fresh(x = P.spawn.x, z = P.spawn.z, { freeze = true } = {}) {
   c.aim(null);
   c.move(null);
   G().teleport(x, z);
+  c.system._wasActive = true;
   return c;
+}
+
+/**
+ * Record every HUD toast's text while it is shown (the HUD removes a toast ~3 s later on a real
+ * timer, so a check that reads the DOM after a slow stretch finds nothing). `stop()` restores
+ * `toast`.
+ * @returns {{ texts: string[], stop: () => void }}
+ */
+function recordToasts() {
+  const hud = G().game.ui.hud;
+  const own = Object.prototype.hasOwnProperty.call(hud, 'toast');
+  const keep = hud.toast;
+  /** @type {string[]} */
+  const texts = [];
+  hud.toast = function recordToast(text, ...rest) {
+    texts.push(String(text ?? ''));
+    return keep.call(this, text, ...rest);
+  };
+  return {
+    texts,
+    stop() {
+      if (own) hud.toast = keep;
+      else delete hud.toast;
+    },
+  };
 }
 
 /** Real time (a closing DialogBox resolves its page after a real 320 ms timeout). */
@@ -405,6 +441,7 @@ export const tests = {
     const bought = [];
     const onBuy = (item, price) => bought.push([item, price]);
     sys.events.on('purchase', onBuy);
+    const toastLog = recordToasts();
     try {
       const offers = sys.shopOffers();
       const price = Object.fromEntries(offers.map((o) => [o.name, o.price]));
@@ -471,7 +508,8 @@ export const tests = {
         c.step(10);
       }
       check(!dlg.isOpen && !G().game.busy, 'the conversation ends');
-      const toasts = [...document.querySelectorAll('.lu-toast__text')].map((el) => el.textContent);
+      // (the texts passed to HUD.toast, recorded when shown: the DOM toast may be gone by now)
+      const toasts = toastLog.texts;
       check(toasts.some((t) => t === `Obtained: Whetstone — ATK ${atk0} → ${atk0 + 2}`), 'the upgrade toast shows the change (ATK a → b)', toasts);
       // a later visit: its last page only, "Tell me again" (the earlier pages) last in the menu, the
       // menu line with ATK and DEF, wares the gold does not reach marked
@@ -522,6 +560,7 @@ export const tests = {
       return { menu1, menu2, bought: bought.length, failures };
     } finally {
       sys.events.off('purchase', onBuy);
+      toastLog.stop();
     }
   },
 
@@ -764,7 +803,8 @@ export const tests = {
     const zones = L._zones.slice(0, L._zoneN).map((z) => [z.l, z.t, z.r, z.b].map(Math.round));
     const panels = L._panels.filter((q) => q.on).length;
     const out = { panels, zones, nums };
-    check(nums.every((n) => n.drift !== null && n.drift <= 2), 'boss fight, legend + boss bar shown: numbers in the open lower middle stay at their anchors', out);
+    // (the legend steps aside while the boss bar shows: BossBar's lu-root--boss; it leaves its zone)
+    check(nums.every((n) => n.drift !== null && n.drift <= 2), 'boss fight, boss bar shown (the legend steps aside): numbers in the open lower middle stay at their anchors', out);
     ui.combat.boss.hide();
     L.clear();
     ui.hud.showHelp(help);
@@ -837,8 +877,12 @@ export const tests = {
     const h2 = hints();
     input.lastDevice = 'keyboard';
     c.step(2);
-    check(kb.includes('Zoom (or wheel)') && kb.length === 12, 'keyboard legend (12 rows)', kb);
-    check(pad.includes('Zoom') && pad.includes('Photo') && pad.length === 12, 'pad legend (12 rows)', pad);
+    // the combat's 12 rows, plus the game's own where they apply: Journal on a level with a story
+    // (Cinderwatch Pass has one; keyboard only), Party once someone has joined
+    const extra = (pad) => (G().game.story && !pad ? 1 : 0) + (G().game.party ? 1 : 0);
+    const own = (rows) => rows.filter((r) => r !== 'Journal' && r !== 'Party');
+    check(kb.includes('Zoom (or wheel)') && own(kb).length === 12 && kb.length === 12 + extra(false), 'keyboard legend (12 combat rows + Journal / Party)', kb);
+    check(pad.includes('Zoom') && pad.includes('Photo') && own(pad).length === 12 && pad.length === 12 + extra(true), 'pad legend (12 combat rows + Party)', pad);
     check(JSON.stringify(back) === JSON.stringify(kb), 'keyboard legend again');
     check(h1 === 1 && h2 === 1, 'one pad hint toast', [h1, h2]);
     check(s.device === 'gamepad', 'state().combat.device', s.device);

@@ -337,6 +337,30 @@ export class Input {
     target.addEventListener('mousedown', this._onAuxDown);
   }
 
+  /**
+   * A copy of the current keyboard and gamepad bindings, for `restoreBindings` (a level that adds
+   * bindings with `addBindings` and is left again: a campaign's combat level).
+   * @returns {{ keyboard: Record<string, string[]>, pad: Record<string, string[]> }}
+   */
+  saveBindings() {
+    return { keyboard: cloneBindings(this.bindings), pad: cloneBindings(this.padBindings) };
+  }
+
+  /**
+   * Put back bindings saved by `saveBindings` (actions added since are removed).
+   * @param {{ keyboard: Record<string, string[]>, pad: Record<string, string[]> }} saved
+   */
+  restoreBindings(saved) {
+    this.bindings = cloneBindings(saved.keyboard);
+    this.padBindings = cloneBindings(saved.pad);
+    this._boundCacheKey = '';
+  }
+
+  /** Stop reporting mouse buttons (the opposite of `enableMouseButtons`). */
+  disableMouseButtons() {
+    this._disableMouseButtons();
+  }
+
   /** @internal remove the listeners of enableMouseButtons and release held mouse codes */
   _disableMouseButtons() {
     const t = this._mouseTarget;

@@ -10,7 +10,7 @@ import { FULLSCREEN_VERTEX, POST_COMMON_GLSL } from './PostCommon.js';
  * writes (`tDiffuse`, `luminosityThreshold`) so it can be swapped in-place.
  */
 export const BloomBrightPassShader = {
-  name: 'LuminaBloomBrightPass',
+  name: 'LuminatiBloomBrightPass',
   uniforms: {
     tDiffuse: { value: null },
     luminosityThreshold: { value: 0.82 },

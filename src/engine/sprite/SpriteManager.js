@@ -14,6 +14,8 @@ export class SpriteManager {
     /** Camera handed to sprites (may be swapped at runtime). */
     this.camera = camera;
     this._sprites = [];
+    /** Index of the sprite `update()` is updating (-1 outside it): `remove()` keeps it in step. */
+    this._cursor = -1;
   }
 
   /**
@@ -28,7 +30,9 @@ export class SpriteManager {
   }
 
   /**
-   * Unregister a sprite (does not dispose it).
+   * Unregister a sprite (does not dispose it). Safe from inside a sprite callback during
+   * `update()` (`onAnimationEnd`, `onFrameChange`): the walk over the list stays in step, so no
+   * other sprite is skipped that frame, and a removed sprite not yet reached is not updated.
    * @param {object} sprite
    * @returns {boolean} true when it was registered
    */
@@ -36,6 +40,8 @@ export class SpriteManager {
     const i = this._sprites.indexOf(sprite);
     if (i < 0) return false;
     this._sprites.splice(i, 1);
+    // removed at or before the sprite being updated: the walk's next index moved down by one
+    if (i <= this._cursor) this._cursor--;
     return true;
   }
 
@@ -45,13 +51,18 @@ export class SpriteManager {
   }
 
   /**
-   * Update every registered sprite.
+   * Update every registered sprite. Sprites added during the walk (by a callback) are updated in
+   * the same frame; sprites removed during it are not (see `remove`).
    * @param {number} dt seconds
    */
   update(dt) {
     const list = this._sprites;
     const cam = this.camera;
-    for (let i = 0; i < list.length; i++) list[i].update(dt, cam);
+    try {
+      for (this._cursor = 0; this._cursor < list.length; this._cursor++) list[this._cursor].update(dt, cam);
+    } finally {
+      this._cursor = -1;
+    }
   }
 
   /**

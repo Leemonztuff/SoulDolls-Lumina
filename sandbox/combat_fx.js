@@ -28,8 +28,8 @@ import {
   GroundMarkers, createFxAtlas, FX_FRAMES, AudioSystem, SFX_NAMES, COMBAT_SFX_NAMES, MUSIC_TRACKS, Input, Sprite3D,
   createCharacterSheet, CHARACTER_PRESETS, createEnemySheet, PixelCanvas, makePixelTexture,
 } from '../src/engine/index.js';
-import { KEYFRAME_OVERRIDES, SUN_PATH, MOON_PATH, CHARACTER_SPRITE_OPTS, CAMERA } from '../src/demo/config.js';
-import { installFogStart } from '../src/demo/AtmosphereFog.js';
+import { KEYFRAME_OVERRIDES, SUN_PATH, MOON_PATH, CHARACTER_SPRITE_OPTS, CAMERA } from '../src/game/config.js';
+import { installFogStart } from '../src/game/AtmosphereFog.js';
 
 /**
  * @import { FxQuadParams } from '../src/engine/fx/FxQuads.js'
@@ -682,8 +682,8 @@ function checkParticles() {
 async function checkPrograms() {
   await frames(3);
   const keys = (renderer.info.programs ?? []).map((p) => p.cacheKey);
-  const fxq = keys.filter((k) => k.includes('lumina-fxquads-v1')).length;
-  const gm = keys.filter((k) => k.includes('lumina-groundmarkers-v1')).length;
+  const fxq = keys.filter((k) => k.includes('luminati-fxquads-v1')).length;
+  const gm = keys.filter((k) => k.includes('luminati-groundmarkers-v1')).length;
   const callsQ = drawCallsOf(quads.object);
   const callsM = drawCallsOf(markers.object);
   return check('one program + one draw call each (fxquads-v1, groundmarkers-v1)', fxq === 1 && gm === 1 && callsQ === 1 && callsM === 1,

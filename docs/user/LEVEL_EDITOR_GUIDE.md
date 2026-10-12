@@ -1,6 +1,6 @@
 # Level editor guide
 
-> **Purpose** — The complete manual of the Lumina level editor (`editor.html`): layout, views and
+> **Purpose** — The complete manual of the Luminati level editor (`editor.html`): layout, views and
 > camera controls, every tool with its options and modifier keys, the palettes, the inspector
 > (including the dialogue syntax), the outliner, level settings, saving and opening, autosave and
 > recovery, play-testing, clipboard and undo, enemies, chests and waystones for combat levels, a
@@ -40,10 +40,14 @@ to it, listing and deleting its files; `?open=<name>` still opens published leve
 | `editor.html` | The *Restore unsaved work?* prompt if an earlier session left unsaved changes, otherwise a blank level *Untitled* (32 × 24 grass, a 2-tile forest border). |
 | `editor.html?open=<name>` | `public/levels/<name>.json`, e.g. `?open=emberfall`. |
 | `editor.html?local=<slot>` | A level saved in this browser. |
-| `editor.html?new` | A blank level, no restore prompt. |
+| `editor.html?new` | A blank level, no restore prompt (`?new=room`: a new room, [§9.2](#92-new-level-altn-ctrln-file--new-level)). |
+
+The site's front page, the **launcher** (`/`), opens the editor too: *Edit* on every level and on
+every level file of a campaign, *Open the editor*, *New level* and *New room*
+([Getting started › The launcher](GETTING_STARTED.md#44-the-launcher)).
 
 The layout, grid, split position and 3D-preview options of your last session are remembered
-(`localStorage` key `lumina.editor.prefs`). "Building the 3D preview…" shows in the 3D pane until
+(`localStorage` key `luminati.editor.prefs`). "Building the 3D preview…" shows in the 3D pane until
 its first full build is on screen.
 
 ---
@@ -67,7 +71,7 @@ its first full build is on screen.
 
 | Area | What it holds |
 | --- | --- |
-| **Menu bar** | *File*, *Edit*, *View*, *Level*, *Help* menus · the **level name** (click it to open *Level settings*) · a dot while there are unsaved changes (red when autosave failed) · where the level is saved (`public/levels/x.json`, `browser · slot`, `file · name` or *not saved yet*) · **Undo** / **Redo** · the **layout switch** (3D + 2D, 3D only, 2D only) · the gold **Play** button. The browser tab title starts with ● while unsaved. |
+| **Menu bar** | *File*, *Edit*, *View*, *Level*, *Help* menus (*Help*: *Keyboard shortcuts*, *Open the Emberfall demo* (the game, `game.html`), *All campaigns and levels* (the launcher, `index.html`), *About the level editor*) · the **level name** (click it to open *Level settings*) · a dot while there are unsaved changes (red when autosave failed) · where the level is saved (`public/levels/x.json`, `browser · slot`, `file · name` or *not saved yet*) · **Undo** / **Redo** · the **layout switch** (3D + 2D, 3D only, 2D only) · the gold **Play** button. The browser tab title starts with ● while unsaved. |
 | **Toolbar** (far left) | The ten tools in four groups: Select · Paint, Fill, Rectangle, Height, Stairs · Place, Player start · Eyedropper, Erase. Each button shows its key. |
 | **Tool options** (left) | The active tool's options and, for terrain and object tools, the **tile palette** or **object palette**. |
 | **3D Preview** (centre) | The level rendered by the real engine — terrain, water, props, lights, sprites, sky. |
@@ -142,7 +146,7 @@ with *3D: particles & god rays* (below), so the tiles stay readable while you ed
 | Menu item | Adds |
 | --- | --- |
 | *3D: gameplay camera* | The game's framing (the pane shows a GAME CAMERA badge). |
-| *3D: HD-2D post effects* | Tilt-shift depth of field, bloom and the colour grade. |
+| *3D: diorama post effects* | Tilt-shift depth of field, bloom and the colour grade. |
 | *3D: particles & god rays* | Particle areas, god rays, ground foliage — and, when the level's weather is rain or snow, the **rain / snowfall**, its haze and **snow cover** on the ground, roofs and grass. |
 
 ![The 3D preview with the gameplay camera and post effects on](../assets/screenshots/editor-3d-preview-postfx.jpg)
@@ -156,16 +160,22 @@ with *3D: particles & god rays* (below), so the tiles stay readable while you ed
 | *Show objects* | Props, buildings, villagers… in both views. |
 | *Show markers (areas, regions, start)* | Particle areas, regions, critter areas, enemy home rings and boss arenas, and the player start. (In the 2D map enemy groups are markers, like critter groups; in the 3D view their sprites follow *Show objects*.) |
 | *Show all hidden types* | Undo every eye toggle of the outliner. |
+| *Story preview…* | Hide the objects whose story conditions do not hold for chosen story values ([§5.5](#55-story-events-markers-scripts-and-the-story-preview)). |
 
-Hidden objects cannot be picked or box-selected; **Ctrl+A** skips the types hidden with the
-outliner's eye toggles.
+Whatever these hide — a type's eye in the outliner, *Show objects* or *Show markers* off (as the
+2D map draws them: critter and enemy groups there follow *Show markers*), the story preview — can
+neither be picked nor box-selected, is dimmed in the outliner and is never selected
+([§5.5](#55-story-events-markers-scripts-and-the-story-preview)): turning a switch off drops what
+it hides from the selection, and **Ctrl+A** selects only what the 2D map shows, as a box does,
+and says how many it left out and why.
 
 ### 3.5 Context menu (right-click)
 
 - **On an object**: *Focus*, *Duplicate*, *Copy*, *Rotate +90°*, *Pick this type* (switches to
   Place with that type), *Delete*. On the player start: *Focus*.
 - **On empty ground**: *Paste here*, *Place player start here*, *Place ‹current object type› here*
-  (point objects only), *Frame level*.
+  (point objects only; an object the views hide — its type's eye, *Show objects* off — is placed
+  but not selected, and the status bar says why, as with the Place tool), *Frame level*.
 
 ---
 
@@ -218,7 +228,9 @@ Tool keys use the printed letter and never fire while a text field has focus.
 Regions and particle areas are picked by their **edge or name tag** with a single click (so you can
 still box-select inside a big region); double-click inside one to select it. A group rotates about
 its centre; things that only face four ways (the waterfall's *Falls toward*, villagers' facing)
-turn in quarter steps.
+turn in quarter steps. A quarter turn also turns what is stored relative to an object — a
+villager's talk point and chase area, a critter yard and its exact spots, an enemy group's arena,
+gate, area and spots; a group turned by 15° keeps them (the status bar says so).
 
 The tool options show the **Snap to grid** switch (shared with Place and Player start), the object
 palette (a click switches to Place) and a gesture reference.
@@ -350,10 +362,11 @@ banks, a ring of sand at **level 1**.
 | **Nature** | Tree · Rock · Haystack |
 | **Lights** | Lamppost · Wall torch · Campfire · Point light (invisible) |
 | **Props** | Bench · Barrel · Crate · Crate stack · Flower box · Signpost |
+| **Interior** | Bed · Table · Chair · Shelf · Hearth · Counter · Rug · Staircase · Wardrobe · Wall window · Grain sacks — the furniture of rooms: rotation 0 puts a piece's back on a north wall and its front toward you; a wall window goes on the wall face ([object catalog § Interior](../specs/OBJECT_CATALOG.md#interior)) |
 | **Structures** | Fence (line) · Bridge (line) |
 | **Water** | Waterfall |
 | **Characters** | Villager (NPC) · Critters |
-| **Markers** | Particle area · Region name |
+| **Markers** | Particle area · Region name · Exit (to another level) · Entrance (arrival point) — for campaigns, see [§5.4](#54-campaigns-exits-entrances-and-story-fields) · Story event · Story marker (named spot) — see [§5.5](#55-story-events-markers-scripts-and-the-story-preview) |
 | **Combat** | Enemy group · Treasure chest · Waystone (checkpoint) — see [§5.3](#53-combat-enemies-chests-and-waystones) |
 
 Hover a button for its help text. Every field of every type is listed in the
@@ -372,8 +385,8 @@ Hover a button for its help text. Every field of every type is listed in the
 - **Particle area** — a box of fireflies (night only), leaves, petals, dust, embers, smoke, mist or
   sparkles. *Size X / Y / Z*, *Height above ground*, *Particles* 1–200. (The *rain* and *snow*
   presets follow the camera; use the level's weather for precipitation.)
-- **Region name** — the HUD shows its name while the player is inside. *Only above height* limits
-  it to high ground — it is a **world height** (level × 0.5), and the player must stand strictly
+- **Region name** — the HUD shows its name while the player is inside. *Only above height, world
+  units* limits it to high ground — it is a **world height** (level × 0.5), and the player must stand strictly
   above it; *Arrival banner subtitle* shows a banner the first time the player enters.
   **The first matching region wins**, in object order — place small regions before the big ones
   they sit in.
@@ -424,6 +437,162 @@ and is sent home when the fight starts), and play-test often.
 
 ---
 
+### 5.4 Campaigns: exits, entrances and story fields
+
+A **campaign** joins levels into one story ([CAMPAIGN_FORMAT.md](../specs/CAMPAIGN_FORMAT.md)): its
+levels live in `public/campaigns/<name>/levels/`, and these objects join them (all in the
+*Markers* group; a level played on its own ignores them):
+
+| Object | How to place | Fields |
+| --- | --- | --- |
+| **Exit (to another level)** `⇨` | Drag a rectangle over the road where it leaves the map (walk-in), or over a door step (Space). Drawn as a green dashed rectangle tagged `→ level · entrance`. | *Leads to level* (the target's file name), *Arrive at entrance* (blank: across the seam when the campaign places both levels, else the target's player start), *Travel* (*Walk into it* / *Press Space*), *Prompt*, *Open only with story flag*, *Text while closed* |
+| **Entrance (arrival point)** `⊙` | Click where the player should arrive; a green ring with an arrow shows the arrival facing. | *Name* (what exits call it; blank = its id), *Facing on arrival* |
+
+Every object also ends with two **story** fields: *Story: only when* (`when`) and *Story: gone
+when* (`unless`) — in a campaign the object is there only while the first holds and gone while
+the second does. Each is a flag name or a story condition ([§5.5](#55-story-events-markers-scripts-and-the-story-preview)).
+Villagers have *Story: sets flag after talking* (`flag`). *Check for problems* lists exits without a target or walkable ground,
+duplicate entrance names and entrances off walkable ground; the demo campaign *The Ferryman's
+Lantern* shows all of it (`editor.html?open=ferrymans-lantern/mill-road`).
+
+### 5.5 Story: events, markers, scripts and the story preview
+
+Two more *Markers* objects carry a level's story; both are invisible in the game:
+
+| Object | How to place | Drawn as | Fields |
+| --- | --- | --- | --- |
+| **Story event** `!` | Drag a rectangle. | A gold dashed rectangle tagged with its trigger and prompt (`! use · Read`; zoomed in, also its condition, hour or group). A background event (`background: true`: it runs without holding the player) is dotted and tagged `(background)` in both views. | *Runs when* (Space inside it, walking in or out, arriving in the level, its condition becoming true, the clock reaching an hour, an enemy group defeated), *Prompt (Space)*, *Condition*, *Only once*, *At hour (clock)*, *Group (enemy id)*, *Script* |
+| **Story marker** `✦` | Click. | A gold ring with an arrow toward its facing, named by its *Name* (or id). | *Name* (what scripts call it), *Facing* |
+
+Villagers also have a *Talk script* and an *Actor*. Both views draw events and markers like exits
+and entrances: pick an event by its edge or its centre badge (in the 3D view also by its tag), or
+double-click inside it; drag its corners to resize it.
+
+**Script fields** (*Script*, *Talk script*) hold a script in the story language, one command per
+line, blocks by indentation (two spaces). In the field:
+
+- **Tab** / **Shift+Tab** indent / outdent by two spaces where they can: with several lines
+  selected (each of them), or with the caret in a line's indentation — anywhere from the line's
+  start up to its first character (Tab inserts two spaces there; Shift+Tab takes two away when the
+  line has any). Elsewhere — the caret after a line's first character — they move to the next /
+  previous field as in any other field, and so do Tab / Shift+Tab in a script field you reached
+  with the keyboard, until you type, move the caret or click in it: the keyboard never gets stuck
+  in a script. **Enter** keeps the line's indentation and adds two after a block header (`if`,
+  `elif`, `else`, `choice`, `loop`, `once`, `cycle`, `seq`, `pick`) and after an option (`>`) or
+  alternative (`*`); **Ctrl+Enter** or leaving the field commits, **Esc** restores;
+- the label shows the line count; the first three problems are listed under the field as
+  *line N: …* — click one (or Tab to it and press Enter) to select that line;
+- **⤢** opens the **script editor**: a wide window with line numbers (problem lines marked), the
+  same keys, every problem, and a reference of the line kinds and of every command (filter it —
+  **Esc** in the filter clears it; click a command to insert it). *Apply* (or **Ctrl+Enter**) is
+  one undo step; an *Apply* that changes nothing writes nothing (no undo step, the stored lines
+  stay exactly as they were). *Cancel* drops the changes; **Esc** and **×** first ask *Discard
+  changes?* when the text was changed. With several objects selected whose scripts differ, the
+  editor opens empty: a text written there replaces every selected script, an empty one changes
+  nothing.
+
+Trailing blank lines are not saved; an emptied script field that has no default (*Talk script*)
+is removed from the object.
+
+**Text keys in scripts.** In the level file, each script line that shows text ends in a
+`#line:<key>` tag: its text key, which the translations follow
+([§6.1](#61-what-it-shows)). The script field and the script editor never show the tags, and
+*Apply* keeps them: an edited line keeps its key (its translation waits for review), a line moved
+or with lines inserted around it keeps its key, a new line gets a new one. You never type a tag.
+Script text pasted with its tags (copied from a level file) is safe: a tag another text of the
+level already holds is replaced.
+
+**Condition fields** (*Story: only when*, *Story: gone when*, an exit's *Open only with story
+flag*, an event's *Condition*) take a flag name or a condition such as `bridge-mended and not
+flood`, `item:plank >= 3`, `quest:find-ilse = active`, `hour >= 20 or hour < 6`. A text is always
+kept as typed; under the field, in the warning colour, one per line, is exactly what *Check for
+problems* says about it, read by the field's own rule
+([STORY_SCRIPT.md §3](../specs/STORY_SCRIPT.md#3-conditions)): *only when*, *gone when* and
+*Open only with story flag* keep the **flag rule** — one bare name is that flag, so a reserved word alone
+(`gold`, `day`, `weather` …) is a flag that can never be set ("write `gold > 0`"), and a text that
+does not parse is read as one flag with that name; an event's *Condition* is read as scripts write
+it (`gold` reads the purse; a text that does not parse never holds). The hint also names what the
+level (or its campaign) does not have: `done:` keys of no `once` event or block, or of an event
+that is not `once`, `visited:` of no level, undeclared items and quests, stages a quest does not
+declare — and what the object makes of it: an enemy group, a chest or a waystone follows its
+story condition only when the level is entered (every other type comes and goes live), so its
+*only when* / *gone when* reading a flag this very level sets is a warning (the
+change shows on the next visit; the warning stands under the field that reads the flag); an event
+that runs when *its condition becomes true* needs its *Condition* (blank: an error). Clearing an
+optional field — one the type has no default for, such as the story
+fields, *Talk script*, *Actor*, *Story: sets flag after talking*, or an event's *Prompt*,
+*Condition*, *At hour* and *Group* — removes it from the object, so levels that do not use it
+keep their file unchanged; typed again, it goes back to its old place in the object (clearing a
+value and typing it again leaves the saved file as it was).
+
+**Check for problems** ([§8.3](#83-check-for-problems)) also lists the story's problems: script
+lines and conditions that do not parse (with their line), events that lack what their trigger
+needs, actors, places and speakers the level does not have. For a level of a campaign it reads the
+campaign's `campaign.json` and reports `travel` targets that are not levels of the campaign; when
+`campaign.json` lists story files, it reads them too and reports the items, quests, quest stages,
+named scripts and actors they do not declare. It also reads every level file of the campaign (each
+chapter variant too), so a `done:` key is checked as `npm run level:check -- --campaign=<c>`
+checks it: against every level's events (`done:<level>.<id>`), the story files' events and every
+`once` block — this level's own as you have edited them, not as last saved. These files are read
+whenever a level of the campaign opens (so a level saved since is read anew), when the level is
+saved into a campaign under another name, and again by *Check for problems*. What cannot be read
+reports nothing false: a level file that cannot be read leaves `done:` keys checked against this
+level only; a story file that cannot be read leaves out everything the story files declare (items,
+quests, stages, scripts, actors — all or nothing); a read that fails keeps what was read before;
+and until the campaign has been read at all, a campaign level's `done:` and `visited:` keys,
+`travel` targets, items, quests, called scripts and actors are not reported.
+
+**Story preview** (*View › Story preview…*). Objects whose *Story: only when* / *Story: gone
+when* do not allow them can be hidden while you work. Type the story values, one per line — a flag
+name alone (`bridge-mended`), `deliveries = 3`, `item:plank = 2`, `quest:find-ilse = active`,
+`stage:find-ilse = cross-ford`, `hour = 20`, `chapter = lanterns-home`, `party:sela` (Sela is in
+the player's party), `party = 2` (`#` starts a comment;
+`hour` is the 3D preview's hour when not given) — and switch *Preview on*. The views follow as you
+type (after a short pause): hidden objects are drawn in neither view (their chimney smoke, embers
+and mist stop too), cannot be picked or box-selected, and are dimmed in the outliner; the status
+bar shows *Story preview: on*.
+
+**A hidden object is never selected** — one the story preview hides, one of a type hidden with
+the outliner's eye, or one *View › Show objects* / *Show markers* switched off hides
+([§3.4](#34-view-menu--what-is-shown)) — so **Delete**, the arrow keys and the inspector never
+act on what you cannot see:
+
+- whatever changes what is hidden — the preview's values or switch, an eye, *Show objects* /
+  *Show markers*, an edit of an object's *Story: only when* / *Gone when* (or of the weather),
+  undo / redo, a paste, a save under another name (the preview's `level` follows the file, and
+  the save's message names what left) — drops the hidden objects from the selection, and the
+  status bar says why ("*tree_3 left the selection: hidden by the story preview (bridge-mended) —
+  turn the preview off to edit it*");
+- a click on a dimmed outliner row (Shift / Ctrl too, or Enter on it from the keyboard), or on a
+  hidden object's place in a view, selects nothing; the status bar says why: "*tree_3 is hidden by
+  the story preview (bridge-mended) — turn the preview off to edit it*", "*… hidden by the
+  outliner's eye (Tree objects) — show Tree objects again to edit it*" or "*… hidden by View › Show
+  objects (off) — turn View › Show objects on to edit it*" — and the message goes as soon as the
+  object is shown again. A box, **Ctrl+A**, a Shift+click on a group header and a paste leave
+  hidden objects out and say how many; an object placed where the views hide it (the Place tool,
+  or the context menu's *Place ‹type› here*) is placed but not selected, and the message says why;
+- **double-click a dimmed outliner row** (or press **F** on it) to reach the object: it turns the
+  reason off — the story preview, the eye of its type, *Show objects* / *Show markers* (all that
+  hide it) — and selects it;
+- undo and redo never bring a hidden object back into the selection, even when the step was
+  taken while it was shown; the status bar says which objects left it.
+
+The preview is not saved with the level; the values are remembered by this
+browser, the switch starts off in every session. Try it on
+`editor.html?open=ferrymans-lantern/mill-road`: without values the ford has its flood debris and
+no bridge, with `bridge-mended` the bridge and no debris.
+
+The values read as in the game. `stage:find-ilse = cross-ford` is a quest at that stage that
+reached the stages declared before it (in the campaign's story files; without them, only that
+one), and it starts the quest (`quest:find-ilse` reads *active* unless you give it). A stage the
+quest has not reached, or one the story files do not declare, counts as one past every reached
+stage: `stage:find-ilse >= found` and `stage:find-ilse = found` are false, `stage:find-ilse <
+found` is true. In a campaign, `level` is the campaign's level id: a chapter variant's file
+(`millbrook-dusk`) reads as the level it stands for (`millbrook`); a level saved under another
+name or into a browser slot reads its new name at once. The campaign's story files are read when
+one of its levels opens, when the level is saved into a campaign under another name, and again by
+*Check for problems*; the views follow as soon as they arrive.
+
 ## 6. The inspector
 
 ### 6.1 What it shows
@@ -432,14 +601,24 @@ and is sent home when the fight starts), and play-test often.
 | --- | --- |
 | **Nothing** | The **level card**: name, subtitle (or *by ‹author›*), *Size*, *Objects*, *Lights*, *Villagers*, *Water* and *Walkable* (percent of the tiles), on combat levels a line *Enemies n (groups g) · Waystones n · Chests n*, and a status line (*Ready to play-test* or the problems). **Environment**: *Start time*, *Weather*, *Water level*. With rain or snow set and the particles preview off, a hint says "Rain and haze show in the 3D view with particles on." (or "Snowfall and snow cover show …") with a **Show it** button that turns it on. Buttons: *Level settings…*, *Resize…*, *Play-test*. |
 | **One object** | A header with the type, category and an editable **id**, the type's help, **Properties** (the catalog fields), **Transform** and *Focus* / *Duplicate* / *Delete*. A boss enemy group also has a **Boss arena** section ([§5.3](#53-combat-enemies-chests-and-waystones)). |
-| **Several objects** | The count, one row per type (click a row to keep only that type), *Focus*, *−90°*, *+90°*, *Duplicate*, *Delete*; when all are the same type, **Shared … properties** — edits apply to every selected object, differing values show blank or *mixed*. |
+| **Several objects** | The count, one row per type (click a row to keep only that type), *Focus*, *−90°*, *+90°*, *Duplicate*, *Delete*; when all are the same type, **Shared … properties** — edits apply to every selected object, differing values show blank or *mixed* (**Esc** in such a field brings the blank back). |
 | **The player start** | *X*, *Z*, *Facing*, a status line (*On walkable ground*, *On a bridge deck*, *Not walkable — …*, *Outside the map*), *Focus*, *Snap to tile centre*. |
 
 **Transform** holds *X / Z* for point objects, *Start / End X / Z* and the length for fences and
 bridges, *Min / Max X / Z* and the size for regions, plus *Rotation* where it applies.
 
 **Ids** can be renamed in the header: letters, digits, `_` and `-`, unique, and not `spawn`
-(reserved for the player start).
+(reserved for the player start). Renaming an object keeps its texts' translations.
+
+**Text keys.** Under each field players read — sign, door and well texts, a villager's title,
+dialogue and talk script, a region's subtitle and banner, an exit's or event's label, locked pages
+and script — a small monospace line per text shows its **text key**: the ID (a 32-digit GUID) that
+names that text for the translations, for QA and for voice work. Keys are read-only, each with a
+**Copy** button; a field of several texts (pages, dialogue, a script) keeps them behind a *Text
+keys (n)* toggle, and a text without a key says so. The editor gives every new text a key and keeps
+it through every edit — an edited text keeps its key, inserting, reordering and renaming never move
+one — so you never type a key. *Level settings…* shows the subtitle's key. The key buttons are not
+in the Tab order, so Tab still moves from field to field.
 
 Every edit is undoable; dragging a slider is a single undo step.
 
@@ -448,7 +627,7 @@ Every edit is undoable; dragging a slider is a single undo step.
 | Field | Control | Behaviour |
 | --- | --- | --- |
 | Number / whole number | slider + number box | Typed values are clamped to the field's range. With the box focused, the mouse wheel steps it. **Enter** commits, **Esc** restores. |
-| **Nullable number** | slider + number box that shows *auto* when blank + a × button | Blank means "automatic": a bridge's *Deck height (blank = auto)*, a region's *Only above height (blank = any)*. × clears it. |
+| **Nullable number** | slider + number box that shows *auto* when blank + a × button | Blank means "automatic": a bridge's *Deck height, world units (blank = auto)*, a region's *Only above height, world units (blank = any)*. × clears it. |
 | Angle | slider + box in degrees | −180° to 180° in 15° steps; typed values wrap round. Stored in radians. |
 | Switch | toggle | |
 | Choice | dropdown | An empty option reads *(none)*. |
@@ -490,7 +669,8 @@ Will you rest until morning? [Not yet | Rest until morning]
 | *Merchant: sell an item* | Adds *Would you like the ‹item›? [Just looking \| Yes, please]* unless your dialogue ends with a question. Any answer but the first gives the item (field *Item sold (shop action)*, blank = "Crisp Apple"); with a one-answer closing question of your own, that answer gives it. |
 | *Bard: play music (offers quiet when playing)* | Starts the music when it is silent. When it is already playing, the game asks *Another song, or a little quiet?*; *Some quiet* stops it. If your dialogue ends with its own question, any answer but the first plays the music (a one-answer question: that answer). |
 
-**Other villager fields**: *Name* (shown on the name plate), *Look* (14 character presets:
+**Other villager fields**: *Name* (shown on the name plate), *Title* (optional: the small title beside
+the name plate when the villager speaks, e.g. *Warden of the Cinderwatch*; blank = none), *Look* (14 character presets:
 traveler, swordsman, merchant, cleric, scholar, dancer, hunter, villager, farmer, elder, child,
 guard, innkeeper, bard), *Facing*, *Behaviour* — **wander** (strolls within *Wander radius* of its
 spot), **post** (stands and looks around), **perform** (faces its audience, like a bard), **chase**
@@ -498,17 +678,54 @@ spot), **post** (stands and looks around), **perform** (faces its audience, like
 the dialogue with one of Emberfall's hand-written conversations (elder, innkeeper, merchant, guard,
 farmer, child, bard, scholar).
 
+**Languages.** Write a level's texts in English. The game shows them in Japanese or Chinese from
+translation tables kept apart from the level (`public/i18n/`, [I18N.md](../specs/I18N.md)) — the
+level file holds no translation, and the editor stays English. A level you make yourself plays in
+English until tables are made for it ([I18N.md §4.7](../specs/I18N.md#47-checker-worklist-and-exchange));
+the play-test (F5) of a project level loads the table of the file it was opened from when there is
+one (`&i18n=levels/<name>`).
+
+Translations follow each text's **text key** — the ID the editor stores beside the text and shows
+read-only under its field ([§6.1](#61-what-it-shows)) — not the English words and not the text's
+place. So, in a level that has translations (the shipped ones):
+
+- **Editing a line's English** keeps its key, but shows that line in English in Japanese and
+  Chinese until a translator reviews it — the old translation is not shown for the new words.
+- **Inserting, removing or reordering pages, choices or script lines** keeps every other text's
+  key and translation; a new text gets a new key and waits for its translation.
+- **Renaming an object's id** keeps its texts' translations. Deleting an object leaves its
+  translations behind (a *Duplicate* gets new keys: it is a new text for the translators).
+- **A *Save as* copy** shares the original's keys and translations until you edit its text
+  (copy-on-write, [§9.4](#94-save-ctrls-and-save-as-ctrlshifts)).
+
+After such a change run `npm run i18n:check`; translators follow
+[TASK_PLAYBOOKS §26](../ai/TASK_PLAYBOOKS.md#26-translate-or-fix-content-text-with-the-worklist).
+
 ---
 
 ## 7. The outliner
 
 - Objects grouped by type with a count; the **Player start** row sits on top.
 - **Filter objects…** matches ids, names, type names and categories (**Esc** clears it).
-- Click a **group header** to collapse it; **Shift / Ctrl + click** it to add every object of the
-  type to the selection.
-- The **eye** on a header hides that type in both views (and from picking and select-all).
+- Click a **group header** to collapse it; **Shift / Ctrl + click** it to add the type's objects
+  that the filter lists (all of them without a filter) to the selection.
+- The **eye** on a header hides that type in both views (and from picking and select-all); its
+  objects leave the selection.
 - Click a row to select, **Shift + click** to add, **Ctrl + click** to toggle, **double-click** to
   focus it. Rows show each object's position.
+- **Dimmed rows** are objects the views hide (a hidden type, *Show objects* / *Show markers* off,
+  or the story preview — §5.5). A hidden object is never selected: a click on its row only says
+  why in the status bar; **double-click** it to turn the reason off (show the type again, switch
+  *Show objects* / *Show markers* on or the story preview off) and select it.
+- **From the keyboard** the list is one stop: **Tab** to it (or press **↓** in the filter box).
+  **↑ / ↓** move through the player start, the group headers and the rows (**Home / End**,
+  **Page Up / Down** further); **← / →** collapse and expand a group (← on a row goes to its
+  header, → on an open header to its first row); **Enter** or **Space** on a row does what a click
+  does (with **Shift** it adds, with **Ctrl** it toggles; on a dimmed row it says why), on a header
+  it collapses the group (**Shift+Enter**: selects the type's listed objects); **F** on a row does
+  what a double-click does — it focuses the object, and on a dimmed row shows it again and selects
+  it. The row you are on is outlined. (After a mouse click on a row the keys go to the selection as
+  before: the arrows nudge it.)
 
 ---
 
@@ -521,13 +738,22 @@ Also opened by clicking the level name in the menu bar. *Apply* makes one undoab
 | Tab | Fields |
 | --- | --- |
 | **General** | *Name* (title screen and banner), *Subtitle*, *Author*, *Description* |
-| **Environment** | *Start time* (0–24 h; 17.2 = golden hour, 21+ = night), *Clock runs*, *Weather* (clear / rain / snow — the 3D preview shows its grey light and lanterns; the rain / snow, haze and snow cover with *View › 3D: particles & god rays*), *Map border* (forest / none), *Outer scenery*, *God rays*, *Dust motes*, *Music*, *Minimap*, *Combat* — *Auto* (combat is on when the level has an enemy group; the default), *On* (the player's sword, skills and draughts even without enemies) or *Off (peaceful)* (enemies are not spawned; chests and waystones can only be examined). Only *On* and *Off* are written into the level file; choosing *Auto* again removes the setting. |
-| **Camera** | *Distance* (12–60, blank = 30), *Pitch* (10–80°, blank = 32°), *High ground: steeper camera on high ground* with *…above height* (world height = level × 0.5; default 3) and *…pitch* (default 40°) |
-| **Water** | *Water level*, *Flow* (x · z ripple drift), *Reflection*, *Neutral tint*, *Glints* (1 = default; fewer suits a big calm lake) |
+| **Environment** | *Interior (room)* (see *Rooms* below), *Start time* (0–24 h; 17.2 = golden hour, 21+ = night), *Clock runs*, *Weather* (clear / rain / snow — the 3D preview shows its grey light and lanterns; the rain / snow, haze and snow cover with *View › 3D: particles & god rays*), *Map border* (forest / none), *Outer scenery*, *God rays*, *Backdrop* (none — the sky —, void or a colour: the background and the fog in one colour, for rooms and caves; only a choice other than the sky is written into the file), *Dust motes*, *Music*, *Minimap*, *Combat* — *Auto* (combat is on when the level has an enemy group; the default), *On* (the player's sword, skills and draughts even without enemies) or *Off (peaceful)* (enemies are not spawned; chests and waystones can only be examined). Only *On* and *Off* are written into the level file; choosing *Auto* again removes the setting. |
+| **Camera** | *Distance* (12–60, blank = 30), *Pitch* (10–80°, blank = 32°), *High ground: steeper camera on high ground* with *…above height (world units)* (world height = level × 0.5; default 3) and *…pitch* (default 40°) |
+| **Water** | *Water level (world units)*, *Flow* (x · z ripple drift), *Reflection*, *Neutral tint*, *Glints* (1 = default; fewer suits a big calm lake) |
 
 Camera focus bounds, title texts, the title camera, god-ray areas, foliage and forest zones, the
 outer-scenery tuning (`scenery`) and `fogScale` have no dialog fields; they are kept when you edit.
 See [specs/LEVEL_FORMAT.md](../specs/LEVEL_FORMAT.md).
+
+**Rooms.** A house's floor or a cellar is its own small level with *Interior (room)* switched on:
+the game shows no forest border, outer scenery, god rays or weather inside (a campaign's weather
+goes on outside), and the 3D preview shows the room the same way. Switching it on dims those four
+rows (their values are kept for when the level is outdoors again) and offers **Use the room look**:
+map border none, outer scenery and god rays off, a dark backdrop instead of the sky, no minimap, the
+clock stopped, and a closer camera (20 / 38°) when the camera is automatic. *Apply* saves it with
+the rest as one undoable edit. Switching *Interior* off removes it from the file again. A new room
+is easiest from **File › New › Room (interior)** ([§9.2](#92-new-level-altn-ctrln-file--new-level)).
 
 ### 8.2 Resize level…
 
@@ -542,17 +768,25 @@ water, void or blocked ground…*) and **things to consider**:
 
 - a bridge end more than a step (0.55) above or below its bank — the player could not get on or off;
 - objects outside the map;
-- no villagers yet;
+- no villagers yet (not asked in a room);
 - houses without *Text when knocking* (their doors are not interactive);
 - walkable ground reaching the map edge ("the player can walk to the edge of the world there") —
-  block it with forest `T` or rock `x`;
+  block it with forest `T` or rock `x`; in a room the warning is about its door, which leads out
+  through an exit placed over it;
 - on combat levels: no Waystone; enemies that would start off walkable ground; enemies (not
   training dummies) starting within 12 tiles of the player start; a boss without arena or gate;
   a boss gate whose end lies more than half a tile off the arena's edge (its ember wall would not
   meet the barrier); more than one boss; an arena left on a group that is not the boss (the game
   ignores it); a boss whose *Count* is above 1 (a hand-edited file — the game spawns one);
   enemy groups whose home (radius + 2) comes within 6 tiles of the boss arena; combat switched
-  *Off* while enemies are placed.
+  *Off* while enemies are placed;
+- **text keys** ([§8.4](#84-assign-text-keys)): texts without a key (they stay English in every
+  language) and keys left on no text, each summed into one line (*Assign text keys* fixes both);
+  one key on two texts, as a *Text key error* line per key (at most 20) — when the two texts read
+  the same, *Assign text keys* gives the second a new key; when they differ, save the level and run
+  the command the line names (`npm run i18n:keys -- --fix <file>`), which decides from the
+  translations which text keeps the key. Places are named as Find names them (`npc_2 › dialogue,
+  page 1`). None of these blocks the play-test.
 
 **Deeper checks.** The generated levels pass stricter checks than this menu runs. To give your level
 the same, save it and run, in a terminal in the project folder:
@@ -567,17 +801,37 @@ villager, door, sign or well nobody can reach, a broken stair, waterfall or brid
 footprints, places outside every region. It never changes the file. Details:
 [Level design guide §14](../design/LEVEL_DESIGN_GUIDE.md#from-the-command-line-any-level).
 
-### 8.4 Play-test (F5, the Play button)
+### 8.4 Assign text keys
+
+Every text players read carries a **text key** in the level file, the ID its translations follow
+([§6.1](#61-what-it-shows)). The editor gives every text you place or type a key at once, so a
+level made in this editor needs nothing. A level made before keys existed, or written by hand,
+has texts without one: they stay English in every language, and *Check for problems* counts them.
+*Level › Assign text keys* gives each of them a key, in one undoable step; texts that already have
+a key keep it. In a campaign it also shares keys where the text is a copy: a chapter's variant
+takes its base level's keys, and a campaign's copy of a shipped level (the same file name) takes
+the shipped level's keys, wherever the English is the same — so those texts keep the translations
+they already have. Save afterwards.
+
+### 8.5 Play-test (F5, the Play button)
 
 Checks the level, stores it in the browser slot `__playtest__` and opens
-`index.html?level=local:__playtest__&autostart=1` in a tab named *lumina-playtest* — pressing
-**F5** again later reuses that tab. The game starts straight in gameplay; audio starts at your first
+`game.html?level=local:__playtest__&autostart=1` in a tab named *luminati-playtest* — pressing
+**F5** again later reuses that tab. A level opened from the project folder plays with that level's
+translations (`&i18n=levels/<name>`, also after you *Save As* it under another name), so you can
+check it in Japanese or Chinese. The game starts straight in gameplay; audio starts at your first
 key press or click. A level with enemies plays with combat (see *Combat* in [§8.1](#81-level-settings)). If problems block it, a dialog lists them (with *Select player start* when the
 start is the problem). If the pop-up is blocked, allow pop-ups for the editor — the level is already
 in the slot.
 
 *Level › Open saved level in the game* (enabled for levels saved in the project folder) opens
-`index.html?level=<name>` in a new tab.
+`game.html?level=<name>` in a new tab.
+
+**A campaign's level** (opened from its campaign, [§9.1](#91-where-levels-live)) is play-tested
+**inside its campaign**: `game.html?campaign=<c>&level=local:__playtest__&as=<name>`, so its
+exits lead to the campaign's other levels (their saved files). *Open saved level in the game*
+likewise opens `game.html?campaign=<c>&level=<name>`. A chapter's variant (e.g. `millbrook-dusk`)
+plays as the level it stands for.
 
 ---
 
@@ -587,17 +841,18 @@ in the slot.
 
 | Place | Stored as | Save with | Open with | Play with |
 | --- | --- | --- | --- | --- |
-| **Project folder** (dev server only) | `public/levels/<name>.json` — ships with the game | *Save as › Project folder* | *Open › Project folder*, `editor.html?open=<name>` | `index.html?level=<name>` |
-| **This browser** | `localStorage` key `lumina.level.<slot>` | *Save as › This browser* | *Open › This browser*, `editor.html?local=<slot>` | `index.html?level=local:<slot>` |
+| **Project folder** (dev server only) | `public/levels/<name>.json` — ships with the game | *Save as › Project folder* | *Open › Project folder*, `editor.html?open=<name>` | `game.html?level=<name>` |
+| **This browser** | `localStorage` key `luminati.level.<slot>` | *Save as › This browser* | *Open › This browser*, `editor.html?local=<slot>` | `game.html?level=local:<slot>` |
 | **A file** | `<name>.level.json` in your downloads | *Save as › Download file*, **Ctrl+E** (a copy) | *Open › File on disk*, or drop it on the window | copy it to `public/levels/<name>.json` |
+| **A campaign's folder** (dev server only) | `public/campaigns/<c>/levels/<name>.json` | *Save* / *Save as › Campaign folder* (for a level opened from the campaign) | *Open › Project folder* (listed under *Campaign · ‹name›*), `editor.html?open=<c>/<name>` | `game.html?campaign=<c>&level=<name>` (in its campaign) |
 
 File and slot names are **slugs**: lower case, digits and dashes (*My River Village!* →
 `my-river-village`; a name without Latin letters or digits becomes `level-<hash>`). The shipped
-levels are `emberfall`, `starfall-vale` (generated — edit
-[`tools/make-starfall-vale.mjs`](../../tools/make-starfall-vale.mjs) instead for lasting changes),
-`brightwater-crossing` and `sample-hamlet` (also written by
-[`tools/make-sample-hamlet.mjs`](../../tools/make-sample-hamlet.mjs): re-running that script
-overwrites editor changes).
+levels include `emberfall` and `brightwater-crossing`, whose JSON files can be edited directly.
+`starfall-vale`, `sample-hamlet`, `gildhaven` and `cinderwatch-pass` are generated: edit their
+`tools/make-*.mjs` source for lasting changes, or save a copy with a new name before editing.
+Re-running a generator replaces editor changes to its output. See the
+[level source table](../development/DEVELOPMENT_WORKFLOW.md#7-working-with-levels) for campaigns too.
 
 ### 9.2 New level (Alt+N, Ctrl+N, File › New level…)
 
@@ -606,9 +861,18 @@ overwrites editor changes).
 rivers and ponds) and *Forest border* width (0–8, default 2). The editor then switches to the Paint
 tool. Chrome keeps **Ctrl+N** for a new window — use **Alt+N**.
 
+**Room (interior)** at the top of the dialog starts a room instead: *Size* (presets **Small
+12 × 10**, **Room 16 × 12**, **Hall 24 × 18**), *Floor* tile (stone tiles by default), *Floor level*
+(default 1) and *Wall height* (levels above the floor, default 5 = 2.5 units). You get a floor inside
+rock walls on the north, west and east, a low south wall with a two-tile door in its middle (the
+camera looks north over it), the player start inside the door, *Interior (room)* and the room look
+set ([§8.1](#81-level-settings)). Place an **Exit** over the door to lead out (until then *Check for
+problems* says the player can walk out there). `editor.html?new=room` starts one too.
+
 ### 9.3 Open (Ctrl+O)
 
-Three tabs: **Project folder** (name, file, size, age; only with the dev server), **This browser**
+Three tabs: **Project folder** (name, file, size, age; only with the dev server — below the
+project's levels, every campaign's levels under a *Campaign · ‹name›* heading), **This browser**
 (saved levels and *Recovered unsaved work*) and **File on disk**. Double-click a row, press Enter
 or use *Open*; the bin icon deletes a file or browser level after a confirmation. You can also
 **drop a `.json` file** anywhere on the editor, or **paste** a whole level's JSON (Ctrl+V) — it opens
@@ -624,7 +888,10 @@ warnings* list.
 level opened from a file — a fresh download. A new level goes to *Save as*.
 
 *Save as* asks for the **File name** and a destination card (**Project folder** — "ships with the
-game; playable at ?level=‹name›", **This browser**, **Download file**) and shows the exact target.
+game; playable at ?level=‹name›" — or, for a campaign's level, **Campaign folder** — beside the
+campaign's other levels —, **This browser**, **Download file**) and shows the exact target. The
+editor saves levels into an existing campaign; it does not create one (make the folder and its
+`campaign.json` first, [CAMPAIGN_FORMAT.md §10](../specs/CAMPAIGN_FORMAT.md#10-making-a-campaign)).
 While the level is still called *Untitled* it also asks for the **Level name** shown on the title
 screen. Saving over an existing file or slot asks first; saving over a file written by a **newer
 engine version** warns that unknown data may be lost.
@@ -632,6 +899,18 @@ engine version** warns that unknown data may be lost.
 A download counts as saved, but a recovery copy stays in the browser. **Ctrl+E** (*Download .json*)
 downloads a copy without changing where the level is saved. **Ctrl+S**, **Ctrl+Shift+S** and **F5**
 work even while you are typing in a field (the field commits first).
+
+**Saving and translations.** Opening and saving never change a text key: a level opened and saved
+unchanged is the same file, byte for byte. A *Save as* copy keeps every key, so it shares the
+original's translations. A text you then edit in the copy gets a new key (**copy-on-write**): the
+original keeps the old key and its translation, and the copy's edited text waits for its own;
+typed back to the original's words, the text takes the shared key back. The editor does the same
+between the files of a campaign (a chapter's variant and its base level, the story files). It only
+knows the files it has read when you edit: edits made *before* a *Save as*, or in a level opened
+from a file on disk, are not split — `npm run i18n:keys` finds them and
+`npm run i18n:keys -- --fix` splits them. A copy saved under another name has no translation table
+of its own: the editor's play-test uses the original's during the session, and the game plays the
+copy in English.
 
 ### 9.5 Autosave and recovery
 
@@ -647,7 +926,7 @@ flowchart TD
 ```
 
 The working copy lives in the browser slot `__autosave__` (`localStorage` key
-`lumina.level.__autosave__`, meta in `lumina.editor.autosave`); see
+`luminati.level.__autosave__`, meta in `luminati.editor.autosave`); see
 [`src/editor/autosave.js`](../../src/editor/autosave.js). A copy made by a download (*Save as ›
 Download file*) is kept as a safety net but not offered at the next start.
 
@@ -671,16 +950,18 @@ The unsaved-changes dialog (new, open, paste a level) offers **Don't save**, **C
 | Action | Keys | Notes |
 | --- | --- | --- |
 | Undo / redo | **Ctrl+Z** / **Ctrl+Y** or **Ctrl+Shift+Z** | Up to 200 steps. One stroke, drag or slider drag = one step. The undo button's tooltip names the step. Opening or creating a level clears the history. |
-| Copy / cut / paste | **Ctrl+C** / **Ctrl+X** / **Ctrl+V** | Objects only. Paste lands at the pointer when it is over a view (snapped to 0.5), otherwise offset by +1, +1. Copied objects also go to the system clipboard as JSON (`"format": "lumina-objects"`), so you can paste between editor tabs. |
-| Duplicate | **Ctrl+D** | Offset by +1, +1. |
+| Copy / cut / paste | **Ctrl+C** / **Ctrl+X** / **Ctrl+V** | Objects only. Paste lands at the pointer when it is over a view (snapped to 0.5), otherwise offset by +1, +1. Copied objects also go to the system clipboard as JSON (`"format": "luminati-objects"`), so you can paste between editor tabs. A cut and paste keeps the objects' text keys; a second paste of the same objects gets new ones. |
+| Duplicate | **Ctrl+D** | Offset by +1, +1. The copy's texts get new keys (a key names one text), so it starts untranslated — to move an object, move or cut and paste it instead. |
+| Find by text key | *Edit › Find by text key…* | Paste a key (any case, with or without braces and hyphens, a script's `#line:` tag or a banner subtitle's `<key>.2`): the editor selects the object — showing it again if a view hid it —, selects the page or script line in its field and marks its key line ([§6.1](#61-what-it-shows)). It searches the open level; a key another file of the campaign holds is named in the message. |
 | Delete | **Delete** / **Backspace** | |
-| Select all objects | **Ctrl+A** | Skips types hidden in the outliner. |
+| Select all objects | **Ctrl+A** | Only what the 2D map shows: skips types hidden in the outliner, what *Show objects* / *Show markers* off and the story preview hide (the status bar says how many). |
 | Deselect / cancel | **Esc** | Cancels the current drag or pending line / region first. |
 | Rotate | **R / Shift+R** ±15°, **Ctrl+R / Ctrl+Shift+R** ±90° | The selection, or the Place ghost. |
-| Nudge | **arrows** 0.5, **Shift** 2 (**Alt** 0.1 in the Select tool) | |
+| Nudge | **arrows** 0.5, **Shift** 2, **Alt** 0.1 | With any tool. |
 | Brush size | **[** / **]** | 1–9. |
-| Frame | **F** selection, **Home** level | |
+| Frame | **F** selection, **Home** level | With nothing selected, **F** over the 3D view focuses the point under the pointer. |
 | Shortcut list | **?** | Also *Help › Keyboard shortcuts*. |
+| Indent in a script | **Tab** / **Shift+Tab** | At a line's start or with several lines selected; elsewhere they move to the next / previous field ([§5.5](#55-story-events-markers-scripts-and-the-story-preview)). |
 
 On a Mac, **Cmd** works wherever Ctrl is listed. The complete printable list is in
 [shortcuts.html](shortcuts.html).
@@ -776,10 +1057,11 @@ ground* (above height **2**, pitch **40**) → **Apply**.
 **Ctrl+S**: file name `thistledown`, destination **Project folder** → **Save** (it writes
 `public/levels/thistledown.json`). Press **F5** to play-test, walk up the road, knock on the inn,
 talk to Hazel and Bram, climb the stairs — and press **T** a few times for the night. From now on the
-level also plays at **http://127.0.0.1:5173/?level=thistledown**.
+level also plays at **http://127.0.0.1:5173/game.html?level=thistledown**, and the launcher
+(**http://127.0.0.1:5173/**) lists it with *Play* and *Edit*.
 
 Press **1** to return to the split layout and look at your hamlet in 3D; try
-*View › 3D: HD-2D post effects* and the sun slider.
+*View › 3D: diorama post effects* and the sun slider.
 
 ---
 
@@ -790,15 +1072,19 @@ Press **1** to return to the split layout and look at your hamlet in 3D; try
 | **File** | Ctrl+N / Alt+N new · Ctrl+O open · Ctrl+S save · Ctrl+Shift+S save as · Ctrl+E download .json · F5 play-test |
 | **Tools** | V select · B paint · G fill · U rectangle · H height · T stairs · O place · P player start · I eyedropper · X erase |
 | **Edit** | Ctrl+Z undo · Ctrl+Y / Ctrl+Shift+Z redo · Ctrl+C / X / V copy, cut, paste · Ctrl+D duplicate · Delete / Backspace delete · Ctrl+A select all · Esc deselect / cancel |
-| **Selection & placing** | R / Shift+R ±15° · Ctrl+R / Ctrl+Shift+R ±90° · arrows nudge 0.5 (Shift 2; Alt 0.1 in the Select tool only) · Alt no snapping · Shift+click add · Ctrl+click toggle |
+| **Selection & placing** | R / Shift+R ±15° · Ctrl+R / Ctrl+Shift+R ±90° · arrows nudge 0.5 (Shift 2, Alt 0.1) · Alt no snapping · Shift+click add · Ctrl+click toggle |
 | **Terrain** | [ / ] brush size · Alt+click pick tile / level · Shift+click straight line (paint) · Shift invert raise / lower (height) · Shift replace everywhere (fill) · Shift outline (rectangle) |
 | **View** | 1 / 2 / 3 layout · F frame selection · Home frame level · Ctrl+G grid · ? shortcut list |
 | **2D map** | wheel zoom · right / middle / Space+drag pan · double-click focus · right-click menu |
-| **3D view** | right-drag orbit · middle / Shift+right / Space+drag pan · wheel zoom · F / double-click focus · right button + WASD fly (Shift faster) · right button + Q / E turn · Q / E rotate (gameplay camera) |
+| **Outliner** | click select · Shift+click add · Ctrl+click toggle · double-click focus · double-click a dimmed (hidden) row: show it again and select it · Shift+click a group header: select its shown, listed objects · keyboard (Tab to the list, ↓ from the filter): ↑ / ↓ / Home / End move · ← / → collapse / expand · Enter / Space select (Shift add, Ctrl toggle) · F focus (a dimmed row: show it again and select it) |
+| **3D view** | right-drag orbit · middle / Shift+right / Space+drag pan · wheel zoom · F / double-click focus (F with nothing selected: the point under the pointer) · right button + WASD fly (Shift faster) · right button + Q / E turn · Q / E rotate (gameplay camera) |
 
 ---
 
 ## 14. Limits and known quirks
+
+Timing figures below are historical examples. Actual timings depend on scene content, browser,
+GPU and background load; see [performance](../architecture/PERFORMANCE.md).
 
 | Limit | Details |
 | --- | --- |
@@ -807,8 +1093,7 @@ Press **1** to return to the split layout and look at your hamlet in 3D; try
 | Opening big levels | Levels with more than 72 × 72 = 5 184 tiles or more than 300 objects open under a loading overlay (`EditorApp._withLoading`); the page is blocked for about **0.6 s** (96 × 96) to **2 s** (128 × 128) while the terrain builds. |
 | Strokes on big levels | Measured on Starfall Vale in the split view: stroke frames p95 18–36 ms, max 36–54 ms (an earlier 128 × 128 stress test had 15–28 % of stroke frames at ~33 ms). Use the **2D only** layout for heavy terrain work. |
 | Placing a well | Placing a well costs one 66–83 ms frame (measured; not fixed). |
-| Region labels in 3D | Pinned above the region's centre and not kept inside the view, so a label near the view's edge can be cut off. |
-| Enemies in the preview | Idle sprites without the game's hit flash, glow, health bars or attack markers; they do not move. Their start spots are the game's (props, villagers, bridge decks and water included); only in the **2D only** layout can a 2D dot sit inside a prop other than a chest or waystone, since that layout has no built props to test. |
+| Enemies in the preview | Idle sprites without the game's hit flash, glow, health bars or attack markers; they do not move. Their start spots are the game's (props, villagers, bridge decks and water included); if WebGL is unavailable or the 3D view has not yet built the document, the 2D dots use a simpler placement test and can overlap some props. A hidden but initialised 3D view still supplies prop collisions in **2D only** mode. |
 | Undo | 200 steps; cleared by New / Open. |
 | Browser storage | Shared per address and port (`127.0.0.1:5173` ≠ `localhost:5173`) and limited in size; keep important levels in the project folder or as files. |
 | Project saves | Dev server only; names are `a–z`, `0–9`, `-` (up to 60 characters); Windows device names such as `con` get a `-level` suffix; files up to 4 MB. |
@@ -816,6 +1101,7 @@ Press **1** to return to the split layout and look at your hamlet in 3D; try
 | Rain and snow in the preview | The grey light, wind and glowing lanterns always show; the falling rain / snow, its haze and the snow cover only with *View › 3D: particles & god rays* on. The preview shows the weather settled (the game blends into it over a few seconds) and keeps its own time-of-day look (no night desaturation, god rays not tied to golden hour). |
 | One-answer closing questions | A villager whose dialogue ends with `Question? [Okay \|]` runs its *Special action* (rest, shop, music) with that only answer — the player cannot decline. Use two answers, the harmless one first, when they should be able to. |
 | Browser shortcuts in text fields | While a text field has focus the editor only handles Ctrl+S, Ctrl+Shift+S and F5; other browser shortcuts (such as Ctrl+R, reload) go to the browser. The *Leave site?* prompt and the autosave still protect unsaved work. |
+| Text keys and copies | Copy-on-write only knows the files the editor has read when you edit: an edit made before a *Save as*, or in a level opened from a disk file, leaves two copies with one key and two Englishes — `npm run i18n:keys -- --fix` splits them. A duplicate whose original you then delete keeps its new keys, so its texts need translating again. A *Save as* copy's play-test uses the original's translations only in the session it was made in. A script line cannot contain the text `#line:` (it is read as a broken key tag). |
 
 See also [ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md) and the editor's performance design in
 [contracts/LEVEL_EDITOR.md §9](../contracts/LEVEL_EDITOR.md).

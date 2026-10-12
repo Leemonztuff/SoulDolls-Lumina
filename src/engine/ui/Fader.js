@@ -1,4 +1,5 @@
 import './ui.css';
+import './hud.css';
 
 /**
  * Full-screen colour fades for scene transitions. Promises resolve on a timer matching the

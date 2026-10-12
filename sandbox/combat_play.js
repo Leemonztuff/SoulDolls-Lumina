@@ -15,12 +15,16 @@
  *   card land on the same frame every time. The run is deterministic: the same tree gives the
  *   same path, fights, kills, level, time and result on any GPU load (compare `summary`, `digest`).
  *   The game is paused while the harness takes a screenshot, so shots show the frame that asked.
+ *   A chunk loaded mid-run (the party's, at the first join) arrives between two frames
+ *   (`chunkLoads`), not in real time.
  *   `start({ renderEvery: n })` draws only every n-th frame (`sandbox/combat.play.fast.json`, n = 4):
  *   the same run and digest (rendering feeds nothing back into the game), about twice as fast.
  * - **real time** (no flag, `sandbox/combat.play.realtime.json`): the engine loop as a player
  *   has it, for feel checks; frame pacing changes the path and fights, so run it alone.
  *
  * The plan walks the whole level: the drillmaster's lesson on the camp dummies (and her reward),
+ * the party — Rook and Sister Ilse at the camp, Sela at the Crossroads Waystone join by their talk
+ * scripts (the level is balanced for that party of four, ADR-056; `party: false`: alone) —,
  * the camp's secret chest, the glade, the glade chest, the Crossroads Waystone (attune and rest),
  * the Bramble Ruins (gate goblins, court, shaman, both ledge archer groups up the stair, the ledge
  * chest and the ridge-pocket chest), the quarry lip (Quarry Waystone; Odo's stores: the Whetstone
@@ -35,15 +39,17 @@
  * branch) or `full` (a thorough player: the whole glade and both branches); `skill` — `expert` (the
  * default) or `human` (SKILL_PRESETS: late and missed dodges, attacks in bursts at ≈ 30 % damage
  * uptime, skills a little late; its draws are seeded, so it is deterministic too;
- * `sandbox/combat.play.human.json`); `shop: false` skips the shops. `report()` adds `zones` (per
+ * `sandbox/combat.play.human.json`); `shop: false` skips the shops; `party: false` plays alone (no
+ * `join` task). `report()` adds `zones` (per
  * zone: time, fight time, hurts, damage and damage in shares of max HP, deaths, draughts, damage
  * uptime, level / XP / gold / stats at the end; the planned fall is left out), `bossAttempts`
  * (each attempt: won, time, phase, the boss's HP left, uptime, damage), `damageBy` (damage taken
- * per enemy kind and boss move), `bought` / `goldSpent` and `segments` (per task). Boss probes:
+ * per enemy kind and boss move), `bought` / `goldSpent`, `segments` (per task) and `party` (the
+ * companions' kills, damage dealt and taken, downs; per zone too: `allyKills`, `allyDowns`). Boss probes:
  * `route: 'boss'` with `at` (the Quarry Waystone), `kill` (groups killed first), `player`
  * (setPlayer values incl. `upgrades`) and `delay` (idle frames first: another sample).
  *
- *   sandbox/combat.play.json:           index.html?level=cinderwatch-pass&autostart=1&fixedstep=1 (its
+ *   sandbox/combat.play.json:           game.html?level=cinderwatch-pass&autostart=1&fixedstep=1 (its
  *                                       first step; any --page / --query will do, e.g.
  *                                       --page=sandbox/index.html --query= --wait=0)
  *   sandbox/combat.play.fast.json:      the same, drawing every 4th frame
@@ -60,9 +66,9 @@
  */
 
 /**
- * @import { Enemy } from '../src/demo/combat/Enemy.js'
+ * @import { Enemy } from '../src/game/combat/Enemy.js'
  * @import { TileMap } from '../src/engine/world/TileMap.js'
- * @import { CombatPlayerSettings } from '../src/demo/combat/types.js'
+ * @import { CombatPlayerSettings } from '../src/game/combat/types.js'
  */
 
 const RES = 0.5;
@@ -299,6 +305,7 @@ async function runFixed(stop, { ms = 120000, maxFrames = Infinity, every = rende
   let drawn = true;
   try {
     while (!me.cancel && !stop() && n < maxFrames && REAL.now() - t0 < ms) {
+      await chunkLoads();
       await clock.advance();
       drawn = every <= 1 || clock.frame % every === 0;
       engine.step(FRAME_DT, { render: drawn });
@@ -312,6 +319,23 @@ async function runFixed(stop, { ms = 120000, maxFrames = Infinity, every = rende
     finish();
   }
   return n;
+}
+
+/** Chunk loads seen settled (`chunkLoads`). @type {WeakSet<Promise<any>>} */
+const _settled = new WeakSet();
+
+/**
+ * Fixed step: a chunk the game loads in the middle of the run — the party's, at the first join
+ * (`Game.ensureParty`) — arrives in real time. Wait for it before the next frame instead of running
+ * frames meanwhile: it lands at the same frame however fast the frames go (`renderEvery`), as the
+ * timers and the clock do.
+ */
+async function chunkLoads() {
+  const p = G().game?._partyLoad;
+  if (!p || _settled.has(p)) return;
+  await p.catch(() => {});
+  _settled.add(p);
+  await settle();
 }
 
 /** FNV-1a over 32-bit words: the run digest (the exact float bits of the watched values). */
@@ -655,6 +679,9 @@ const PLAN_START = [
   { do: 'talk', npc: 'maren', why: 'the drillmaster explains the controls', zone: 'camp' },
   { do: 'drill', zone: 'camp' },
   { do: 'talk', npc: 'maren', why: 'the drill reward', zone: 'camp' },
+  // the party (the level is balanced for four, ADR-056): Rook beside the sparring yard, Ilse by the fire
+  { do: 'join', npc: 'rook', zone: 'camp', party: true },
+  { do: 'join', npc: 'ilse', zone: 'camp', party: true },
   { do: 'open', chest: 'chest_camp_secret', zone: 'camp' },
   { do: 'walk', to: [48.5, 96.5], why: 'out through the camp gate', zone: 'camp' },
   { do: 'clear', groups: ['glade_slimes_n'], zone: 'glade' },
@@ -669,6 +696,7 @@ const PLAN_GLADE_EAST = [
 const PLAN_CROSSROADS = [
   { do: 'walk', to: [48.5, 79.2], why: 'the crossroads (attunes its waystone)', zone: 'crossroads' },
   { do: 'rest', stone: 'waystone_crossroads', zone: 'crossroads' },
+  { do: 'join', npc: 'sela', zone: 'crossroads', party: true },
 ];
 /** The west branch: gate, court, both ledge archer groups up the stair, the ledge and ridge chests. */
 const PLAN_RUINS = [
@@ -777,7 +805,9 @@ class Bot {
     /** The route (`ROUTES`) and whether it visits the shops. */
     this.route = ROUTES[opts.route] ? opts.route : 'ruins';
     this.shop = opts.shop ?? true;
-    const route = ROUTES[this.route].filter((t) => this.shop || t.do !== 'shop');
+    /** Whether it recruits the party (the `join` tasks). */
+    this.party = opts.party ?? true;
+    const route = ROUTES[this.route].filter((t) => (this.shop || t.do !== 'shop') && (this.party || !t.party));
     const plan = opts.plan ?? route.slice(opts.from ?? 0, opts.to ?? route.length);
     /** @type {Task[]} the tasks left (copies: a task records its own progress) */
     this.plan = plan.map((t) => ({ ...t }));
@@ -812,6 +842,8 @@ class Bot {
     /** Per-task figures (`segments`), damage in shares of max HP, attack / fight frames, purchases, boss attempts. */
     this.segs = [];
     this.extra = { dmgShare: 0, atkF: 0, fightF: 0, bossAtkF: 0, bossF: 0, draughtsDrunk: 0, bought: [], goldSpent: 0 };
+    /** The companions (the combat's ally events): kills, damage dealt and taken, downs, HP healed; damage by the player. */
+    this.allyCounts = { kills: 0, dmg: 0, hurt: 0, downs: 0, healed: 0, playerDmg: 0 };
     this.attempts = [];
     this._attempt = null;
     this.done = false;
@@ -850,6 +882,12 @@ class Bot {
       bossPhase: (n) => { this.note(`boss phase ${n}`); this.shot(`boss_phase${n}`); },
       bossDefeated: () => { this.note('boss defeated'); this.shot('victory'); },
       purchase: (item, price) => { this.extra.bought.push(item); this.extra.goldSpent += price; this.note(`bought ${item} for ${price} (gold ${this.sys.pc.gold})`); },
+      allyKill: () => { this.allyCounts.kills++; },
+      allyHit: (id, e, d) => { this.allyCounts.dmg += d; },
+      allyHurt: (id, d) => { this.allyCounts.hurt += d; },
+      allyDown: (id) => { this.allyCounts.downs++; this.note(`${id} down`); },
+      allyHeal: (id, who, got) => { this.allyCounts.healed += got; },
+      hit: (e, d) => { if (e !== 'player') this.allyCounts.playerDmg += d; },
     };
     for (const k in this._on) ev.on(k, this._on[k]);
     this._perfectBase = this.sys.pc.perfectDodges;
@@ -894,7 +932,7 @@ class Bot {
     this.task.t0 = this.t;
     const c = this.counts;
     const x = this.extra;
-    this.task.s0 = { t: this.t, hurts: c.hurts, dmg: c.damageTaken, share: x.dmgShare, deaths: c.deaths, kills: this.sys.kills, dr: x.draughtsDrunk, rolls: c.rolls, atkF: x.atkF, fightF: x.fightF, spent: x.goldSpent };
+    this.task.s0 = { t: this.t, hurts: c.hurts, dmg: c.damageTaken, share: x.dmgShare, deaths: c.deaths, kills: this.sys.kills, dr: x.draughtsDrunk, rolls: c.rolls, atkF: x.atkF, fightF: x.fightF, spent: x.goldSpent, ak: this.allyCounts.kills, ad: this.allyCounts.downs };
     this.task.stage = 0;
     this._path = null;
     this._rollT = 0;
@@ -916,6 +954,7 @@ class Bot {
       hurts: c.hurts - s0.hurts, dmg: c.damageTaken - s0.dmg, dmgShare: +(x.dmgShare - s0.share).toFixed(3),
       deaths: c.deaths - s0.deaths, kills: this.sys.kills - s0.kills, draughts: x.draughtsDrunk - s0.dr, rolls: c.rolls - s0.rolls,
       atkF: x.atkF - s0.atkF, fightF: x.fightF - s0.fightF, spent: x.goldSpent - s0.spent,
+      allyKills: this.allyCounts.kills - s0.ak, allyDowns: this.allyCounts.downs - s0.ad,
       lv: pc.level, xp: pc.xp, gold: pc.gold, potions: pc.potions, hpMax: pc.hpMax, atk: pc.atk, def: pc.def,
     });
   }
@@ -928,11 +967,11 @@ class Bot {
       if (g.planned) continue;
       let z = by.get(g.zone);
       if (!z) {
-        z = { zone: g.zone, time: 0, fightTime: 0, hurts: 0, dmg: 0, dmgShare: 0, deaths: 0, kills: 0, draughts: 0, rolls: 0, atkF: 0, fightF: 0, spent: 0 };
+        z = { zone: g.zone, time: 0, fightTime: 0, hurts: 0, dmg: 0, dmgShare: 0, deaths: 0, kills: 0, allyKills: 0, allyDowns: 0, draughts: 0, rolls: 0, atkF: 0, fightF: 0, spent: 0 };
         by.set(g.zone, z);
         out.push(z);
       }
-      for (const k of ['hurts', 'dmg', 'deaths', 'kills', 'draughts', 'rolls', 'atkF', 'fightF', 'spent']) z[k] += g[k];
+      for (const k of ['hurts', 'dmg', 'deaths', 'kills', 'allyKills', 'allyDowns', 'draughts', 'rolls', 'atkF', 'fightF', 'spent']) z[k] += g[k];
       z.time += g.dur;
       z.dmgShare += g.dmgShare;
       Object.assign(z, { lv: g.lv, xp: g.xp, gold: g.gold, potions: g.potions, hpMax: g.hpMax, atk: g.atk, def: g.def });
@@ -1044,6 +1083,8 @@ class Bot {
     const elapsed = this.t - task.t0;
     if (elapsed > (task.limit ?? 240)) {
       this.fail(`${task.do} ${task.chest ?? task.npc ?? task.stone ?? (task.groups ?? []).join('+')} timed out after ${Math.round(elapsed)} s`);
+      // (a party held back for the planned fall gets its rules back, as after the respawn)
+      for (const [id, rule] of task.held ?? []) window.__game.party.rule(id, rule);
       this._next();
       return;
     }
@@ -1511,6 +1552,15 @@ class Bot {
     else if (st === 'blocked') { this.fail(`walk to ${task.to} blocked`); this._next(); }
   }
 
+  /**
+   * Conversations with `npc` so far: the game's count, or — on a level with a story (Cinderwatch
+   * Pass since Sela, docs/specs/PARTY.md §9) — the story's, where the game counts them then.
+   */
+  _visits(npc) {
+    const story = this.game.story;
+    return story ? story.state.visitsOf(story.visitKey(npc)) : (this.game.visits.get(npc.id) ?? 0);
+  }
+
   _do_talk(dt, task) {
     const npc = this.game.npcs.find((n) => n.id === task.npc);
     if (!npc) { this.fail(`no npc ${task.npc}`); this._next(); return; }
@@ -1534,13 +1584,29 @@ class Bot {
     }
     // the dialog opened and closed again (dialogs are handled in _frame)
     if (this.t - task.tt > 0.6) {
-      if ((this.game.visits.get(npc.id) ?? 0) === 0) {
+      if (this._visits(npc) === 0) {
         if (this.t - task.tt > 3) { this.fail(`talking to ${task.npc} did not start`); this._next(); }
         else if (this.t - task.tt > 1) { task.stage = 1; task.tt = this.t; }
         return;
       }
-      this.note(`talked to ${task.npc} (visits ${this.game.visits.get(npc.id)}, potions ${this.sys.pc.potions})`);
+      this.note(`talked to ${task.npc} (visits ${this._visits(npc)}, potions ${this.sys.pc.potions})`);
       this._next();
+    }
+  }
+
+  /**
+   * A villager joins the party through its talk script: talk to it (every page, its offer's
+   * *Walk with me*), then it must be a member. A member already: nothing to do.
+   */
+  _do_join(dt, task) {
+    const member = () => !!this.game.party?.find(task.npc);
+    if (task.stage === 0 && member()) { this.note(`${task.npc} is in the party already`); this._next(); return; }
+    if (task.stage === 0) this._chooser = (labels) => Math.max(0, labels.findIndex((l) => /Walk with me/.test(l)));
+    this._do_talk(dt, task);
+    if (this.task !== task) {
+      this._chooser = null;
+      if (member()) this.note(`${task.npc} joined the party (${this.game.party.count})`);
+      else this.fail(`${task.npc} did not join`);
     }
   }
 
@@ -1625,7 +1691,7 @@ class Bot {
     }
     // (the menu runs in _frame while the dialog is open)
     if (this.t - task.tt > 0.6) {
-      if ((this.game.visits.get(npc.id) ?? 0) === 0) {
+      if (this._visits(npc) === 0) {
         if (this.t - task.tt > 3) { this.fail(`talking to ${task.npc} did not start`); this._chooser = null; this._next(); }
         else if (this.t - task.tt > 1) { task.stage = 1; task.tt = this.t; }
         return;
@@ -1742,11 +1808,29 @@ class Bot {
       this.task.goldBefore = task.goldBefore;
       this.task.checkpoint = sys.waystones.checkpoint.id;
       this.task.killedBefore = sys.enemies.filter((e) => !e.alive && !e.isAdd && !e.boss).map((e) => e.uid);
+      this.task.held = task.held;
       return;
     }
     task.goldBefore = sys.pc.gold;
     const e = this._groupMembers([task.group]).find((x) => x.alive);
-    if (!e) { this.fail(`no ${task.group} to die against`); this._next(); return; }
+    if (!e) {
+      // (a fight woke it and it fell first — the expert alone kills Old Ironhide on the terrace):
+      // no planned fall, nor its respawn check; verify still wants a death and a respawn
+      this.note(`no ${task.group} left to fall beside: the planned fall is skipped`);
+      // (it may have fallen after the party was held back: its rules back)
+      for (const [id, rule] of task.held ?? []) window.__game.party.rule(id, rule);
+      this._next();
+      if (this.task.do === 'respawn' && this.task.planned) this._next();
+      return;
+    }
+    // with the party: its members hold back while the player falls (the test hook — a player would
+    // pick Hold Back in the tactics panel); _do_respawn gives them their rules back
+    const party = window.__game.party;
+    if (!task.held && this.game.party?.count) {
+      task.held = party.info().members.map((m) => [m.id, m.rule]);
+      for (const [id] of task.held) party.rule(id, 'passive');
+      this.note(`the party holds back (${task.held.map(([id]) => id).join(', ')})`);
+    }
     const d = hyp(e.position.x - this.p.x, e.position.z - this.p.z);
     if (d > 2.5 && !e.aggro) this.goTo(e.position.x, e.position.z, { run: true, within: 2, near: 2.5 });
     // otherwise stand still: no rolls, no draughts
@@ -1772,6 +1856,8 @@ class Bot {
     if (sys.pc.hp !== sys.pc.hpMax) this.fail('respawn HP not full');
     if (lost !== Math.ceil(task.goldBefore * 0.1) && lost !== task.goldBefore - Math.floor(task.goldBefore * 0.9)) this.fail(`gold loss ${lost} of ${task.goldBefore}`);
     if (stillDead.length) this.fail(`killed enemies came back: ${stillDead.join(', ')}`);
+    // the party's rules back (see _do_die)
+    for (const [id, rule] of task.held ?? []) window.__game.party.rule(id, rule);
     this.shot('respawned');
     this._next();
   }
@@ -1862,13 +1948,15 @@ class Bot {
       digest: hex(this.digest),
     };
     const bt = boss ? `boss ${boss.defeated ? 'down' : `hp ${boss.hp}`} ${(+boss.fightTime || 0).toFixed(3)} s [${(boss.phaseTimes ?? []).map((x) => (+x).toFixed(3)).join(' ')}]` : 'no boss';
-    const who = this.route === 'ruins' && this.skillName === 'expert' && this.shop ? '' : ` ${this.route}/${this.skillName}${this.shop ? '' : '/noshop'}`;
+    const who = this.route === 'ruins' && this.skillName === 'expert' && this.shop && this.party ? '' : ` ${this.route}/${this.skillName}${this.shop ? '' : '/noshop'}${this.party ? '' : '/solo'}`;
+    const ac = this.allyCounts;
+    out.party = { members: this.game.party?.count ?? 0, kills: ac.kills, damage: ac.dmg, hurt: ac.hurt, downs: ac.downs, healed: ac.healed };
     out.route = this.route;
     out.skill = this.skillName;
     out.bossAttempts = this.attempts;
     out.bought = this.extra.bought;
     out.goldSpent = this.extra.goldSpent;
-    out.line = `${out.mode}${who} ${this.done ? 'done' : `at ${this.task?.do}`} | f ${out.frames} (${out.time.toFixed(3)} s) | Lv ${out.level} xp ${out.xp} gold ${out.gold} potions ${out.potions} hp ${out.hp} | kills ${out.kills} deaths ${out.deaths} chests ${chests} pickups ${out.pickups} | ${bt} | hurts ${out.hurts} dmg ${out.damageTaken} rolls ${out.rolls} keys ${out.keysTapped} | failed ${out.failed} | digest ${out.digest}`;
+    out.line = `${out.mode}${who} ${this.done ? 'done' : `at ${this.task?.do}`} | f ${out.frames} (${out.time.toFixed(3)} s) | Lv ${out.level} xp ${out.xp} gold ${out.gold} potions ${out.potions} hp ${out.hp} | kills ${out.kills} deaths ${out.deaths} chests ${chests} pickups ${out.pickups}${out.party.members ? ` | party ${out.party.members} kills ${ac.kills} downs ${ac.downs}` : ''} | ${bt} | hurts ${out.hurts} dmg ${out.damageTaken} rolls ${out.rolls} keys ${out.keysTapped} | failed ${out.failed} | digest ${out.digest}`;
     return out;
   }
 
@@ -1902,6 +1990,7 @@ class Bot {
       draughtsDrunk: this.extra.draughtsDrunk,
       bossUptime: this.extra.bossF ? +(this.extra.bossAtkF / this.extra.bossF).toFixed(3) : 0,
       segments: this.segs,
+      party: { members: this.game.party?.count ?? 0, ...this.allyCounts, playerKills: s.kills - this.allyCounts.kills },
     };
   }
 
@@ -1943,6 +2032,7 @@ const botSystem = { name: 'combat_play', update: (dt) => bot?.update(dt) };
  * @property {'ruins'|'mire'|'full'|'boss'} [route]
  * @property {'expert'|'human'|Partial<typeof SKILL_PRESETS.expert>} [skill]
  * @property {boolean} [shop]
+ * @property {boolean} [party]
  * @property {Task[]} [plan]
  * @property {number} [from]
  * @property {number} [to]
@@ -1960,7 +2050,8 @@ const botSystem = { name: 'combat_play', update: (dt) => bot?.update(dt) };
  *   same run (the same digest), faster on a busy GPU; the load's frames are all drawn, and the
  *   program check can miss a material that shows only between two drawn frames.
  *   route: `ruins` (default), `mire` or `full` (ROUTES); skill: `expert` (default), `human` or an
- *   object of SKILL_PRESETS overrides; shop: visit the shops (default true).
+ *   object of SKILL_PRESETS overrides; shop: visit the shops (default true); party: recruit the
+ *   party (default true; false: alone).
  *   from / to: a slice of the plan; at / level: a development shortcut (start a later part of the
  *   plan there, at that level — the full play-through uses neither). Boss probes (`route: 'boss'`
  *   with `at`): kill (group ids killed first), player (setPlayer values), delay (idle frames
@@ -1985,7 +2076,7 @@ export async function start(opts = {}) {
     clock?.uninstall();
     clock = null;
     if (engine.manualStep) engine.manualStep = false;
-    await waitFor(() => window.__lumina?.loadMs);
+    await waitFor(() => window.__luminati?.loadMs);
   }
   g.game.resolution.enabled = false;
   engine.renderScale = 1;
@@ -2059,6 +2150,7 @@ export async function verify(ms = 150000) {
   want(r.counts.pickups >= 50, `only ${r.counts.pickups} pickups`);
   if (bot.route === 'ruins') want(r.counts.deaths >= 1 && r.counts.respawns >= 1, 'no death / respawn');
   want(r.bossDefeated, 'boss not defeated');
+  if (bot.party) want(r.party.members === 3, `the party has ${r.party.members} members, not 3`);
   // the shops (Odo at the Quarry Waystone): the default plan buys the Whetstone at the lip
   if (bot.segs.some((g) => g.do === 'shop' && g.what === 'odo')) want(bot.extra.bought.includes('Whetstone'), `the Whetstone not bought at Odo's (${bot.extra.bought.join(', ') || 'nothing'})`);
   want(/Cleared/.test(bot.results ?? ''), `no results card (${bot.results})`);

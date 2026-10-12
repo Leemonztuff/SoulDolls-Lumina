@@ -5,19 +5,19 @@
 // a hook added to or removed from an object without its typedef fails the check.
 
 interface Window {
-  // --- game page (index.html) ------------------------------------------------------------------
+  // --- game page (game.html) -------------------------------------------------------------------
 
   /**
    * Game automation hooks (AUTOMATION_API.md §3): `GameHooks` above `Game._exposeGlobal`
-   * (src/demo/Game.js). Set at the end of `Game.init()`, deleted on dispose; `combat` on combat
+   * (src/game/Game.js). Set at the end of `Game.init()`, deleted on dispose; `combat` on combat
    * levels only. Ready for play when `__game.state().mode === 'play'`.
    */
-  __game?: import('./demo/Game.js').GameHooks;
+  __game?: import('./game/Game.js').GameHooks;
   /**
-   * Boot, load and readiness info (AUTOMATION_API.md §4): `LuminaHooks` above `exposeHook`
+   * Boot, load and readiness info (AUTOMATION_API.md §4): `LuminatiHooks` above `exposeHook`
    * (src/main.js), merged at boot, after the level loaded and after warm-up — wait for `loadMs`.
    */
-  __lumina?: import('./main.js').LuminaHooks;
+  __luminati?: import('./main.js').LuminatiHooks;
   /**
    * The running Engine (AUTOMATION_API.md §5), on every page that creates one when the URL has
    * `debug` or `autostart` (the Engine option `exposeGlobal` forces / suppresses it); deleted on
@@ -66,6 +66,10 @@ interface Window {
   __ui?: import('./engine/ui/UI.js').UI;
   /** sandbox/ui.js: the page's controls (`combat` hooks in combat mode, panelProbe() …). */
   __sandbox?: import('../sandbox/ui.js').UISandboxHandle;
+  /** sandbox/ui_art.js: the pixel UI art sandbox (ui, ready, show(page), checks(), hashes(), info(), pause()). */
+  __uiArt?: import('../sandbox/ui_art.js').UiArtHandle;
+  /** sandbox/story_ui.js: the story UI controls (journal(), emote(i), cutscene(on), endCard(), info() …). */
+  __story?: import('../sandbox/story_ui.js').StoryUIHandle;
   /** sandbox/combat_fx.js: quads, markers, audio, input, setView(name), runChecks(), renderTrack() … */
   __cfx?: import('../sandbox/combat_fx.js').CfxHandle;
   /** sandbox/combat_audio.js: the combat audio QA (results, identity(), compare(url) …). */
@@ -80,11 +84,25 @@ interface Window {
   T?: import('../sandbox/editor_shell.helpers.js').ShellHelpers;
   /** sandbox/editor_perf.helpers.js `install()`: editor perf helpers (P.setup, P.s2d …). */
   P?: import('../sandbox/editor_perf.helpers.js').PerfHelpers;
+  /** sandbox/campaign_prepare.js: the campaign travel checks (CP.travel, CP.walk, CP.hash, CP.summary …). */
+  CP?: typeof import('../sandbox/campaign_prepare.js').default;
+  /** sandbox/campaign_interior.js: the room checks (CI.trip, CI.summary …; levels set aside). */
+  CI?: typeof import('../sandbox/campaign_interior.js').default;
+  /** sandbox/campaign_open_doors.js: the Open Doors tour (OD.go, OD.building, OD.townPrint …). */
+  OD?: typeof import('../sandbox/campaign_open_doors.js').default;
 
   // --- platform --------------------------------------------------------------------------------
 
   /** Safari before 14.1. */
   webkitAudioContext?: typeof AudioContext;
+}
+
+/**
+ * CSS Fonts 5 `size-adjust` as a FontFace descriptor (src/engine/ui/FontLoader.js: the Jersey
+ * aliases of the CJK type stacks); TypeScript's DOM lib lacks it.
+ */
+interface FontFaceDescriptors {
+  sizeAdjust?: string;
 }
 
 /**

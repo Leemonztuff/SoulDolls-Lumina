@@ -13,7 +13,7 @@ setting left to the game's automatic choices.
 | **Source of truth** | [`tools/make-sample-hamlet.mjs`](../../../tools/make-sample-hamlet.mjs) (the script), [`public/levels/sample-hamlet.json`](../../../public/levels/sample-hamlet.json) (its output) |
 | **Related docs** | [Level format](../../specs/LEVEL_FORMAT.md) · [Object catalog](../../specs/OBJECT_CATALOG.md) · [Level design guide](../LEVEL_DESIGN_GUIDE.md) · other levels: [Emberfall](emberfall.md), [Starfall Vale](starfall-vale.md), [Brightwater Crossing](brightwater-crossing.md) |
 
-Play it: `index.html?level=sample-hamlet`. Edit it: `editor.html?open=sample-hamlet`. The sandbox
+Play it: `game.html?level=sample-hamlet`. Edit it: `editor.html?open=sample-hamlet`. The sandbox
 case `sandbox/game_levels.html?case=hamlet` loads it through browser storage.
 
 ---

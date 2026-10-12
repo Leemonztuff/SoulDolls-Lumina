@@ -1,7 +1,7 @@
 # Level editor architecture — `src/editor/`
 
 > **Purpose.** How the visual level editor is built: the application shell, the single state
-> object every edit goes through, the view-agnostic tools, the 2D map, the live HD-2D 3D preview
+> object every edit goes through, the view-agnostic tools, the 2D map, the live 3D diorama preview
 > and its incremental rebuild machinery, saving / autosave / play-test, the dev-server level API,
 > and how the preview stays identical to what the game renders. Read this before changing
 > anything in `src/editor/`.
@@ -81,13 +81,17 @@ flowchart LR
 | `src/editor/EditorApp.js` | The application: layout, menus / commands / shortcuts, clipboard, context menu, dialogs, open / save / export / play-test, autosave, preferences, level checks, `window.__editor`. |
 | `src/editor/EditorState.js` | Document, transactions and history, change events, selection, tool, options, view, hover, revisions. Also `shiftLegacyFields()`. |
 | `src/editor/autosave.js` | The `__autosave__` working copy and the recovered copies of other sessions. |
+| `src/editor/story.js` | The story helpers: the story preview (`parseStoryValues`, `storyReader`, `storyVisible`, `storyHiddenIds`); the campaign story context (`campaignStoryContext`, read whenever a level of the campaign opens, when a save moves the level into a campaign, and again by *Check for problems*: `campaign.json`, the story files, and every level file of the campaign through `CampaignLevels` — their events and `once` keys; all or nothing: a level file that cannot be read leaves the events out, a story file that cannot be read also everything the story files declare; a read that fails keeps the context read before; a caller without `refresh` gets the read in flight) and `storyCheckContext(state, { events })`, the `StoryContext` *Check for problems* checks the open level against (`level`, and `events` / `onceKeys` built as `tools/lib/campaigncheck.mjs` builds them, the open level's own from the level as edited; while the campaign is not read — loading, `campaign.json` unreadable — `UNKNOWN_CAMPAIGN` with `level`, "a campaign level, its campaign unknown": no `done:`, `visited:`, `travel`, item, quest, `call` or actor reports it cannot back); the condition hint (`conditionRuleOf`, `conditionIssues(state, object, field, text)`: `StoryChecks.conditionFieldIssues`, the per-field function `storyIssues` uses too, with the text as typed — KNOWN_ISSUES STORY-05). The level's own events, `once` keys and flags are computed only when a condition needs them (`done:` keys; an entry-only type's flags), cached per `EditorState.objectsVersion`, each script's references per text. The campaign context also keeps every file's keyed texts (`texts`: each level file, each `story/*` file and `campaign.json`, whatever could be read); `otherFileTexts(state)` gives them minus the open file — what copy-on-write compares an edit with (`EditorState#otherTexts`). |
+| `src/editor/textKeys.js` | The editor's side of the text keys ([I18N.md §4.10](../specs/I18N.md); [§4.3](#43-mutators)), on `TextKeys.js`: `keyedState` / `carryEdit` (an edit's fields carry their keys; copy-on-write through `sharedMap` → `{ shared }`; the split memory; a key the edit brought in that another text holds is not kept; an unchanged text prefers a key the document had when it was loaded), `fillObjectKeys` (new objects, pastes, *Assign*), `rootState` / `carryRootEdit` / `mergeRootKeys` / `fillRootKeys` (the level's own texts), `preferSharedCopies` and `shareKeys` (*Assign*'s preference and its sharing with a chapter variant's base or a campaign copy's shipped level), `textKeyWarnings` (*Check for problems*), `placeName` (one way to name a place: `npc_2 › dialogue, page 1`), `textRows` / `rootRows` (the inspector's key lines), `parseKeyInput` / `findTextKey` (Find), `textMapOf` / `otherTextsOf` (other files' texts), `minter`. Never called by open, save, Save As, autosave, export or undo / redo. |
+| `src/editor/visibility.js` | What the views hide (`hiddenReasons`: 'type' — hidden with the outliner's eye —, 'view' — *Show objects* / *Show markers* off, the one the object follows on the 2D map: `common.viewToggleOf` —, 'story' — the story preview) and the rule that **a hidden object is never selected** (KNOWN_ISSUES STORY-06): `shownOnly` (the app's `EditorState.selectionFilter`), `hiddenOnly`, the status messages (`hiddenMessage`, `leftOutMessage`; `notifyHidden` shows one that goes once the object is shown again), `revealPatch` (the view change that shows an object again) and `hiddenAt` (a hidden object under a click that hit nothing shown). |
+| `src/editor/rooms.js` | Rooms (interiors, `environment.interior`; [§3.8](#38-rooms-interiors)), three-free and import-light (it does not import `src/game/LevelLook.js`, which would pull the level builders into the main chunk): `isRoom` (= `LevelLook.isInterior`), `backdropKind`, the room look (`ROOM_LOOK`, `ROOM_BACKDROP` `#0d0b12`, `ROOM_CAMERA` 20 / 38°), `roomLookChanges` (what the room look would still change, worded for the dialog), `ROOM_DEFAULTS`, `ROOM_WALL` / `ROOM_DOOR` and `createRoomLevel` (File › New › Room). |
 | `src/editor/enemyGroups.js` | Enemy-group helpers shared by both views, the tools, the inspector and the checks (three-free): kind / boss tests, the relative `arena` / `gate` in world space (`bossArena` / `bossGate` for the boss kind only), `gateEdgeGap`, the level-data start test `levelStartTest`, the boss *Count* rule (`bossExtraCount`, `clampBossCount`) and `enemyScatterRect` ([§8.6](#86-combat-content-enemy-groups-chests-waystones)). |
 | `src/editor/tools/index.js` | Tool registry (`TOOLS`, `getTool`, `TERRAIN_TOOL_IDS`) and the `Tool` / `PointerEv` / `ToolPreview` typedefs. |
 | `src/editor/tools/common.js` | Brush / line / rect cells, snapping, flood fill, tile colours and labels, selection operations (delete, duplicate, rotate, nudge, copy, paste, bounds), `shownOnMap` (what the 2D map shows and a box can select). |
 | `src/editor/tools/*Tool.js` | The ten tools ([§5](#5-tools)). |
 | `src/editor/map2d/Map2DView.js` | The top-down 2D map ([§6](#6-map2dview)). |
 | `src/editor/viewport3d/*.js` | The 3D preview and its subsystems ([§7](#7-viewport3d)–[§8](#8-viewport3d-subsystems)); `SpriteBatch.js` draws the enemy previews instanced ([§8.3](#83-actorpreview)). |
-| `src/editor/ui/*.js` | Panels and controls: `MenuBar`, `Toolbar`, `ToolOptions`, `Inspector`, `Outliner`, `StatusBar`, `Dialog` (promise-based modals), `dialogs.js` (New, Open, Save as, Level settings, Resize, Shortcuts, Restore, Problems, About), `ContextMenu`, `Tooltip`, `fields.js` (schema-driven form controls), `dom.js` (`h()`, `icon()`, `isTypingTarget()`…). |
+| `src/editor/ui/*.js` | Panels and controls: `MenuBar`, `Toolbar`, `ToolOptions`, `Inspector`, `Outliner` (also a keyboard `tree`: one Tab stop whose active row is its `aria-activedescendant` — ↑ / ↓ / Home / End / Page keys, ← / → collapse and expand, Enter / Space select like a click, F does what a double-click does; keys are handled only while the list itself has the focus, so a mouse-clicked row leaves them to the app), `StatusBar`, `Dialog` (promise-based modals), `dialogs.js` (New, Open, Save as, Level settings, Resize, Shortcuts, Restore, Problems, About, Find by text key), `ContextMenu`, `Tooltip`, `fields.js` (schema-driven form controls), `keyView.js` (the read-only text keys under a translatable field: a monospace line per text with a Copy button, a field of several texts behind a *Text keys (n)* toggle; its buttons are out of the Tab order; nothing in it writes to the level), `scriptEditor.js` (the script field and its pop-out, which show and compare scripts without their `#line:` tags), `dom.js` (`h()`, `icon()`, `isTypingTarget()`…). |
 | `src/editor/icons.js` | Inline SVG icons (20 × 20, `currentColor`) and the logo. |
 | `src/editor/editor.css` | The whole editor look (dark navy, gold accents). |
 | `tools/vite-level-api.js` | Dev-server REST API that writes `public/levels/<name>.json` ([§9](#9-the-dev-server-level-api)). |
@@ -132,7 +136,8 @@ sequenceDiagram
   `null` if it could not start). `window.__editor.ready3d` additionally waits for
   `view3d.ready`.
 - Startup queries (checked in this order): `?open=<name>` (project level), `?local=<slot>`
-  (browser slot), `?new` (blank level, no restore prompt). After `?open=` / `?local=` the restore
+  (browser slot), `?new` (blank level, no restore prompt; `?new=room`: a new room, as File › New ›
+  *Room (interior)* makes it). After `?open=` / `?local=` the restore
   prompt is offered only when the autosave is a copy of that same level. Without a query the
   autosave of an earlier session is offered, otherwise a blank "Untitled" level starts. A copy
   written by this session or flagged `exported` (a download) is never offered. A startup error
@@ -164,7 +169,7 @@ sequenceDiagram
   100 ms (`view3d.setResizeThrottle(100)`, CSS stretches it in between).
 - A hidden view is deactivated (`setActive(false)`): it stops rendering and ends any gesture in
   progress (a hidden canvas never receives `pointerup`).
-- Preferences (`localStorage['lumina.editor.prefs']`): the view keys `layout, grid, split,
+- Preferences (`localStorage['luminati.editor.prefs']`): the view keys `layout, grid, split,
   textured2d, showObjects, showMarkers, cameraMode, postfx, atmosphere` and the inspector /
   outliner split (`inspector`).
 - A mouse click on a button blurs it afterwards, so Enter / Space and the tool keys reach the
@@ -175,17 +180,24 @@ sequenceDiagram
 Every action is a **command** in `_buildCommands()`: `{ label, shortcut, icon, enabled(),
 checked(), run() }`, run through `app.run(id)` (which checks `enabled`, closes the context menu
 and reports exceptions in an alert). The menus (`_menus()`, rendered by `MenuBar`) take their
-labels, shortcuts and enabled / checked states from this registry; the **Keyboard shortcuts**
-dialog (`_shortcutGroups()`) is a hand-written list plus the tool keys from `TOOLS` — update it
-when you add a shortcut. `shortcutIndex` maps normalised combos to command ids. Command ids: `file.new, file.open,
+labels, shortcuts and enabled / checked states from this registry, and so does the **Keyboard
+shortcuts** dialog (`_shortcutGroups()`): a group per menu (by command id prefix) with a row per
+command that has a `shortcut` (`_commandShortcutGroups`: its `aliases` after it, its `keyLabel`
+or menu label; commands of a group with the same label share a row, a row listed in an earlier
+group is not repeated), so a new command shortcut is listed by itself; only the keys outside the
+registry are written by hand there — the tool keys from `TOOLS`, the tools' own keys and gestures
+(rotate ±15°, nudge, Alt, Shift / Ctrl + click, the terrain modifiers) and the 2D / 3D view
+controls. `shortcutIndex` maps normalised combos to command ids. Command ids: `file.new, file.open,
 file.openFile, file.save, file.saveAs, file.export, file.playtest, edit.undo, edit.redo,
 edit.redo2, edit.cut, edit.copy, edit.paste, edit.duplicate, edit.delete, edit.rotateCcw,
-edit.rotateCw, edit.selectAll, edit.deselect, view.split, view.3d, view.2d, view.frameSelection,
-view.frameLevel, view.grid, view.textured2d, view.objects, view.markers, view.showAll,
-view.gameCamera, view.postfx, view.atmosphere, view.brushBigger, view.brushSmaller,
-level.settings, level.resize, level.validate, level.playtest, level.openInGame, help.shortcuts,
-help.game, help.about`. Extra bindings: `Shift+?`, `Alt+N` (Chrome reserves Ctrl+N),
-`Backspace` (delete), `Ctrl+Shift+Z`.
+edit.rotateCw, edit.selectAll, edit.deselect, edit.findTextKey, view.split, view.3d, view.2d,
+view.frameSelection, view.frameLevel, view.grid, view.textured2d, view.objects, view.markers,
+view.showAll, view.gameCamera, view.postfx, view.atmosphere, view.brushBigger, view.brushSmaller,
+level.settings, level.resize, level.validate, level.assignTextKeys, level.playtest,
+level.openInGame, help.shortcuts, help.game, help.launcher, help.about`. `edit.findTextKey` (*Find by text
+key…*, last in the Edit menu) and `level.assignTextKeys` (*Assign text keys*, after *Check for
+problems* in the Level menu) have no shortcut. Extra keys of a command are its `aliases`: `Alt+N` (`file.new`; Chrome
+reserves Ctrl+N), `Backspace` (`edit.delete`); `Shift+?` is indexed as well (`?` typed with Shift).
 
 **Keyboard routing** (`_onKeyDown`, window `keydown`):
 
@@ -206,29 +218,33 @@ flowchart TD
   AF -->|no| TK2{"active tool keyDown handled it?"}
   TK2 -->|yes| DONE["handled"]
   TK2 -->|no| CMD{"command shortcut?"}
-  CMD -->|yes| RUN
-  CMD -->|no| TL["tool letter keys, arrows nudge the selection 0.5 (Shift 2)"]
+  CMD -->|enabled| RUN
+  CMD -->|"disabled: Ctrl combo prevented, plain key left alone"| DIS["nothing runs"]
+  CMD -->|no| TL["tool letter keys, arrows nudge the selection 0.5 (Shift 2, Alt 0.1)"]
 ```
 
 So the active tool sees Esc, R, Delete, Ctrl+D, Ctrl+R and arrows *before* the app's commands
 (the select tool nudges by 0.5 / Shift 2 / Alt 0.1; with another tool active the app's fallback
-nudges the selection by 0.5 / Shift 2, without Alt). A key that matches a command always calls
-`preventDefault()`, even when the command is disabled and `run()` does nothing.
+nudges the selection the same way). A key that matches a command calls `preventDefault()` only when
+the command runs (`canRun`); a disabled command leaves a plain key to the other listeners (F with
+nothing selected reaches the 3D view's fallback below), while a Ctrl combo stays prevented either
+way (Ctrl+D would bookmark the page, Ctrl+R reload it). Ctrl combos and F-keys that run first
+(step `AF`) are always prevented.
 
 The views have their own window-level key listeners (capture phase, so they see keys first):
 Viewport3D handles Space (arms the pan while the pointer is over it), WASD / QE while the right
 button is held (fly), and Q / E in game-camera mode while the pointer is over it. It also has an F
-fallback that focuses the selection or the hovered point only if nobody else handled the key.
-Inside the app this fallback never fires outside a transaction, because the `view.frameSelection`
-command (shortcut F) always claims the key. So F with nothing selected does nothing. Map2DView
-handles Space (pan). User-facing list: [user/shortcuts.html](../user/shortcuts.html).
+fallback that focuses the selection or the hovered point only if nobody else handled the key:
+with a selection the `view.frameSelection` command (shortcut F) claims the key and frames it in both
+views; with nothing selected that command is disabled, so F over the 3D view focuses the point under
+the pointer. Map2DView handles Space (pan). User-facing list: [user/shortcuts.html](../user/shortcuts.html).
 
 ### 3.4 Clipboard, context menu, drag & drop
 
 - **Copy / cut** go through the DOM `copy` / `cut` events: the selection is copied as JSON
-  `{ format: 'lumina-objects', objects }` to the system clipboard (and an internal clipboard).
-  **Paste** accepts `lumina-objects` (inserted at the pointer when it is over a view, snapped to
-  0.5, else offset by one tile) or a whole `lumina-level` (replaces the document after the
+  `{ format: 'luminati-objects', objects }` to the system clipboard (and an internal clipboard).
+  **Paste** accepts `luminati-objects` (inserted at the pointer when it is over a view, snapped to
+  0.5, else offset by one tile) or a whole `luminati-level` (replaces the document after the
   unsaved-changes question; it stays marked unsaved).
 - **Context menu**: both views dispatch a bubbling `le-contextmenu` event on a right click
   without a drag (`detail = { ev, clientX, clientY }`). On an object (it gets selected first):
@@ -249,14 +265,17 @@ sets `_newerFile`, and saving over it later asks "Overwrite a newer level file?"
 
 | Action | Implementation |
 | --- | --- |
-| New (Ctrl+N / Alt+N) | `confirmDiscard` → `newLevelDialog` (name, size with presets, ground tile, ground level, forest-border width 0–8) → `createEmptyLevel(opts)`, tool = Paint. |
+| New (Ctrl+N / Alt+N) | `confirmDiscard` → `newLevelDialog`: *Outdoor level* (name, size with presets, ground tile, ground level, forest-border width 0–8) → `createEmptyLevel(opts)`, or *Room (interior)* (name, size — Small 12 × 10, Room 16 × 12, Hall 24 × 18 —, floor tile, floor level, wall height 1–12 levels) → `rooms.createRoomLevel(opts)` ([§3.8](#38-rooms-interiors)); tool = Paint. |
 | Open (Ctrl+O) | `openLevelDialog`: project folder (dev server), this browser (incl. **Recovered unsaved work**), or a file from disk. |
 | Save (Ctrl+S) | Saves to `state.fileRef`: `project` (needs the dev API, else falls back to Save as), `local`, `file` (downloads again). A `new` document → Save as. |
-| Save as (Ctrl+Shift+S) | `saveAsDialog` (asks for the display name while it is still "Untitled" / "New Level"); confirms before replacing an existing project file or browser slot. |
+| Save as (Ctrl+Shift+S) | `saveAsDialog` (asks for the display name while it is still "Untitled" / "New Level"); confirms before replacing an existing project file or browser slot. The copy keeps every text key, so it shares the original's translations. After a Save As to another file, the file the level left (a project level, read back through the level API — `_readProjectFile`, KNOWN_ISSUES ED-29 —, or a browser slot) counts as another file for copy-on-write (`_rememberCopiedFrom` → `state.addCopiedTexts`) until another level is loaded; saving back over it forgets it (`forgetCopiedTexts`). `state.origin` (the table the play-test passes) stays the original's. |
 | Download (Ctrl+E) | `exportFile()` downloads `<slug>.level.json` without changing where the level is saved. |
-| Play-test (F5, Play ▶) | `validateLevel(snapshot)`; problems → `problemsDialog` (with a "fix the spawn" shortcut when the spawn is the problem); else `saveLocalLevel('__playtest__', level)` and `window.open('index.html?level=local:__playtest__&autostart=1', 'lumina-playtest')` (a named tab, reused). The play-test runs the real game path, so a level with an enemy group plays with combat (`levelHasCombat`, [COMBAT.md §3](../contracts/COMBAT.md)). |
-| Check for problems | `validateLevel` errors (worded by `friendlyProblem`) plus soft warnings: bridge ends more than a 0.55 step from the bank (`bridgeStepIssues`), point objects outside the map, no villagers, houses without "Text when knocking", walkable tiles on the map edge (`walkableEdges`), and the combat warnings of `combatIssues` ([§8.6](#86-combat-content-enemy-groups-chests-waystones)). |
-| Open saved level in the game | `index.html?level=<name>` in a new tab (project documents only). |
+| Play-test (F5, Play ▶) | `validateLevel(snapshot)`; problems → `problemsDialog` (with a "fix the spawn" shortcut when the spawn is the problem); else `saveLocalLevel('__playtest__', level)` and `window.open('game.html?level=local:__playtest__&autostart=1', 'luminati-playtest')` (a named tab, reused) — a campaign's level with `?campaign=<c>&…&as=<level>` inside its campaign, any other with `&i18n=<origin>` (`state.origin`: the content table of the project file it was opened from, `levels/<name>` — opened from elsewhere, of the first project file it is saved to), so it plays translated. The play-test runs the real game path, so a level with an enemy group plays with combat (`levelHasCombat`, [COMBAT.md §3](../contracts/COMBAT.md)). |
+| Check for problems | `validateLevel` errors (worded by `friendlyProblem`) plus soft warnings: bridge ends more than a 0.55 step from the bank (`bridgeStepIssues`), point objects outside the map, no villagers (not in a room: a storeroom or a cellar is often empty), houses without "Text when knocking", walkable tiles on the map edge (`walkableEdges`; in a room worded for its door: "the player can walk out of the room there. A room's door leads out through an exit over it…"), and the combat warnings of `combatIssues` ([§8.6](#86-combat-content-enemy-groups-chests-waystones)), and the text-key lines of `textKeyWarnings` (`TextKeys.textKeyIssues`): missing keys and stray keys summed into one line each (*Level › Assign text keys* fixes both), each repeated key as a *Text key error* (at most 20; one with two Englishes names `npm run i18n:keys -- --fix <file>`, one with the same English names *Assign*); places named as Find names them (`placeName`). None blocks the play-test. |
+| Assign text keys | `assignTextKeys()` (async: it reads its sharing sources first, `_assignSources` — a chapter variant's base from the campaign's story context, the same-named shipped level for a campaign's copy) → `state.assignTextKeys(label, { sources })`: every keyless text gets a key in one undo step; a key on two texts of two Englishes stays with the copy another file holds it with (`preferSharedCopies`); keyless texts take the keys of the level they copy where the English is the same (`shareKeys`). |
+| Find by text key… | `findTextKeyDialog` → `findTextKey(input)` = `locateTextKey` + `showTextKey`: accepts a GUID in any case, with braces or hyphens, a `#line:` tag or `<GUID>.2`; selects the object (showing it again if hidden), selects the page or line in its field and highlights its key line (`Inspector.showTextKey`), or the subtitle's in *Level settings*. Searches the open level; a key another file of the campaign holds is named in the "not found" message. |
+| Open saved level in the game | `game.html?level=<name>` — a campaign's level `game.html?campaign=<c>&level=<name>` — in a new tab (project documents only). |
+| Help › Open the Emberfall demo · All campaigns and levels | `game.html` · the launcher, `index.html` (the list of every campaign and level), each in a new tab. |
 
 **Revision-based saved state.** `_saveTo(dest, name)` takes `rev = state.revision` *before* the
 (async) write and calls `state.markSaved(fileRef, rev)` afterwards, so edits made while a project
@@ -271,10 +290,10 @@ dirty, no transaction is open and something changed since the last autosave (`_c
 
 | Storage key | Content |
 | --- | --- |
-| `lumina.level.__autosave__` | the working copy (`serializeLevel`; readable with `loadLocalLevel('__autosave__')`) |
-| `lumina.editor.autosave` | its meta: `{ sid, savedAt, name, width, depth, fileRef, exported? }` |
-| `lumina.level.__recovered_<id>__` | recovered copies of other sessions (newest `MAX_RECOVERED` = 3, one per session) |
-| `lumina.editor.recovered` | their index |
+| `luminati.level.__autosave__` | the working copy (`serializeLevel`; readable with `loadLocalLevel('__autosave__')`) |
+| `luminati.editor.autosave` | its meta: `{ sid, savedAt, name, width, depth, fileRef, exported? }` |
+| `luminati.level.__recovered_<id>__` | recovered copies of other sessions (newest `MAX_RECOVERED` = 3, one per session) |
+| `luminati.editor.recovered` | their index |
 
 ```mermaid
 stateDiagram-v2
@@ -296,10 +315,29 @@ reported once and turns the unsaved dot into a warning.
 
 ### 3.7 `window.__editor`
 
-`{ app, state, tools, textures, view2d, view3d, ready3d }` (`view2d` / `view3d` are getters,
-`ready3d` a promise getter), typed by `EditorHooks` above the `EditorApp` class (the object is
+`{ app, state, tools, textures, view2d, view3d, ready3d, seedTextKeys }` (`view2d` / `view3d` are
+getters, `ready3d` a promise getter; `seedTextKeys(prefix)` makes the keys of new texts
+deterministic — `state.seedTextKeys`, `TextKeys.seededMint`, which throws on an OS path or an empty
+prefix; `null`: random again), typed by `EditorHooks` above the `EditorApp` class (the object is
 checked against it). Used by the scripted checks in `sandbox/editor_*.json` and
 `sandbox/editor3d*.json`. Reference: [specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md).
+
+### 3.8 Rooms (interiors)
+
+A room is a level with `environment.interior: true` ([LEVEL_FORMAT.md §9.2](../specs/LEVEL_FORMAT.md#92-optional-fields)):
+inside, the game shows no forest border, outer scenery, god rays or weather, whatever those fields
+say (`LevelLook.isInterior`, `forestBorderOn`, `outerSceneryOn`, `shownWeather`, `godRayLayout`).
+The editor's side ([`rooms.js`](../../src/editor/rooms.js)):
+
+| Where | What |
+| --- | --- |
+| *Level settings › Environment* (`dialogs.js`) | *Interior (room)*: written as `true` when switched on, removed when switched off (untouched, the file's own value stays — a level without the field keeps its bytes). Switched on, the rows the game leaves out in a room (*Weather*, *Map border*, *Outer scenery*, *God rays*) are dimmed with a note (their values are kept), and a box lists what the room look would still change (`roomLookChanges`) with **Use the room look**: border none, outer scenery and god rays off, the backdrop `#0d0b12` (a void or colour backdrop the level has is kept), minimap off, the clock stopped, and the camera 20 / 38° while it is automatic (no distance, pitch or bounds). It only sets the dialog's controls, so *Apply* saves everything as one undo step and *Cancel* drops it. *Backdrop*: None (the sky) / Void (black) / Colour (a swatch and hex field); written only when changed, removed for the sky; a value the game cannot read is listed as such and kept until another choice. |
+| File › New (`newLevelDialog`) | *Room (interior)*: `createRoomLevel` — a floor (default `k`, stone tiles, at level 1), rock walls (`x`, blocked) `wall` levels higher (default 5 = 2.5 units) two tiles thick on the north, west and east, a low south wall (one row, one level up — the camera looks north over it) with a two-tile door of the floor tile in its middle, the player start just inside the door facing north, the interior flag, the room look and the hour 11 (the demo's mill cellar, door tiles aside). No objects; its way out is an `exit` over the door. `?new=room` starts one. |
+| 3D preview (`Viewport3D`) | What the game shows ([§10](#10-how-the-editor-stays-in-sync-with-the-game)): no forest border or outer scenery (`SceneryPreview`, `forestBorderOn` / `outerSceneryOn`), no god rays (`godRayLayout`), no weather (`_syncWeather` reads `shownWeather`: no rain / snow particles, snow cover, overcast light or grey grade), and the `backdrop` instead of the sky (`_syncBackdrop` → `LightingSystem.settings.backdrop`, read by `LevelLook.backdropColor` — the sky hidden, the fog and the clear colour that colour; for outdoor levels too). |
+| Inspector | The level card says "· a room" under the name; the Environment section's weather hint says that a room shows no rain / snow (the game and the 3D view). |
+| *Check for problems* (`EditorApp._softWarnings`) | No "no villagers" nudge in a room; the map-edge warning worded for a room's door. `tools/lib/levelcheck.mjs` reports nothing room-specific (the demo's mill cellar: 0 errors, no composition warnings), so it is unchanged. |
+
+Checked by `sandbox/editor_shell.interior.json` ([TESTING_AND_VERIFICATION.md](../development/TESTING_AND_VERIFICATION.md)).
 
 ---
 
@@ -313,11 +351,16 @@ checked against it). Used by the scripted checks in `sandbox/editor_*.json` and
 | `fileRef` | `{ kind: 'new' \| 'local' \| 'project' \| 'file', name }` — where it came from / was saved. |
 | `dirty` | `revision !== savedRevision`. |
 | `selection` | Object ids; `'spawn'` selects the player start. |
+| `selectionFilter` | `(ids) => ids` that may be selected, or `null`. `select`, undo / redo and `cancel` narrow every selection through it (what they leave out comes back as `selectionFiltered`); the app sets it to `visibility.shownOnly`, so an object the views hide is never selected. |
+| `objectsVersion` | A counter bumped whenever the objects (or the player start) may have changed: every object edit — also inside an open transaction, where `revision` stays put —, undo / redo, `cancel`, a load. Caches of what the objects hold key on it with the `level` object (the story checks' own events, `once` keys and flags: `story.js`). |
 | `toolId`, `prevToolId` | Active tool and the previous one (the eyedropper returns to it). |
 | `toolOptions` | `tile 'g', brushSize 1 (1–9), brushShape 'square' \| 'circle', heightMode 'raise', heightValue 2, objectType 'house', snap true, paintHeight false`; the ToolOptions panel adds `fillMatchHeight`, `rectOutline`, `stairsDir`. |
-| `view` | `layout 'split', grid, showObjects, showMarkers, cameraMode 'edit' \| 'game', postfx false, timeOfDay 14, timeFollow true, atmosphere false, hiddenTypes [], textured2d true, split 0.6`. |
+| `view` | `layout 'split', grid, showObjects, showMarkers, cameraMode 'edit' \| 'game', postfx false, timeOfDay 14, timeFollow true, atmosphere false, hiddenTypes [], textured2d true, split 0.6, storyPreview false, storyValues ''`. |
 | `hover` | `{ i, j, x, z, view }` of the pointer over either view, or `null`. |
 | `maxHistory` | 200 undo steps. |
+| `origin` | The content table that translates the document's keys: that of the project file it was opened from (`levels/<name>`, `campaigns/<c>` for a campaign's level); opened from a browser slot, a file or new, that of the first project file it is saved to; a *Save As* keeps it. Not saved with the level (KNOWN_ISSUES I18N-18). The play-test passes it as `&i18n=`. |
+| `otherTexts` | Set by the app: `() => story.otherFileTexts(state)`, the texts the campaign's other files hold by key (`null`: none known). With the files a *Save As* left (`addCopiedTexts` / `forgetCopiedTexts`) it is what `sharedTexts(key)` returns to copy-on-write. |
+| `loads` | How many documents were loaded (`replaceLevel`): an async read for the document compares it before it applies (the Save As read-back, *Assign*'s sources). |
 
 ### 4.2 Transactions and history
 
@@ -329,7 +372,10 @@ checked against it). Used by the scripted checks in `sandbox/editor_*.json` and
   step). Past 200 steps the oldest is dropped and its id becomes the base revision.
 - `cancel()` restores the begin snapshot and emits a `change` with `source: 'undo'` and `ids:
   null` (Esc mid-stroke).
-- `undo()` / `redo()` restore a snapshot, filter the selection to ids that still exist and emit
+- `undo()` / `redo()` restore a snapshot, filter the selection to ids that still exist and that
+  `selectionFilter` allows in the restored level (a step taken while an object was shown does not
+  select it once the views hide it; the ids it leaves out follow as `selectionFiltered`, also from
+  `cancel()`) and emit
   `change` with the step's `rect` (null when the step also changed level-wide settings, or its
   rect was unknown) and `ids` (null when the step changed no objects or its ids were unknown).
 - **Revisions**: each committed step gets an id; `revision` is the top undo step's id (or the base
@@ -351,21 +397,56 @@ their corners, points their position and legacy absolute fields via `shiftLegacy
 `removeObjects(ids)`, `setSpawn(x, z, facing)`, `setLevelProps(patch)` (shallow merge for
 `environment` / `water`; `waterLevel` or `legend` also count as terrain), `setLevel(level)`
 (undoable replacement: resize, import), `replaceLevel(level, fileRef)` (new / open: clears history
-and selection), `snapshot()` (deep copy for saving).
+and selection), `snapshot()` (deep copy for saving). Selection (not undoable by itself; a
+transaction records it before and after): `select(ids, { additive, toggle })` (narrowed by
+`selectionFilter`), `clearSelection()`, `refreshSelection()` (drops what `selectionFilter` no
+longer allows; returns the dropped ids — the app calls it after anything that changes what the
+views hide).
+
+**Text keys** ([I18N.md §4.10](../specs/I18N.md); `src/editor/textKeys.js`). The mutators that
+change text keep every translatable text's key inside the edit's own transaction, so undo and redo
+restore keys with the text:
+- `addObject` gives every text of the new object a key, the catalog's default texts included.
+- `insertObjects` (paste, duplicate) replaces a key the level already holds and mints a key for a
+  keyless text: a duplicate or a second paste gets fresh keys, a cut and paste comes back byte for
+  byte.
+- `updateObject` carries keys only for the fields the edit changed (`carryEdit`): an edited text
+  keeps its key, a moved one too, a new one gets a new key; a keyless text the edit left alone stays
+  keyless (until *Assign*); no translatable field changed: nothing is done. A field cleared and
+  retyped gets its old keys back (remembered per object id and field, moved with an id rename,
+  forgotten when another level is loaded). A key the edit brought in that another text of the level
+  holds (a pasted `#line:` tag, a patch that writes another text's key) is not kept: the object's
+  keys are refilled as *Assign* fills them. An unchanged text prefers a key the document had when
+  it was loaded over one minted since. Copy-on-write: a text whose English now differs from what
+  another file holds under its key (`sharedTexts`) gets a new key, and the split is remembered —
+  typed back to the other file's English, the text takes the shared key back while the level holds
+  it nowhere else. An edit reads no other object unless a key may be taken elsewhere (the story4
+  suite caps the reads).
+- `setLevelProps` does the same for the level's own texts (`subtitle`, `environment.title.*`),
+  cleared-text memory and copy-on-write included; a patch's `textKeys` is merged, not replaced.
+- `assignTextKeys(label, { sources })` keys every keyless text in one undo step (*Level › Assign
+  text keys*; [§3.5](#35-files-open-save-export-play-test)).
+- `seedTextKeys(prefix)` switches the minter from `randomGuid` to `seededMint(prefix)` (scripted
+  checks; throws on an OS path or an empty prefix); `sharedTexts(key)`, `addCopiedTexts(file,
+  texts)` and `forgetCopiedTexts(file)` are copy-on-write's sources.
+
+Opening, saving, *Save As*, autosave, export and undo / redo never call these: a file opened and
+saved unchanged stays byte for byte.
 
 ### 4.4 Events
 
 | Event | Payload | Emitted by |
 | --- | --- | --- |
 | `change` | `{ source: 'edit' \| 'undo' \| 'redo' \| 'load', terrain, rect: { minI, maxI, minJ, maxJ } \| null, objects, ids: string[] \| null, meta }` | every mutation (inside the transaction, immediately), undo / redo / cancel, loads |
-| `selection` | `ids[]` | `select` (only when the list changed), removals, undo / redo / cancel, loads |
+| `selection` | `ids[]` | `select` (only when the list changed), `refreshSelection`, removals, undo / redo / cancel, loads |
+| `selectionFiltered` | `ids[]` | undo / redo / cancel, after `selection`: the ids of the restored selection that `selectionFilter` left out (the app's "… left the selection" message) |
 | `tool` | `toolId` | `setTool` |
 | `toolOptions` | a copy of the options | `setToolOption` |
 | `view` | a copy of the view | `setView` |
 | `hover` | `{ i, j, x, z, view }` or `null` | `setHover` (deduplicated) |
 | `dirty` | `boolean` | revision changes |
 | `history` | `{ canUndo, canRedo }` | commit, undo / redo, loads |
-| `status` | message | `notify()` — transient status-bar text |
+| `status` | `message, { stale? }` | `notify()` — transient status-bar text; `stale()`, while the message shows, is asked after every `view` / `change` and drops it once true (`visibility.notifyHidden`: "… is hidden" goes once the object is shown) |
 | `preview` | — | tools (`state.emit('preview')`) when their preview changed; the app on tool switches and brush-size keys |
 
 `commit()` emits **no** `change` (the edits already did); views notice the end of a transaction
@@ -415,7 +496,7 @@ editor per page. They wrap strokes in `state.begin()` / `state.commit()` themsel
 
 | Tool (key) | Stroke behaviour | Details |
 | --- | --- | --- |
-| Select / Move (V) | modes `move`, `box`, `handle` | Click selects (Shift adds, Ctrl toggles); pressing on a member of a multi-selection keeps the group so it can be dragged, releasing without a drag selects just that object (not when the press was interrupted, `cancelled`). A move starts after 0.6 × `pickRadius`; point objects snap their anchor to the type's `snap` (or 0.5), the spawn to tile centres, lines / rects snap the delta; Alt (or the Snap option off) = free. Handles (only while at most 8 objects are selected): line `p0 / p1`, rect corners, particle-area corners (edit `size`), a boss group's arena corners (`anw` … `ase`, edit the relative `arena`; gate ends that lay on a dragged edge move with it and are clamped to the new edge, `gateWithArena`) and gate ends (`g0 / g1`, edit the relative `gate`) — only for the boss kind (`isBossGroup`), the only one whose arena the game builds. Box select (applied on release; an interrupted box leaves the selection unchanged): areas (regions, particle areas, critter and enemy groups) must lie fully inside, other objects intersect; only what the 2D map shows counts (`common.shownOnMap`, shared with `Map2DView._visible`: hidden types excluded, critter and enemy groups follow *Show markers*). Keys: Esc cancels a move / reshape (`state.cancel()`) or clears the selection, Delete / Backspace, Ctrl+D, R / Shift+R ±15° (Ctrl 90°), arrows 0.5 (Shift 2, Alt 0.1). Box highlight stops outlining past 120 objects. |
+| Select / Move (V) | modes `move`, `box`, `handle` | Click selects (Shift adds, Ctrl toggles); pressing on a member of a multi-selection keeps the group so it can be dragged, releasing without a drag selects just that object (not when the press was interrupted, `cancelled`). A move starts after 0.6 × `pickRadius`; point objects snap their anchor to the type's `snap` (or 0.5), the spawn to tile centres, lines / rects snap the delta; Alt (or the Snap option off) = free. Handles (only while at most 8 objects are selected): line `p0 / p1`, rect corners, particle-area corners (edit `size`), a boss group's arena corners (`anw` … `ase`, edit the relative `arena`; gate ends that lay on a dragged edge move with it and are clamped to the new edge, `gateWithArena`) and gate ends (`g0 / g1`, edit the relative `gate`) — only for the boss kind (`isBossGroup`), the only one whose arena the game builds. Box select (applied on release; an interrupted box leaves the selection unchanged): areas (regions, particle areas, critter and enemy groups) must lie fully inside, other objects intersect; only what the 2D map shows counts (`common.shownOnMap` and the story preview's `storyVisible`, shared with `Map2DView._visible`: hidden types excluded, critter and enemy groups follow *Show markers*); the objects in the box that a hidden type, *Show objects* / *Show markers* off or the story preview hides are named in the status bar (`visibility.leftOutMessage`). A click that hits nothing shown where a hidden object stands (`visibility.hiddenAt`) — or a press on an object the selection rule hides (the 3D view draws critter and enemy sprites with *Show markers* off: no move cursor, no hover outline, treated as empty ground) — says why in the status bar (`notifyHidden`). Keys: Esc cancels a move / reshape (`state.cancel()`) or clears the selection, Delete / Backspace, Ctrl+D, R / Shift+R ±15° (Ctrl 90°), arrows 0.5 (Shift 2, Alt 0.1). Box highlight stops outlining past 120 objects. |
 | Paint (B) | one transaction per stroke | Stamps `brushCells(size 1–9, square / circle)` along a Bresenham line between samples, each cell once per stroke; Shift+click draws a line from the previous stroke's end; Alt+click picks tile and height; with `paintHeight` on, every painted tile also gets `heightValue` as its level (Fill and Rectangle honour it too). |
 | Fill (G) | one `editTiles` call | 4-neighbour flood of the same tile char (and height with `fillMatchHeight`); Shift = replace everywhere; the region is cached per hover cell and invalidated on `change`; the preview shows at most 6000 cells. |
 | Rectangle (U) | applied on release | Filled or outline (`rectOutline` XOR Shift); Esc cancels the drag, and an interrupted drag (`cancelled`) is dropped the same way — no tiles, no undo step. |
@@ -430,9 +511,10 @@ Selection operations shared by the select tool and the app (`common.js`): `delet
 (never the spawn), `duplicateSelection` (offset 1, 1), `rotateSelection(delta)` (a single object
 turns in place, lines about their midpoint; a group turns about its centre snapped to 0.5;
 regions / particle areas stay axis-aligned and swap extents on quarter turns; NPCs, waterfalls and
-the spawn turn in 90° steps; an enemy group's relative `arena`, `gate`, `area` and `spotOffsets`
-turn about the group point in the same quarter steps — a turn by another angle leaves them and
-notifies), `shownOnMap`, `nudgeSelection`, `copySelection`, `pasteObjects` (drops objects whose
+the spawn turn in 90° steps; the relative fields — an NPC's `talkOffset` and chase `area`, a critter
+group's yard `area` and `spotOffsets`, an enemy group's `arena`, `gate`, `area` and `spotOffsets` —
+turn about the object's point in the same quarter steps (`RELATIVE_FIELDS`) — a turn by another
+angle leaves them and notifies), `shownOnMap`, `nudgeSelection`, `copySelection`, `pasteObjects` (drops objects whose
 `type` is not an own key of `OBJECT_TYPES`, and closes its transaction even when the insert
 throws), `groupBounds`, `boundsOfIds`.
 
@@ -477,9 +559,9 @@ transaction is left open (an open transaction blocks undo and the app's commands
 | `pointercancel`, lost pointer capture | `pointerUp` with `cancelled: true` (`_endInterrupted`: the stroke's last `PointerEv`, `button` 0) | `pointerUp` with `cancelled: true` |
 | view hidden (`setActive(false)`) | `pointerUp` with `cancelled: true` | `pointerUp` with `cancelled: true` (also on `dispose()`) |
 | window blur | `pointerUp` with `cancelled: true` (the stroke's last `PointerEv`) | stroke continues (only the fly keys / Space are reset); it ends on its release, or as a lost release below |
-| same pointer pressed again, or a mouse move with the button no longer held (release lost) | — (a second press is ignored; no lost-release detection, [KNOWN_ISSUES ED-27](../ai/KNOWN_ISSUES.md#editor)) | `pointerUp` with `cancelled: true` |
+| same pointer pressed again, or a mouse move with the button no longer held (release lost) | `pointerUp` with `cancelled: true` (the stroke's last `PointerEv`; a pan whose button is gone ends too, without a context menu; since 2026-10-07, KNOWN_ISSUES ED-27) | `pointerUp` with `cancelled: true` |
 | tool switched mid-stroke | the app's `deactivate()` commits; the later release still goes to the old tool | the app's `deactivate()` commits; the view also sends the old tool `pointerUp` with `cancelled: true` at once |
-| tool exception | caught; any open transaction is committed and the status bar shows "Tool error: …" | caught and logged to the console only |
+| tool exception | caught (`reportToolError` in `EditorState.js`): logged as a warning, any open transaction is committed and the status bar shows "Tool error: …" | the same path (`_callTool`; since 2026-10-07, KNOWN_ISSUES ED-17) |
 
 A tool receiving `cancelled: true` commits what the stroke already applied (one undo step; Paint,
 Height, Stairs, Erase, a Select move or reshape, a Player start drag) but makes no change on
@@ -505,7 +587,8 @@ marker it moved (`PointerEv.cancelled` in `tools/index.js`; checked in both view
 | Objects | Drawn in layers (`LAYER`: regions, then particle areas / critters, lines, buildings, other props, trees, lights, NPCs and enemy groups), culled to the view (an enemy group by its home disc and boss arena), each as a footprint with its catalog glyph / colour; then the spawn marker, gold selection outlines and drag handles, the hover cell (or the 3D view's hover in cyan), the tool preview, labels and a tooltip. |
 | Rendering | On demand: `requestRender()` schedules one rAF. While a transaction runs in the **3D** view the map renders at half rate. |
 | Hit testing | Topmost visible object in draw order; areas are picked by their edge or centre marker (critter groups by their ring; enemy groups by their ring, a start dot or the boss arena's edge), small point objects by radius, houses / stalls / benches / flower boxes by their rotated footprint, the rest by `hitTestObject`. Enemy-group hits are **graded** (since 2026-09-28, KNOWN_ISSUES ED-25): a click only *near* a group — its home ring, the arena edge, the 6 px around a start dot, or its centre while the ⚔ badge is not drawn (below zoom 7) — yields to a **point** prop right under the click (`_underPoint`: its own footprint, no tolerance; never a tree canopy, an area marker or a bridge / boardwalk / fence the ring crosses) or to another group's *exact* hit (its drawn badge, or a dot's coloured disc); otherwise the group is picked. From zoom 16 up the result is as before. Double-click inside an area selects it. |
-| Input | Left button → tool strokes (pointer capture; a `pointercancel`, a lost capture, a window blur or `setActive(false)` ends the stroke with `cancelled: true` through `_endInterrupted`, [§5.3](#53-a-strokes-lifecycle)). Right / middle drag or Space + left drag → pan; a right click without a drag → `le-contextmenu`. Double-click (select tool) → `le-focus`. |
+| Start dots | A dot where the game starts each animal of a critter group (`_critterSpots`) and each enemy of an enemy group (`_enemySpots`): `critterStartPoints` / `enemyStartPoints` with the 3D view's start tests — the app sets `critterTestSource` (`Viewport3D.critterStartTest({ lazy: true })`, since 2026-10-07, KNOWN_ISSUES ED-11) and `startTestSource` (`enemyStartTest(flier, { lazy: true })`) — so the dots avoid every prop's and villager's collider like the 3D preview and the game; without a 3D view, or while it is building a new document, the level-data test (`levelStartTest`: walkable tiles and bridge decks, minus the villagers', chests' and waystones' colliders). Cached per group until the level, the layout or the 3D placement test changes (`placementChanged`). |
+| Input | Left button → tool strokes (pointer capture; a `pointercancel`, a lost capture, a window blur, `setActive(false)` or a lost release — a mouse move without the button, or the same pointer pressed again, as in `Viewport3D` — ends the stroke with `cancelled: true` through `_endInterrupted`, [§5.3](#53-a-strokes-lifecycle)); a pan whose button was released unseen ends at the next move. Right / middle drag or Space + left drag → pan; a right click without a drag → `le-contextmenu`. Double-click (select tool) → `le-focus`. |
 | Events out | `le-zoom` (zoom label), `le-focus`, `le-contextmenu` (bubbling `CustomEvent`s the app listens to). |
 
 ---
@@ -524,14 +607,14 @@ distance })`, `frameLevel()`, `stats`, `busy`, `dispose()`; plus `focusSelection
 - `Engine({ maxPixelRatio: 1.25, inputTarget: new EventTarget(), exposeGlobal: false })` — the
   engine's `Input` listens to a dummy target: **the editor owns the keyboard**.
 - `LightingSystem` with the game's `SUN_PATH`, `MOON_PATH` and keyframes
-  (`DEFAULT_KEYFRAMES` + `KEYFRAME_OVERRIDES` from `src/demo/config.js`), shadow extent 26, clock
+  (`DEFAULT_KEYFRAMES` + `KEYFRAME_OVERRIDES` from `src/game/config.js`), shadow extent 26, clock
   paused (`timeSpeed 0`); the hour comes from `view.timeOfDay`.
 - Two scenes: the lit `scene` and an `overlayScene` for editor feedback (never tone-mapped,
   fogged or blurred).
 
 | Subsystem | Class (file) | Role |
 | --- | --- | --- |
-| Camera | `EditorCamera` | `'edit'`: free orbit (`EDIT_VIEW`: fov 30, default pitch 50°, pitch 6–88°, distance from 2.5 up to `maxDistance`, which is 320 until `frameLevel()` sets it to `max(160, 2.2 × the framing distance)`). `'game'`: the HD-2D framing (fov 28) with `config.CAMERA`'s zoom range 18–42 and the level's `environment.camera` distance / pitch (default 30 / 32°): yaw only (Q / E, right-drag). Unlike the game, the preview clamps a level distance outside 18–42 into that range. Writes `uCameraYaw` / `uCameraPosition`. |
+| Camera | `EditorCamera` | `'edit'`: free orbit (`EDIT_VIEW`: fov 30, default pitch 50°, pitch 6–88°, distance from 2.5 up to `maxDistance`, which is 320 until `frameLevel()` sets it to `max(160, 2.2 × the framing distance)`). `'game'`: the diorama gameplay framing (fov 28) with `config.CAMERA`'s zoom range 18–42 and the level's `environment.camera` distance / pitch (default 30 / 32°): yaw only (Q / E, right-drag). Unlike the game, the preview clamps a level distance outside 18–42 into that range. Writes `uCameraYaw` / `uCameraPosition`. |
 | Surface & picking | `LevelSurface`, `TerrainPicker` (`Picking.js`) | Heights and water surfaces read **straight from the level data**, so picking and overlays are right even while a mesh rebuild is pending. The picker marches the ray through the tile grid (tops, cliff faces → the higher tile, stairs), falling back to a horizontal plane beyond the map. |
 | Terrain | `TerrainPreview` | TileMap + Water, 16-tile chunks, shore worker, big-level cell batching ([§8.1](#81-terrainpreview)). |
 | Props | `ObjectPreview` + `PropBatcher` | One `LevelObjectBuilder` build per object, translation during drags, per-chunk static batching, the engine `LightPool` fixed at 12 lights ([§8.2](#82-objectpreview-and-propbatcher)). |
@@ -562,8 +645,11 @@ while the view is active, the tab is visible and the terrain exists (`_updateRun
    line, rect, label), the ghost, the spawn ghost, highlight / selection outlines (none past
    `MAX_OUTLINED` = 120 objects), background compile of outline masks for "cold" meshes.
 4. Weather and lighting: `_syncWeather()` turns `environment.weather` into a settled
-   [`WeatherLook`](../../src/demo/WeatherLook.js) state (unknown values = clear; a change re-ranks
-   the point lights afresh, see [§10](#10-how-the-editor-stays-in-sync-with-the-game)); the
+   [`WeatherLook`](../../src/game/WeatherLook.js) state (unknown values = clear; always clear in a
+   room — `LevelLook.shownWeather`; a change re-ranks the point lights afresh, see
+   [§10](#10-how-the-editor-stays-in-sync-with-the-game)); the backdrop (`_syncBackdrop`:
+   `environment.backdrop` through `LevelLook.backdropColor` into `lighting.settings.backdrop`, so
+   the sky is hidden and the fog and clear colour follow, as in the game); the
    weather's sun / ambient / exposure multipliers (`applyWeatherLighting`); edit fog
    `fogMul = clamp((0.2 × (game ? 0.55 : 1) / max(8, distance)) / fogDensity, 0.02, 1.2)`, times the
    weather's `fog` factor while the atmosphere preview is on; shadow extent
@@ -738,10 +824,11 @@ prop. `sandbox/editor_perf*.json` verifies this after its stroke series.
   the hidden lamps' lights out over 0.35 s; hiding everything, or dropping to ≤ 12, parks them at
   once.
 - Emissives are registered once per material with reference counting; prop emitters (smoke,
-  embers, mist) exist only while the atmosphere preview is on (`setParticles`). Smoke gets the
-  game's `SMOKE` look; waterfall mist always uses `count: 16, alpha: 0.07`. That matches the game
-  only for a 2-wide waterfall without a `mist` override, because the game uses
-  `max(4, round(8 × width))` and honours `mist: { count, alpha }` (see
+  embers, mist) exist only while the atmosphere preview is on (`setParticles`), and are switched
+  off (`enabled = false`) while their prop is hidden — a hidden type, the story preview, *Show
+  objects* off (`_emitting`, `_syncEmitters`; a prop built while hidden starts them off). Smoke gets the
+  game's `SMOKE` look and waterfall mist the game's count and alpha (`LevelLook.waterfallMist`:
+  `max(4, round(8 × width))` at 0.07, the waterfall's `mist: { count, alpha }` first; see
   [§10](#10-how-the-editor-stays-in-sync-with-the-game)).
 
 ### 8.3 `ActorPreview`
@@ -792,7 +879,7 @@ objects: they animate, billboard and turn their proxies (`Sprite3D.update`), are
 owner's boxes, hide with `visible`, and the selection outline renders a sprite's own quad on its mask
 layer. The colour material re-creates Sprite3D's lit material (`patchSpriteLighting` with a
 per-instance shadow centre, emissive × texel colour; frame per instance in `aUvRect`; keys
-`lumina-editor-sprite-batch-v1` / `-depth-v1`) and reads Sprite3D's `_opts` / `_uniforms` — a
+`luminati-editor-sprite-batch-v1` / `-depth-v1`) and reads Sprite3D's `_opts` / `_uniforms` — a
 change to Sprite3D's lit material must be mirrored there (KNOWN_ISSUES ED-26). A sprite with
 `opacity` or `bodyOpacity` < 1, `combatFx` or `lit: false` is not taken (it draws itself).
 **Warm-up:** a new group compiles its programs in the background through the view's `compile`
@@ -810,10 +897,10 @@ frames with the batch on, off and enemies hidden, in three scenes) and the far-v
 ### 8.4 `SceneryPreview` and `FoliagePreview`
 
 - `SceneryPreview` calls the game's `scatterForest`, `mergeTrees`, `makeOuterHeight` and
-  `outerGroundSteps` (a generator) from [`src/demo/Scenery.js`](../../src/demo/Scenery.js) in
+  `outerGroundSteps` (a generator) from [`src/game/Scenery.js`](../../src/game/Scenery.js) in
   slices of `FRAME_BUDGET_MS` (9 ms), at least 450 ms after it was scheduled and once editing is
-  idle; rebuilt when the environment key (`border`, `outerScenery`,
-  `scenery`, `forest`, size) changes or terrain near the map edge / on `T` tiles changes. The old
+  idle; rebuilt when the environment key (`border`, `outerScenery`, `interior`,
+  `scenery`, `forest`, size) changes — a room has none (`forestBorderOn` / `outerSceneryOn`) — or terrain near the map edge / on `T` tiles changes. The old
   surroundings stay until the new ones are complete.
 - `FoliagePreview` calls the game's `buildGroundDetail` with the built props' colliders and house
   footprints, at least 600 ms after it was scheduled and 700 ms after the last edit (never during
@@ -851,7 +938,11 @@ frames with the batch on, off and enemies hidden, in three scenes) and the far-v
   leaves, flames, sprites), then a full-screen pass draws the edges; the lights join the layers so
   the programs are shared (no recompiles).
 - `LabelLayer`: HTML labels pinned to world points (region names, NPC names, tool hints),
-  hit-testable for picking.
+  hit-testable for picking. Tool labels and region-style labels stay inside the view: a label
+  with an `area` (regions, exits, story events — `ActorPreview` sets their rect) is shown while
+  its rect is in view, kept over the rect's visible part even when its centre is off-screen, and
+  never cut at an edge (4 px margin; `hitTest` picks it where it is drawn). A label is hidden until
+  its first placement.
 
 ### 8.6 Combat content: enemy groups, chests, waystones
 
@@ -864,7 +955,7 @@ waystone 3D previews and ghosts come from the catalog and `LevelObjectBuilder`. 
 | --- | --- |
 | `ActorPreview`, `GhostPreview`, `Overlays` | Enemy sprites, rings, arenas and gates in 3D ([§8.3](#83-actorpreview), [§8.5](#85-feedback-layer)). `ActorPreview.js` exports `ENEMY_COLORS` and `enemyHover` and re-exports the three-free helpers of [`src/editor/enemyGroups.js`](../../src/editor/enemyGroups.js) (`enemyKind`, `enemyArena`, `enemyGate`, `bossArena`, `bossGate`), which the 2D map, the select tool, the inspector and the app import directly (with `isBossGroup`, `arenaOf`, `gateOf`, `gateEdgeGap`, `strayArena`, `dataColliders`, `levelStartTest`). |
 | `Map2DView` | `LAYER.enemy = 7`; `enemy` is an area type shown with the markers (like critters). A group draws its home disc (dashed, red; gold for elites), a dot per `enemyStartPoints` spot (`_enemySpots`, cached per group until the level, the view or the placement test changes: the app's `startTestSource` asks `Viewport3D.enemyStartTest(flier, { lazy: true })` — the app calls `placementChanged()` from the 3D view's `onPlacementChange` —, and falls back to `levelStartTest` when that returns `null` or there is no 3D view: `isWalkablePoint`, fliers also water, minus the villagers', chests' and waystones' colliders), the ⚔ badge and, zoomed in or selected, `slime ×3 · Lv1`; a boss with an arena draws the arena (dashed) and its gate (bright bar) instead of the disc. The hit test grades enemy hits (§6, KNOWN_ISSUES ED-25). Chests are a rotated 0.9 × 0.6 box with a lid band and a lock (front = +Z at rotation 0), waystones a round base with a cyan diamond. |
-| `Viewport3D.enemyStartTest(flier, { lazy })` | The enemy start test for the 2D dots and *Check for problems*, in every layout (null only once disposed): while this view is shown and built, the exact built test (`ActorPreview.enemyTest`); while it is hidden — or before a new document's first build — `_dataStartTest`: `levelStartTest` (now also box colliders, strictly inside like `TileMap`) with `dataColliders` plus the real TileMap colliders of every prop whose catalog bounds lie within `PROP_REACH` = 4 u of a group's scatter rect (`enemyScatterRect`), taken from this view's build when its signature matches, else from a colliders-only `LevelObjectBuilder` build (freed at once; cached per object id + signature, cleared by every fresh document build). With `lazy` (the 2D map's source) it returns `null` while a build of the document is due — the view still starting, or shown with a newly loaded document building next frame — unless the data test is already cached, so opening a level builds no props just for their colliders; a fresh build then fires `onPlacementChange`, and the dots are placed again. Colliders-only builds therefore happen only for a document opened or changed while the view is hidden (the **2D only** layout). The dots match the game for all 24 Cinderwatch groups in the split and 2D-only layouts. |
+| `Viewport3D.enemyStartTest(flier, { lazy })` | The enemy start test for the 2D dots and *Check for problems*, in every layout (null only once disposed): while this view is shown and built, the exact built test (`ActorPreview.enemyTest`); while it is hidden — or before a new document's first build — `_dataStartTest`: `levelStartTest` (now also box colliders, strictly inside like `TileMap`) with `dataColliders` plus the real TileMap colliders of every prop whose catalog bounds lie within `PROP_REACH` = 4 u of a group's scatter rect (`enemyScatterRect`), taken from this view's build when its signature matches, else from a colliders-only `LevelObjectBuilder` build (freed at once; cached per object id + signature, cleared by every fresh document build). With `lazy` (the 2D map's source) it returns `null` while a build of the document is due — the view still starting, or shown with a newly loaded document building next frame — unless the data test is already cached, so opening a level builds no props just for their colliders; a fresh build then fires `onPlacementChange`, and the dots are placed again. Colliders-only builds therefore happen only for a document opened or changed while the view is hidden (the **2D only** layout). The dots match the game for all 24 Cinderwatch groups in the split and 2D-only layouts. `critterStartTest({ lazy })` is the same for critter groups' scattered animals: `ActorPreview.critterTest` (the game's `TileMap.isWalkable` plus the villagers) while shown and built, else `_dataStartTest(false)`; `_propColliders` takes the props near critter yards (`critterYard`, else the roam-radius square) too. |
 | `SelectTool` | Enemy groups in the box-select area list; arena corner and gate end handles of the boss kind, the gate following a dragged arena edge ([§5.2](#52-implementation-notes)). `common.rotateSelection` turns an enemy group's relative fields in quarter steps. |
 | `Inspector` | Level card: a status line `Enemies n (groups g) · Waystones n · Chests n` when any exist or combat is on (`combatStats`; warning colour when combat is forced off with enemies placed, or on without a waystone). A boss group's *Count* stops at 1 (a number field without a slider — `fields.js` honours `field.slider === false` — and the hint "The boss spawns alone: Count is 1."); setting *Kind* to the boss or editing the Count clamps it to 1 in the same undo step (`clampBossCount`); a Count above 1 from a file turns the hint into a warning (the catalog's Count max stays 8 and `normalizeLevel` and the files are unchanged). The Inspector re-renders when a group becomes or stops being the boss. An enemy group of the boss kind (or one with an arena) gets a **Boss arena** section: *Add arena and gate* (18 × 18 around the group, the gate in its south edge), the relative *Min / Max X / Z* and *Gate X0 / Z0 / X1 / Z1*, *Remove arena*. The section's hint turns into a warning when the gate lies off the arena's edge, and for a group of another kind that still has an arena (only *Remove arena* is offered then). |
 | `dialogs.js` | *Level settings › Environment › Combat*: *Auto* / *On* / *Off*. `environment.combat` is written only for On (`true`) / Off (`false`); going back to Auto removes the key (the dialog sets it to `undefined`, which `setLevelProps` merges and `serializeLevel` drops), so a level that never had it keeps its bytes. |
@@ -883,14 +974,15 @@ play-tests.
 ## 9. The dev-server level API
 
 [`tools/vite-level-api.js`](../../tools/vite-level-api.js) is a Vite plugin (`apply: 'serve'` —
-**dev server only**, registered in [`vite.config.js`](../../vite.config.js)) mounted at
-`/api/levels`, writing into `public/levels/`:
+**dev server only**, registered in [`vite.config.js`](../../vite.config.js)) mounted under the dev
+server's base (`<base>api/levels`: `/api/levels` by default, `/project/api/levels` under
+`npm run dev -- --base=/project/`), writing into `public/levels/` (paths below: the default server):
 
 | Method & path | Result |
 | --- | --- |
 | `GET /api/levels` | `{ levels: [{ name, file: 'levels/<name>.json', title, size, modified }] }`, newest first (`title` = the file's `name`) |
 | `GET /api/levels/:name` | the level JSON, or 404 |
-| `PUT /api/levels/:name` | `content-type: application/json` required (else 415); body must parse as JSON with `format: 'lumina-level'`, `tiles` and `heights` arrays, ≤ 4 MB; written to `<name>.json.tmp` then renamed (atomic); → `{ ok: true, file }` |
+| `PUT /api/levels/:name` | `content-type: application/json` required (else 415); body must parse as JSON with `format: 'luminati-level'`, `tiles` and `heights` arrays, ≤ 4 MB; written to `<name>.json.tmp` then renamed (atomic); → `{ ok: true, file }` |
 | `DELETE /api/levels/:name` | removes the file → `{ ok: true }` |
 | `POST` or any other method | 405 with `Allow` — writes go only through `PUT` |
 
@@ -902,9 +994,9 @@ server serves is readable from another origin either. Names must match
 `^[a-z0-9][a-z0-9-]{0,59}$` and must not be Windows device names (`con`, `nul`,
 `com1`…); errors are `{ error }` JSON (400 / 403 / 404 / 405 / 413 / 415 / 500 — a read-only or locked file
 gives a readable message) and a failed write never leaves a `.tmp` behind (a build would copy it
-into `dist/`). Client side: `hasProjectApi`, `listProjectLevels`, `saveProjectLevel` (sends
+into `dist/`). Client side (every URL from `levelsApi(campaign)`): `hasProjectApi`, `listProjectLevels`, `saveProjectLevel` (sends
 `serializeLevel(level)`), `deleteProjectLevel` in `LevelStorage.js`; reading published levels uses
-the static file `levels/<name>.json` (works in production builds too). Details:
+the static file `<BASE_URL>levels/<name>.json` (works in production builds too, under any sub-path). Details:
 [specs/LEVEL_STORAGE_API.md](../specs/LEVEL_STORAGE_API.md).
 
 ---
@@ -917,14 +1009,16 @@ The preview is trustworthy because it **calls the game's code** wherever it can:
 | --- | --- |
 | Terrain, water, shore | `buildLevelTerrain`, `TileMap`, `Water`, `waterGlint` (`engine/level/ObjectBuilder.js`, `engine/world/*`); `WaterShore.bakeShore` in the worker |
 | Every prop | `LevelObjectBuilder` (same seed 42) → `PropFactory` |
-| Forest border, outer forest, outer ground | `src/demo/Scenery.js` (`scatterForest`, `forestKindAreas`, `mergeTrees`, `makeOuterHeight`, `outerGroundSteps`) |
-| Ground foliage | `src/demo/GroundDetail.js` (`buildGroundDetail`) |
-| Lighting palette, sun / moon arcs, camera framing, sprite look | `src/demo/config.js` (`KEYFRAME_OVERRIDES`, `SUN_PATH`, `MOON_PATH`, `CAMERA`, `CHARACTER_SPRITE_OPTS`, `SPRITE_FILL`) |
-| Critter start positions | `ObjectCatalog.critterStartPoints` / `critterYard` (mirrors `Critters._spawnGroup`) |
-| Enemy start positions, sheets | `ObjectCatalog.enemyStartPoints` (the combat spawn uses it too), `createEnemySheet` (`MonsterSprites.js`), the fliers' `hover` from `src/demo/combat/defs.js` |
+| Forest border, outer forest, outer ground | `src/game/Scenery.js` (`scatterForest`, `forestKindAreas`, `mergeTrees`, `makeOuterHeight`, `outerGroundSteps`) |
+| Ground foliage | `src/game/GroundDetail.js` (`buildGroundDetail`) |
+| Lighting palette, sun / moon arcs, camera framing, sprite look | `src/game/config.js` (`KEYFRAME_OVERRIDES`, `SUN_PATH`, `MOON_PATH`, `CAMERA`, `CHARACTER_SPRITE_OPTS`, `SPRITE_FILL`) |
+| Critter start positions | `ObjectCatalog.critterStartPoints` / `critterYard` (`Critters._spawnGroup` calls them too) |
+| Enemy start positions, sheets | `ObjectCatalog.enemyStartPoints` (the combat spawn uses it too), `createEnemySheet` (`MonsterSprites.js`), the fliers' `hover` from `src/game/combat/defs.js` |
 | Point lights | the engine `LightPool` (`fixed: true`, 12 lights) fed by `sanitizeLightDescriptors`, as `World._wireLights` |
-| Weather look | `src/demo/WeatherLook.js` (`WEATHER_PARAMS`, `precipitationEmitter`, `applyWeatherLighting`, `applyOvercast`, `applyWeatherGrade`, `applyWeatherWind`, `applyLampDayGlow`, `applyEmissiveDay`, `glassLevel`, `areaEmitterIntensity`) — the functions `Weather.update` calls |
-| Snow cover | `src/demo/SnowCover.js` (`addSnowCover`, `addGroundSnowCover`, `ROOF_MATERIAL`, the shared `snowCover` uniform) |
+| Weather look | `src/game/WeatherLook.js` (`WEATHER_PARAMS`, `precipitationEmitter`, `applyWeatherLighting`, `applyOvercast`, `applyWeatherGrade`, `applyWeatherWind`, `applyLampDayGlow`, `applyEmissiveDay`, `glassLevel`, `areaEmitterIntensity`; by the hour: `godRayHourLevel`, `NIGHT_DESATURATION`, `nightWaterLevels`) — the functions `Weather.update` calls |
+| Smoke and mist looks, south gap, god rays, ground-foliage arguments, camera dust, game-camera framing | `src/game/LevelLook.js` (`SMOKE`, `waterfallMist`, `southGap`, `godRayLayout` / `autoGodRayArea`, `groundDetailArgs` and `foliageMaxInstances`, `DUST_BOX`, `cameraFraming`) — `World` and `Game` read the same (KNOWN_ISSUES ED-18) |
+| Rooms (interiors) and backdrops | `src/game/LevelLook.js`: `isInterior`, `forestBorderOn`, `outerSceneryOn` (`SceneryPreview`, as `World`), `godRayLayout`, `shownWeather` (`Viewport3D._syncWeather`), `backdropColor` (`Viewport3D._syncBackdrop`; `Game._applyBackdrop` still parses the same rule itself) |
+| Snow cover | `src/game/SnowCover.js` (`addSnowCover`, `addGroundSnowCover`, `ROOF_MATERIAL`, the shared `snowCover` uniform) |
 | Level data rules | `LevelFormat` / `ObjectCatalog` (normalisation, validation, catalog fields) |
 
 **Deliberate differences** (the preview is an editing view):
@@ -940,16 +1034,15 @@ The preview is trustworthy because it **calls the game's code** wherever it can:
   overcast tint of fog, sun and sky, the grade offsets, wind, lanterns and windows glowing by day
   under a grey sky, and the lantern-glass level. With the atmosphere preview only: rain / snow (the
   game's emitters), the weather's extra haze, god rays × the weather factor, dust and particle
-  areas scaled by the weather, and settled snow cover. What stays the editor's own: its fog (edit
-  fog × the weather's fog factor, not the game's density), god-ray base intensity 1 (the game
-  follows a golden-hour curve of 0.35–1, so snow shows 0.25 at noon vs the game's ≈ 0.09), no night
-  desaturation, no calmer water and no thinner leaves at night. The dust box is a little bigger
-  (22 × 4.5 × 18 around the camera focus, vs the game's 20 × 4.5 × 16).
+  areas scaled by the weather, and settled snow cover. The time of day acts as in the game, at the
+  preview's fixed hour: the golden-hour god rays (0.35–1), the night desaturation, the calmer
+  water and the thinner leaves at night. What stays the editor's own: its fog (edit fog × the
+  weather's fog factor, not the game's density).
 - PostFX and atmosphere are opt-in. The preview's grade is slightly softer than the game's
   (`_setPostFX`: saturation 1.26 vs 1.3, vignette 0.45 vs 0.55, grain 0.02 vs 0.03, bokeh boost
   1.5 vs 1.6, DOF near / far scale 1.4 / 1.1 vs 1.5 / 1.15, tilt width 0.34 vs 0.3); it adds the
-  weather's grade offsets every frame (grade temperature / saturation written by hand are
-  overwritten) but no night desaturation; the DOF band is set per frame — the
+  weather's grade offsets and the night desaturation every frame (grade temperature / saturation
+  written by hand are overwritten); the DOF band is set per frame — the
   game's tilt-shift 0.42 and max blur 13 in game-camera mode, a wider band (0.26, 10, focus range
   0.3 × distance) in edit mode.
 - Point lights: the same engine `LightPool` and the same sanitised descriptor list as the game,
@@ -966,35 +1059,23 @@ The preview is trustworthy because it **calls the game's code** wherever it can:
 - Batching granularity differs (16 / 32-tile prop chunks and 48-tile terrain cells vs the game's
   per-material k-d split; the editor merges border trees separately from the level's own trees and
   always splits the outer forest into four quadrants) — same pixels, different draw-call counts.
-  Exception: the preview never passes `maxInstances` to `buildGroundDetail`, so on big levels its
-  foliage fields are not split and the per-tuft brightness jitter differs slightly from the game's.
-- The game-camera zoom range is fixed at 18–42 (a level `environment.camera.distance` outside it
-  is clamped); the game widens its range to include the level's distance (8–80).
+  The ground foliage is split as the game splits it (`foliageMaxInstances`: 4 000 instances a
+  field on a big level).
+- The game camera frames the level as the game does (`cameraFraming`: distance 8–80, pitch
+  10–80°, the zoom range widened to include the level's distance).
 
-**Known small mismatches** (found while writing these docs; see
-[ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md)):
-
-- An `npc` object's hand-written `spec` (sprite overrides; not a catalog field) is drawn by the
-  preview (`ActorPreview._characterSheet(preset, spec)`) but ignored by the game (`npcDef` in
-  `Game.js` never passes it to `Npc`).
-- Foliage: the game clamps an NPC's `wander` to 0–8 for its clearing radius and drops malformed
-  `flowerAreas` / `shrubAreas` entries; `FoliagePreview.build` passes them unsanitised
-  (identical for well-formed levels).
-- Waterfall mist: fixed `count: 16` in the preview vs `max(4, round(8 × width))` plus the per-waterfall
-  `mist` override in the game ([§8.2](#82-objectpreview-and-propbatcher)).
-
-**Duplicated logic to keep in sync by hand** (drift risks): the `SMOKE` look (`World.js` and
-`ObjectPreview.js`), the automatic god-ray area (`World._autoGodRayArea` and
-`Viewport3D._autoGodRayArea` / `_godRayLayout`), the foliage call arguments
-(`World._buildGroundDetail` and `FoliagePreview.build`), the `SOUTH_GAP` default, the Weather
-option lists (`Inspector.js`, `dialogs.js`), and the critter placement (`Critters._spawnGroup` and
-`critterStartPoints`), and the enemy start-spot test (the combat spawn's `CombatSystem._spawnGroup`
+**Duplicated logic to keep in sync by hand** (drift risks): the Weather option lists
+(`Inspector.js`, `dialogs.js`), `rooms.isRoom` / `backdropKind` (the main chunk's copies of
+`LevelLook.isInterior` / `backdropColor`, a line or two each), and the enemy start-spot test (the combat spawn's `CombatSystem._spawnGroup`
 / `standable` against `ActorPreview.enemyTest` + `Viewport3D._isStandable`, and the data-only
 `levelStartTest` in `enemyGroups.js`; the villager collider radius 0.34 of `Npc` in
 `ActorPreview` and `enemyGroups.js`, the chest / waystone radii of `CombatProps` in
 `enemyGroups.js`), and Sprite3D's lit material in the enemy batch (`SpriteBatch.js` reads
 Sprite3D's `_opts` / `_uniforms`; KNOWN_ISSUES ED-26). The weather look and the precipitation emitter configs are shared since
-2026-09-27 (`WeatherLook.js`), and so is the snow patch's roof pattern (`SnowCover.ROOF_MATERIAL`).
+2026-09-27 (`WeatherLook.js`), and so is the snow patch's roof pattern (`SnowCover.ROOF_MATERIAL`);
+since 2026-10-07 the time-of-day part of the weather look too, and the smoke and mist looks, the
+south gap, the god-ray layout, the foliage call arguments, the dust box and the game-camera framing
+(`LevelLook.js`).
 
 ---
 
@@ -1008,6 +1089,24 @@ Sprite3D's `_opts` / `_uniforms`; KNOWN_ISSUES ED-26). The weather look and the 
   `pointerUp` with `ev.cancelled` still commits what was applied, but adds nothing on release (§5.3).
 - **Report precise `rect` / `ids`.** Views diff only what a `change` names; `null` forces a full
   diff (slow on big levels).
+- **A hidden object is never selected** (`src/editor/visibility.js`; KNOWN_ISSUES STORY-06). An
+  object the views hide — its type hidden with the outliner's eye, *Show objects* / *Show markers*
+  off (as the 2D map follows them, `shownOnMap`), or the story preview — cannot be picked,
+  box-selected or selected through `EditorState.select` (`selectionFilter`), undo / redo or
+  `cancel` (whose left-out ids come back as `selectionFiltered`, and the app says so). The app
+  drops hidden objects from the selection after every `view` event and, in a microtask after the
+  running edit (so an inspector edit commits before its panel is rebuilt), after every `change`
+  that touches objects or level settings (an edit of `when` / `unless`, the weather, a paste, undo
+  / redo), with a status message; a save that moves the level elsewhere (`_fileRefChanged`: the
+  preview's `level`, the campaign) redraws the views and drops them too, its message appended to
+  the save's. **Ctrl+A** takes what `shownOnly` allows — the 2D map's objects, as a box. A press
+  on an object the rule hides (the 3D view's critter and enemy sprites with *Show markers* off) is
+  a click on empty ground that names it. A click on a dimmed outliner row (or Enter on it) only
+  says why; a double-click on it (or F) runs `EditorApp.reveal(ids)` (the story preview off, the
+  type shown again, *Show objects* / *Show markers* on, then select and frame). A new way of
+  selecting goes through `state.select`, so it gets the rule; say in the status bar what it left
+  out (`visibility.leftOutMessage`), and an object it placed where the views hide it
+  (`PlaceTool.notifyPlaced`).
 - **Fixed light count** in the preview too (12, created at construction).
 - **Warm new materials** (ghost, outline masks, shadow variants) in the background — never let the
   first use compile synchronously.
@@ -1016,6 +1115,13 @@ Sprite3D's `_opts` / `_uniforms`; KNOWN_ISSUES ED-26). The weather look and the 
 - **Round trip.** Opening a level and saving it unchanged must leave `git diff` empty
   (`serializeLevel`); the Level settings dialog must not write defaults into files that never had
   them.
+- **Text keys are never typed and never leave an edit.** A mutator that changes a translatable
+  text carries its keys in the same transaction ([§4.3](#43-mutators)); nothing else writes
+  `textKeys` or a `#line:` tag (the inspector shows keys read-only; script fields hide tags and
+  Apply retags against the old lines), and opening or saving never adds or changes one. A new
+  mutator or panel that changes text goes through `updateObject` / `setLevelProps`, or it loses
+  translations. Copy-on-write only knows the files read when the edit happens (KNOWN_ISSUES
+  I18N-16).
 - **Game changes need editor changes.** A new environment option, prop or scenery rule should be
   honoured by the preview (§10) — otherwise the editor lies.
 - Untracked levels in `public/levels/` that you did not create belong to the user; never modify them.
@@ -1031,9 +1137,6 @@ Sprite3D's `_opts` / `_uniforms`; KNOWN_ISSUES ED-26). The weather look and the 
 - Placing a well costs one 66–83 ms frame; a 60-object group selection can stall ≈ 60 ms when a
   flame first enters the selection mask; splitter drags reach p95 ≈ 50 ms (each drawing-buffer
   reallocation waits on the GPU).
-- A region's 3D name label floats 1.6 u above the region's centre and is hidden once that centre
-  projects outside ±1.2 in normalised device coordinates (`LabelLayer.update`), even when part of
-  a big region is still on screen.
 
 Numbers and methodology: [PERFORMANCE.md](PERFORMANCE.md) and the contract's §9; open issues:
 [ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md).

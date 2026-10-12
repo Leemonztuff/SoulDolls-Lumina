@@ -1,6 +1,6 @@
 /**
  * Game ← level loading test cases. Each case builds a level with the LevelFormat helpers, saves it
- * to browser storage and opens it in the real game (`index.html?level=local:<slot>`), exactly like
+ * to browser storage and opens it in the real game (`game.html?level=local:<slot>`), exactly like
  * the editor's play-test. `?case=<name>` runs one case straight away (used by the check harness);
  * without it the page lists the cases.
  *
@@ -26,7 +26,12 @@
  *               a single character"), the rest falls back. Also JSON objects with an own
  *               `toString` key (`{"toString": 1}`: String() / Number() throw on them) where the
  *               load converts a value — an object `type` / `id` / rect bound, `subtitle`,
- *               `version`, `waterLevel`, an extra tiles / heights row — and an array `type`.
+ *               `version`, `waterLevel`, an extra tiles / heights row — and an array `type`;
+ *               such values where the load used to keep them (LVL-18: a legend `top` / `riser`,
+ *               an NPC `name` / `portraitColor`, a house `opts.roof`, environment `backdrop` /
+ *               `title.title`: dropped, the defaults apply), and the colour names three.js
+ *               resolves through Object.prototype (LVL-19: two `light` colours, a particle area's
+ *               `color` / `colorEnd` / `colors`).
  *               sandbox/game_levels.hostile.json checks it in the game, then opens the same slot
  *               in the editor (particle preview on).
  */
@@ -186,6 +191,19 @@ export const CASES = {
     Object.assign(L, { subtitle: noText(), version: noText(), waterLevel: noText() });
     L.tiles.push(noText()); // a 25th row (depth 24: "Row count 25 ≠ depth 24")
     L.heights.push(noText());
+    // LVL-18: values the load used to keep as they were (texture names, an NPC's name and portrait
+    // colour, house opts, environment text) — dropped at load, their defaults apply
+    L.legend.W = tile({ top: noText(), side: 'stone_wall', riser: noText(), walkable: true });
+    fill(L, 18, 18, 20, 20, 'W', null);
+    addObject(L, 'npc', 17, 9.5, { name: noText(), portraitColor: noText(), dialogue: ['My name could not be read, so I am a villager.'] });
+    addObject(L, 'house', 4, 14, { opts: { roof: noText(), wall: 'stone_wall' } });
+    Object.assign(L.environment, { backdrop: noText(), title: { title: noText(), prompt: 'Press any key' } });
+    // LVL-19: colour names three.js resolves through Object.prototype (they gave black): the lights
+    // take the default colour, the particles act as for an unknown name (white)
+    addObject(L, 'light', 12, 17, { color: 'constructor' });
+    addObject(L, 'light', 14.5, 17, { color: '__proto__' });
+    addObject(L, 'emitter', 20.5, 21.5, { preset: 'fireflies', size: [3, 2, 3], count: 12, params: { color: 'constructor', colorEnd: '__proto__' } });
+    addObject(L, 'emitter', 24.5, 21.5, { preset: 'fireflies', size: [3, 2, 3], count: 12, params: { colors: ['__proto__', 'constructor'] } });
     L.spawn = /** @type {any} */ ({ x: 16.5, z: 17.5, facing: 'constructor' });
     return L;
   },
@@ -216,7 +234,7 @@ export async function runCase(name, { autostart = true } = {}) {
   const level = await make();
   const slot = saveLocalLevel(`test-${name}`, level);
   const q = `level=local:${encodeURIComponent(slot)}${autostart ? '&autostart=1' : ''}`;
-  window.location.href = new URL(`../index.html?${q}`, window.location.href).href;
+  window.location.href = new URL(`../game.html?${q}`, window.location.href).href;
   return slot;
 }
 

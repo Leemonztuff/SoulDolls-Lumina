@@ -1,5 +1,5 @@
 [
-  { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.ready(90000)).then(() => window.__lumina.loadMs)" },
+  { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.ready(90000)).then(() => window.__luminati.loadMs)" },
   { "wait": 1500 },
   { "eval": "import('/sandbox/combat_fixture.js').then((m) => { m.use(m.cinderwatch); return m.tests.boss(); }).then((r) => JSON.stringify(r))" },
   { "shot": "01_boss_defeated" },

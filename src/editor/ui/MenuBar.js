@@ -10,6 +10,9 @@ import { ICONS } from '../icons.js';
  * @typedef {object} MenuCommand
  * @property {string|(() => string)} label
  * @property {string} [shortcut]
+ * @property {string[]} [aliases]   more keys that run it (`shortcutIndex`; the keyboard-shortcut
+ *   list shows them after `shortcut`, the menus only `shortcut`)
+ * @property {string} [keyLabel]    its name in the keyboard-shortcut list (default: `label`)
  * @property {string} [icon]
  * @property {() => any} run
  * @property {() => boolean} [enabled]

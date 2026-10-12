@@ -1,15 +1,27 @@
 import GUI from 'lil-gui';
+import { GEMS } from './art/palette.js';
+import { frameCanvas, FRAME_MARGIN } from './art/frames.js';
+import { place } from './layout/layout.js';
+import { currentScale } from './UiScale.js';
 import './ui.css';
+import './hud.css';
 
 /** @import * as THREE from 'three' */
 
 /**
  * Themed lil-gui debug panel with a small stats overlay (fps, frame ms, draw calls, triangles,
- * geometries, textures, programs) and a pixel-art fps graph. Hidden by default.
+ * geometries, textures, programs) and a pixel-art fps graph. Hidden by default. Both are drawn in
+ * the pixel UI's family (docs/specs/PIXEL_UI.md §5) and sized in whole art px (hud.css): a column
+ * 146 art px wide, 7 under the clock; the stats box an XS frame with gold corner gems, Jersey
+ * numbers and Tiny5 labels; lil-gui's rows, numbers and colour codes in Jersey 10 at the line
+ * role's size, its title in the name role, its folders as G's section headings. A developer tool:
+ * English only.
  */
 
 const GRAPH_W = 133;
 const GRAPH_H = 15;
+/** The stats box's height in art px (hud.css .lu-stats). */
+const STATS_H = 76;
 
 function fmt(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
@@ -21,7 +33,7 @@ function fmt(n) {
 export class DebugStats {
   constructor() {
     const el = document.createElement('div');
-    el.className = 'lu-stats lu-panel lu-panel--simple';
+    el.className = 'lu-stats';
     el.innerHTML = `
       <div class="lu-stats__head">
         <span class="lu-stats__fps">--</span><span class="lu-stats__unit">FPS</span>
@@ -61,6 +73,35 @@ export class DebugStats {
     this._history = new Float32Array(GRAPH_W);
     this._head = 0;
     this._last = -1;
+    /** The frame's size in art px last painted ('w×h'). */
+    this._frameKey = '';
+    /** @type {HTMLCanvasElement[]} */
+    this._frame = [];
+  }
+
+  /**
+   * Size the box to whole art px of its column and paint its XS frame for that size (on show and
+   * on a resize; a no-op while the size is the same).
+   */
+  layout() {
+    const el = this.element;
+    const col = /** @type {HTMLElement|null} */ (el.parentElement);
+    const sc = currentScale(el);
+    if (!col || !sc || !(col.clientWidth > 0)) return;
+    const w = Math.max(60, Math.floor(col.clientWidth / sc.cssPx));
+    const key = `${w}x${STATS_H}`;
+    if (key === this._frameKey) return;
+    this._frameKey = key;
+    el.style.width = `calc(var(--px) * ${w})`;
+    for (const c of this._frame) c.remove();
+    const { base, orn } = frameCanvas({ size: 'XS', corners: GEMS.gold(), cornerR: 2 }, w, STATS_H);
+    this._frame = [base, orn].filter(Boolean);
+    for (const c of this._frame) {
+      c.classList.add('px', 'g', c === base ? 'frame' : 'orn');
+      c.setAttribute('aria-hidden', 'true');
+      place(c, -FRAME_MARGIN, -FRAME_MARGIN, c.width, c.height);
+      el.insertBefore(c, el.firstChild);
+    }
   }
 
   /**
@@ -120,7 +161,7 @@ export class DebugStats {
     t.prog.nodeValue = fmt(this._prog ?? 0);
     t.worst.nodeValue = `${worst.toFixed(0)}ms`;
 
-    // pixel-art fps history graph
+    // pixel-art fps history graph (G's palette: gilt bars, ember below 50, ruby below 30)
     const ctx = this._ctx;
     ctx.clearRect(0, 0, GRAPH_W, GRAPH_H);
     ctx.fillStyle = 'rgba(232,207,138,0.16)';
@@ -130,9 +171,9 @@ export class DebugStats {
       const v = this._history[(this._head + i) % GRAPH_W];
       if (v <= 0) continue;
       const h = Math.max(1, Math.round((Math.min(v, 75) / 75) * GRAPH_H));
-      ctx.fillStyle = v >= 50 ? 'rgba(201,164,92,0.5)' : v >= 30 ? 'rgba(224,162,62,0.65)' : 'rgba(217,100,63,0.8)';
+      ctx.fillStyle = v >= 50 ? '#8c6a32' : v >= 30 ? '#c27e1a' : '#a8233a';
       ctx.fillRect(i, GRAPH_H - h, 1, h);
-      ctx.fillStyle = v >= 50 ? '#f4dea0' : '#ffd08a';
+      ctx.fillStyle = v >= 50 ? '#e8cf8a' : v >= 30 ? '#f08a3a' : '#f08a6a';
       ctx.fillRect(i, GRAPH_H - h, 1, 1);
     }
   }
@@ -144,7 +185,7 @@ export class DebugPanel {
    * @param {{ anchor?: HTMLElement|null, title?: string }} [opts] `anchor`: the panel is placed just
    *   below this element (e.g. the HUD clock) whenever it is shown.
    */
-  constructor(parent = document.body, { anchor = null, title = 'Lumina · Debug' } = {}) {
+  constructor(parent = document.body, { anchor = null, title = 'Luminati · Debug' } = {}) {
     const el = document.createElement('div');
     el.className = 'lu-debug is-hidden';
     parent.appendChild(el);
@@ -162,6 +203,7 @@ export class DebugPanel {
     this._visible = false;
     this._onResize = () => { if (this._visible) this._place(); };
     window.addEventListener('resize', this._onResize);
+    this.stats.layout();
   }
 
   get visible() { return this._visible; }
@@ -204,11 +246,13 @@ export class DebugPanel {
   }
 
   _place() {
+    this.stats.layout();
     const a = this._anchor;
     if (!a || !a.isConnected) return;
     const r = a.getBoundingClientRect();
     if (r.height <= 0) return;
     const pr = this._parent.getBoundingClientRect();
-    this.element.style.setProperty('--lu-debug-top', `${Math.round(r.bottom - pr.top + 16)}px`);
+    // 7 art px under the anchor (the clock), like G's minimap
+    this.element.style.setProperty('--lu-debug-top', `calc(${Math.round(r.bottom - pr.top)}px + var(--px) * 7)`);
   }
 }

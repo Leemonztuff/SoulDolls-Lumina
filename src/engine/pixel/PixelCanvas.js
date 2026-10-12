@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp, fbm2, bayer4 } from '../utils/math.js';
+import { ownValue, showValue } from '../utils/own.js';
 
 /**
  * PixelCanvas — a tiny RGBA pixel buffer with pixel-art drawing primitives.
@@ -8,8 +9,9 @@ import { clamp, fbm2, bayer4 } from '../utils/math.js';
  * UI icons) is drawn through this class, then converted to a THREE texture with
  * nearest-neighbour filtering via `toTexture()` / `makePixelTexture()`.
  *
- * Colors may be given as '#rgb', '#rrggbb', '#rrggbbaa', [r, g, b] / [r, g, b, a]
- * (0-255, alpha optional) or { r, g, b, a }. `null` / 'transparent' clears a pixel.
+ * Colors may be given as '#rgb', '#rrggbb', '#rrggbbaa', a 0xRRGGBB number, a CSS colour name,
+ * [r, g, b] / [r, g, b, a] (0-255, alpha optional) or { r, g, b, a }. `null` / 'transparent'
+ * clears a pixel (see `parseColor`).
  */
 
 // ---------------------------------------------------------------------------
@@ -19,19 +21,59 @@ import { clamp, fbm2, bayer4 } from '../utils/math.js';
 const _colorCache = new Map();
 const TRANSPARENT = Object.freeze([0, 0, 0, 0]);
 
-/** Parse any supported color form into an [r, g, b, a] array (0-255). Result must not be mutated. */
+const OPAQUE_BLACK = Object.freeze([0, 0, 0, 255]);
+/** Hex digits only, with or without a leading '#': parsed as hex (as before PROP-11). */
+const HEX_LIKE = /^#|^[0-9a-f]+$/i;
+/** Colour values parseColor has warned about (once each). */
+const _warnedColors = new Set();
+
+/**
+ * Parse any supported color form into an [r, g, b, a] array (0-255). Result must not be mutated.
+ * Accepts '#rgb' / '#rgba' / '#rrggbb' / '#rrggbbaa' (the '#' optional), a 0xRRGGBB number, a CSS
+ * colour name ('red', 'beige'; THREE.Color.NAMES), [r, g, b(, a)] and { r, g, b, a? }; null /
+ * 'transparent' is transparent. Anything else (an unknown name, a boolean …) is opaque black
+ * after a console warning, once per value.
+ * @param {*} c
+ * @returns {readonly number[]}
+ */
 export function parseColor(c) {
   if (c == null || c === 'transparent') return TRANSPARENT;
   if (Array.isArray(c)) return c.length === 4 ? c : [c[0], c[1], c[2], 255];
   if (typeof c === 'object') return [c.r, c.g, c.b, c.a ?? 255];
   let out = _colorCache.get(c);
   if (out) return out;
-  let h = c.trim().replace('#', '');
-  if (h.length === 3 || h.length === 4) h = [...h].map((ch) => ch + ch).join('');
-  const n = parseInt(h.slice(0, 6), 16);
-  out = Object.freeze([(n >> 16) & 255, (n >> 8) & 255, n & 255, h.length === 8 ? parseInt(h.slice(6, 8), 16) : 255]);
+  if (typeof c === 'number') {
+    const n = Number.isFinite(c) ? (c >>> 0) & 0xffffff : 0;
+    if (!Number.isFinite(c)) warnColor(c);
+    out = Object.freeze([(n >> 16) & 255, (n >> 8) & 255, n & 255, 255]);
+  } else if (typeof c !== 'string') {
+    warnColor(c);
+    return OPAQUE_BLACK;
+  } else {
+    let h = c.trim();
+    if (HEX_LIKE.test(h)) {
+      h = h.replace('#', '');
+      if (h.length === 3 || h.length === 4) h = [...h].map((ch) => ch + ch).join('');
+      const n = parseInt(h.slice(0, 6), 16);
+      out = Object.freeze([(n >> 16) & 255, (n >> 8) & 255, n & 255, h.length === 8 ? parseInt(h.slice(6, 8), 16) : 255]);
+    } else {
+      const named = ownValue(THREE.Color.NAMES, h.toLowerCase());
+      if (named !== undefined) out = Object.freeze([(named >> 16) & 255, (named >> 8) & 255, named & 255, 255]);
+      else {
+        warnColor(c);
+        out = OPAQUE_BLACK;
+      }
+    }
+  }
   _colorCache.set(c, out);
   return out;
+}
+
+/** parseColor's warning for a value it does not understand (once per value). */
+function warnColor(c) {
+  if (_warnedColors.has(c)) return;
+  _warnedColors.add(c);
+  console.warn(`[PixelCanvas] unknown colour ${typeof c === 'string' ? `"${c}"` : showValue(c)}; using black`);
 }
 
 /** Convert a color to '#rrggbb' (or '#rrggbbaa' when not opaque). */
@@ -344,8 +386,8 @@ export class PixelCanvas {
 
   /**
    * Fill with fbm noise quantised onto a color ramp, with optional ordered dithering
-   * between ramp steps. `period` (in noise cells) makes it seamless: pass
-   * scale = width / period for a tile that wraps.
+   * between ramp steps. The canvas spans `scale` noise cells; `period` (in noise cells) makes the
+   * noise repeat, so pass period = scale (an integer) for a tile that wraps seamlessly.
    * @param {Array} ramp colors dark → light
    * @param {{scale?:number, seed?:number, octaves?:number, period?:number, dither?:number, bias?:number, mask?:(x,y)=>boolean}} opts
    */

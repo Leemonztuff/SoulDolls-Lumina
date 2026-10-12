@@ -12,10 +12,7 @@
     "moduleResolution": "bundler",
     "lib": ["es2023", "dom", "dom.iterable"],
     "types": ["vite/client"],
-    "skipLibCheck": false,
-    // The root-absolute URLs the dev server serves ('/src/…', '/sandbox/…'), imported by the
-    // sandbox helpers that the harness loads into a page (sandbox/editor_perf.helpers.js).
-    "paths": { "/src/*": ["./src/*"], "/sandbox/*": ["./sandbox/*"] }
+    "skipLibCheck": false
   },
   "include": ["src/**/*.js", "src/**/*.d.ts", "sandbox/**/*.js"]
 }

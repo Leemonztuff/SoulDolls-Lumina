@@ -5,15 +5,17 @@ import { LightingSystem, DEFAULT_KEYFRAMES } from '../../engine/lighting/Lightin
 import { PostFX } from '../../engine/render/PostFX.js';
 import { Particles } from '../../engine/fx/Particles.js';
 import { GodRays } from '../../engine/fx/GodRays.js';
-import { objectBounds } from '../../engine/level/ObjectCatalog.js';
-import { computeCameraBounds, LevelObjectBuilder } from '../../engine/level/ObjectBuilder.js';
+import { objectBounds, critterYard } from '../../engine/level/ObjectCatalog.js';
+import { LevelObjectBuilder } from '../../engine/level/ObjectBuilder.js';
 import { clamp, DEG2RAD } from '../../engine/utils/math.js';
-import * as DEMO from '../../demo/config.js';
+import * as GAME from '../../game/config.js';
 import {
   weatherName, settledWeather, settledSnowCover, precipitationEmitter, precipitationIntensity, applyWeatherLighting,
   applyWeatherWind, applyWeatherGrade, applyOvercast, applyLampDayGlow, applyEmissiveDay, glassLevel, areaEmitterIntensity,
-} from '../../demo/WeatherLook.js';
-import { snowCover } from '../../demo/SnowCover.js';
+  NIGHT_DESATURATION, godRayHourLevel, nightWaterLevels,
+} from '../../game/WeatherLook.js';
+import { snowCover } from '../../game/SnowCover.js';
+import { DUST_BOX, godRayLayout, cameraFraming, shownWeather, backdropColor } from '../../game/LevelLook.js';
 import { EditorCamera } from './EditorCamera.js';
 import { LevelSurface, TerrainPicker } from './Picking.js';
 import { TerrainPreview } from './TerrainPreview.js';
@@ -27,6 +29,8 @@ import { SceneryPreview } from './SceneryPreview.js';
 import { FoliagePreview } from './FoliagePreview.js';
 import { LabelLayer, ensureStyles } from './Labels.js';
 import { dataColliders, levelStartTest, enemyScatterRect } from '../enemyGroups.js';
+import { storyHiddenIds } from '../story.js';
+import { reportToolError } from '../EditorState.js';
 
 /**
  * @import { MaterialProperties } from './types.js'
@@ -38,7 +42,7 @@ import { dataColliders, levelStartTest, enemyScatterRect } from '../enemyGroups.
  * @import { GroundSampler } from '../../engine/level/ObjectBuilder.js'
  * @import { EditorState } from '../EditorState.js'
  * @import { TextureLibrary } from '../../engine/pixel/Textures.js'
- * @import { Level, LevelObject, LevelEnvironment, TileRect } from '../../engine/level/types.js'
+ * @import { Level, LevelObject, LevelObjectOf, LevelEnvironment, TileRect } from '../../engine/level/types.js'
  * @import { SceneNode } from '../../engine/render/types.js'
  */
 
@@ -81,8 +85,8 @@ const PLACE_CELL = 4;
 const PLACE_OFF = 128;
 const PLACE_SPAN = 2 * PLACE_OFF + 1;
 /**
- * The level-data enemy start test (this view hidden, see enemyStartTest): props whose catalog
- * bounds lie within this many units of a group's scatter rect lend it their colliders (a
+ * The level-data enemy / critter start test (this view hidden, see enemyStartTest): props whose
+ * catalog bounds lie within this many units of a group's scatter rect lend it their colliders (a
  * collider may reach past the catalog bounds — a big rock's leaning boulder, a house's wall).
  */
 const PROP_REACH = 4;
@@ -100,8 +104,8 @@ const IDLE_MS = 250;
 const EDIT_FOG = 0.2;
 /** The preview's own grade (PostFX on): the weather's offsets add to it (WeatherLook.applyWeatherGrade). */
 const EDIT_GRADE = { exposure: 1.03, contrast: 1.04, saturation: 1.26, temperature: 0.04, vignette: 0.45, grain: 0.02, shadowsTint: [-0.04, 0.05, 0.15] };
-/** The game's 24 h palette: the engine keyframes with the demo's overrides (src/demo/config.js). */
-const KEYFRAMES = DEFAULT_KEYFRAMES.map((k) => ({ ...k, ...(DEMO.KEYFRAME_OVERRIDES?.[k.name] ?? {}) }));
+/** The game's 24 h palette: the engine keyframes with the game's overrides (src/game/config.js). */
+const KEYFRAMES = DEFAULT_KEYFRAMES.map((k) => ({ ...k, ...(GAME.KEYFRAME_OVERRIDES?.[k.name] ?? {}) }));
 const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 /** PointerEvent.button → PointerEvent.buttons bit. */
 const BUTTON_BIT = [1, 4, 2];
@@ -126,12 +130,12 @@ const _plane = new THREE.Plane();
 const nextTick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
- * Viewport3D — the level editor's live HD-2D 3D view (docs/contracts/LEVEL_EDITOR.md §6).
+ * Viewport3D — the level editor's live 2.5D diorama view (docs/contracts/LEVEL_EDITOR.md §6).
  *
  * Renders the level being edited with the real engine (TileMap terrain + water, every prop built
  * by LevelObjectBuilder, character / creature sprites, day-night lighting with the game's point-light
  * pool — the engine LightPool, fixed at 12 lights — sky, fog, the level's weather at its settled
- * look (src/demo/WeatherLook.js, shared with the game), optional PostFX HD-2D look and
+ * look (src/game/WeatherLook.js, shared with the game), optional PostFX 2.5D pixel-art look and
  * atmosphere) and keeps it in sync with
  * EditorState incrementally. Pointer input is translated into map coordinates (height-field
  * raycast + object / sprite / marker picking) and forwarded to the active tool; right / middle
@@ -140,7 +144,7 @@ const nextTick = () => new Promise((r) => setTimeout(r, 0));
  *
  * Camera: right-drag orbit · middle-drag or Shift+right-drag pan · wheel zoom toward the cursor ·
  * F / double-click focus · WASD/QE fly & turn while the right button is held · 'game' mode
- * (state.view.cameraMode) = HD-2D gameplay framing with Q/E rotation.
+ * (state.view.cameraMode) = diorama gameplay framing with Q/E rotation.
  */
 export class Viewport3D {
   /**
@@ -185,9 +189,9 @@ export class Viewport3D {
     this.root.appendChild(this.badge);
 
     // ---- camera + lighting
-    this.cam = new EditorCamera(camera, { game: DEMO.CAMERA ? { distance: DEMO.CAMERA.distance, pitch: DEMO.CAMERA.pitch, fov: DEMO.CAMERA.fov, minDistance: DEMO.CAMERA.minDistance, maxDistance: DEMO.CAMERA.maxDistance } : {} });
+    this.cam = new EditorCamera(camera, { game: GAME.CAMERA ? { distance: GAME.CAMERA.distance, pitch: GAME.CAMERA.pitch, fov: GAME.CAMERA.fov, minDistance: GAME.CAMERA.minDistance, maxDistance: GAME.CAMERA.maxDistance } : {} });
     this.lighting = new LightingSystem(this.engine, {
-      timeOfDay: state.view.timeOfDay ?? 14, shadowExtent: 26, sunPath: DEMO.SUN_PATH, moonPath: DEMO.MOON_PATH, keyframes: KEYFRAMES,
+      timeOfDay: state.view.timeOfDay ?? 14, shadowExtent: 26, sunPath: GAME.SUN_PATH, moonPath: GAME.MOON_PATH, keyframes: KEYFRAMES,
     });
     this.lighting.sky.lowerClouds = 0.25;
     this.lighting.paused = true;
@@ -248,6 +252,10 @@ export class Viewport3D {
     /** The level's weather as last applied (WeatherLook name) and its settled state. */
     this._weatherName = null;
     this._weather = settledWeather('clear');
+    /** The level's backdrop as last read (`environment.backdrop`) and its colour (null: the sky). */
+    this._backdropKey = undefined;
+    /** @type {THREE.Color|null} */
+    this._backdrop = null;
 
     /** Live statistics. */
     this.stats = {
@@ -873,6 +881,24 @@ export class Viewport3D {
     return this._dataStartTest(flier);
   }
 
+  /**
+   * Where a critter group's scattered animals may start (the game's `TileMap.isWalkable`: walkable
+   * tiles and bridge decks, clear of every prop's and villager's collider), in every layout, like
+   * `enemyStartTest`: while this view is shown and built, the exact test the 3D critters are
+   * placed with (`ActorPreview.critterTest`); while it is hidden — or before a new document's
+   * first build — the level-data walker test (`_dataStartTest(false)`: `isWalkablePoint` minus the
+   * villagers', chests', waystones' and nearby props' colliders). `lazy` as for enemyStartTest.
+   * Null once disposed (or when the shown view has no test yet).
+   * @param {{ lazy?: boolean }} [opts]
+   * @returns {((x: number, z: number) => boolean)|null}
+   */
+  critterStartTest({ lazy = false } = {}) {
+    if (this._disposed) return null;
+    if (this._placementReady && this.terrain.tileMap) return this.active ? this.actors.critterTest() : this._dataStartTest(false);
+    if (lazy && (this._initPending() || this.active) && !this._dataTestCached(false)) return null;
+    return this._dataStartTest(false);
+  }
+
   /** Is `_dataStartTest(flier)` cached for the current level and objects? */
   _dataTestCached(flier) {
     const c = this._dataTests;
@@ -900,8 +926,8 @@ export class Viewport3D {
   }
 
   /**
-   * The TileMap colliders of the props that can reach an enemy group's scatter rect (their
-   * catalog bounds within PROP_REACH of it). Each comes from this view's build of the object when
+   * The TileMap colliders of the props that can reach an enemy or critter group's scatter rect
+   * (their catalog bounds within PROP_REACH of it). Each comes from this view's build of the object when
    * that build matches the level, else from a build of the object made for its colliders alone
    * (the same LevelObjectBuilder, then freed; colliders do not depend on the ground), cached per
    * object until it changes.
@@ -911,8 +937,8 @@ export class Viewport3D {
   _propColliders(level) {
     const areas = [];
     for (const o of level.objects) {
-      if (o.type !== 'enemy') continue;
-      const r = enemyScatterRect(o);
+      if (o.type !== 'enemy' && o.type !== 'critters') continue;
+      const r = o.type === 'enemy' ? enemyScatterRect(o) : critterScatterRect(o);
       areas.push({ minX: r.minX - PROP_REACH, maxX: r.maxX + PROP_REACH, minZ: r.minZ - PROP_REACH, maxZ: r.maxZ + PROP_REACH });
     }
     const out = [];
@@ -1047,6 +1073,8 @@ export class Viewport3D {
       this._dirty.selection = true;
       this._dirty.tool = true;
     }
+    // the story preview (its values, the preview hour) decides which objects are there
+    this._applyStoryHidden();
     const postChanged = force || prev.postfx !== v.postfx;
     if (postChanged) this._setPostFX(!!v.postfx);
     if (force || prev.atmosphere !== v.atmosphere) this._setAtmosphere(!!v.atmosphere);
@@ -1058,12 +1086,27 @@ export class Viewport3D {
     this.root.classList.toggle('lvp3d-game', v.cameraMode === 'game');
   }
 
+  /**
+   * Hide the objects the story preview does not allow (src/editor/story.js; nothing while it is
+   * off): props and markers alike, also from picking.
+   */
+  _applyStoryHidden() {
+    const ids = storyHiddenIds(this.state);
+    const key = ids.size ? [...ids].sort().join('\u0000') : '';
+    if (key === (this._storyKey ?? '')) return;
+    this._storyKey = key;
+    this.props.setHiddenIds(ids);
+    this.actors.setHiddenIds(ids);
+    this._dirty.selection = true;
+    this._dirty.tool = true;
+  }
+
   /** Gameplay framing from the level (environment.camera distance / pitch) or the game defaults. */
   _syncGameCamera() {
-    const c = this.state.level.environment?.camera;
     const g = this.cam.game;
-    g.distance = Number.isFinite(c?.distance) ? c.distance : (DEMO.CAMERA?.distance ?? 30);
-    g.pitch = Number.isFinite(c?.pitch) ? c.pitch : (DEMO.CAMERA?.pitch ?? 32);
+    // (the game's framing — LevelLook.cameraFraming: distance 8–80, pitch 10–80°, the zoom range
+    // widened to include the level's distance)
+    Object.assign(g, cameraFraming(this.state.level.environment?.camera));
     // re-frame only when the level's camera tuning changed (other level settings edits keep
     // the user's game-camera zoom)
     const key = `${g.distance}|${g.pitch}`;
@@ -1134,6 +1177,8 @@ export class Viewport3D {
       }
       this._loadPending = false;
       this.actors.sync(level, { ids, terrainRect: actorRect, terrainChanged: terrainAll || force, isWalkable: this._walkable, isStandable: this._standable });
+      // (an edited `when` / `unless`, a new object: the story preview's hidden set may change)
+      this._applyStoryHidden();
       if (fresh) {
         this._placementReady = true;
         // (reported below whatever changed: a lazy start test answered null until now; the
@@ -1402,6 +1447,8 @@ export class Viewport3D {
     // lighting: fixed time, editing fog scaled with the view distance, shadows sized to the view
     const L = this.lighting;
     applyWeatherLighting(L.settings, w);
+    // an interior's backdrop instead of the sky (the fog and the background its colour), as the game
+    L.settings.backdrop = this._syncBackdrop();
     const base = Math.max(1e-4, L.state.fogDensity);
     const fogScale = cam.mode === 'game' ? 0.55 : 1;
     // (the edit fog ignores the palette's density; the weather's haze only with the atmosphere)
@@ -1418,7 +1465,13 @@ export class Viewport3D {
     this._glassMaterial ??= this.props.builder.factory.glassMaterial();
     this._glassMaterial.color.setScalar(glassLevel(L.nightFactor, w.overcast));
     applyWeatherWind(w);
-    if (this.postfx) applyWeatherGrade(this.postfx.settings.grade, w, EDIT_GRADE.temperature, EDIT_GRADE.saturation);
+    if (this.postfx) {
+      const grade = this.postfx.settings.grade;
+      applyWeatherGrade(grade, w, EDIT_GRADE.temperature, EDIT_GRADE.saturation);
+      // nights read blue but not neon (the game's Weather.update)
+      grade.saturation -= NIGHT_DESATURATION * L.nightFactor;
+    }
+    this._calmWater(L.nightFactor);
     // point lights: the engine LightPool, as the game's World.update runs it (after the lighting
     // update and the camera): ranked around the camera focus, limited to what the camera sees,
     // crossfaded; its descriptor list is rebuilt after prop changes
@@ -1630,12 +1683,16 @@ export class Viewport3D {
   }
 
   /**
-   * The level's weather (`environment.weather`, unknown values = clear) as a settled WeatherLook
-   * state. A change (inspector, undo / redo, a loaded document) re-ranks the point lights afresh —
-   * the lamps a level starting in that weather gets in the game — without a crossfade.
+   * The level's weather (`environment.weather`, unknown values = clear; always clear in a room —
+   * `LevelLook.shownWeather`, as the game shows it: no rain, snow, snow cover or grey sky inside) as
+   * a settled WeatherLook state. A change (inspector, undo / redo, a loaded document, the room
+   * switch) re-ranks the point lights afresh — the lamps a level starting in that weather gets in
+   * the game — without a crossfade.
    */
   _syncWeather() {
-    const name = weatherName(this.state.level.environment?.weather);
+    /** @type {Partial<LevelEnvironment>} */
+    const env = this.state.level.environment ?? {};
+    const name = weatherName(shownWeather(env, env.weather));
     if (name !== this._weatherName) {
       const had = this._weatherName !== null;
       this._weatherName = name;
@@ -1643,6 +1700,25 @@ export class Viewport3D {
       if (had && this.terrain.tileMap) this.stats.lightDescriptors = this.props.refreshLights(this.state.level.objects, { snap: true, reset: true });
     }
     return this._weather;
+  }
+
+  /**
+   * The level's backdrop (`environment.backdrop`: 'void' or '#rrggbb', read by
+   * `LevelLook.backdropColor` as the game reads it) for `LightingSystem.settings.backdrop`: no sky,
+   * the fog and the background that colour; null (the sky) without one. Read again only when the
+   * value changes.
+   * @returns {THREE.Color|null}
+   */
+  _syncBackdrop() {
+    /** @type {Partial<LevelEnvironment>} */
+    const env = this.state.level.environment ?? {};
+    const key = env.backdrop;
+    if (key !== this._backdropKey) {
+      this._backdropKey = key;
+      const hex = backdropColor(env);
+      this._backdrop = hex ? new THREE.Color(hex) : null;
+    }
+    return this._backdrop;
   }
 
   /**
@@ -1657,7 +1733,8 @@ export class Viewport3D {
     if (!atmo) return;
     const set = (em, v) => { if (em && v !== null && em.intensity !== v) em.intensity = v; };
     if (this.godRays) {
-      this.godRays.intensity = w.rays;
+      // (strongest around golden hour, as in the game: Weather.update)
+      this.godRays.intensity = w.rays * godRayHourLevel(this.lighting.timeOfDay);
       // (shafts at intensity 0 add nothing: no draw calls for them in the rain)
       this.godRays.object.visible = w.rays > 0;
     }
@@ -1666,8 +1743,28 @@ export class Viewport3D {
       set(pe.rain, precipitationIntensity(w.rain));
       set(pe.snow, precipitationIntensity(w.snow));
     }
-    set(this._dust, areaEmitterIntensity('dust', w));
-    for (const e of this.actors.entries.values()) if (e.particle) set(e.particle, areaEmitterIntensity(e.particle.preset, w));
+    const night = this.lighting.nightFactor;
+    set(this._dust, areaEmitterIntensity('dust', w, undefined, night));
+    for (const e of this.actors.entries.values()) if (e.particle) set(e.particle, areaEmitterIntensity(e.particle.preset, w, undefined, night));
+  }
+
+  /**
+   * The water calmer at night, as the game's Weather.update does it (WeatherLook.nightWaterLevels):
+   * the level's brightness and glint, read from each new Water the terrain builds, scaled by the
+   * night factor.
+   * @param {number} night
+   */
+  _calmWater(night) {
+    const water = this.terrain?.water ?? null;
+    if (water !== (this._waterBase?.water ?? null)) {
+      const u = water?.uniforms;
+      this._waterBase = u ? { water, brightness: u.uBrightness.value, glint: u.uGlint.value } : null;
+    }
+    const b = this._waterBase;
+    if (!b) return;
+    const k = nightWaterLevels(night);
+    b.water.uniforms.uBrightness.value = b.brightness * k.brightness;
+    b.water.uniforms.uGlint.value = b.glint * k.glint;
   }
 
   /** The active precipitation `{ preset, emitter }` (null in clear weather or with the atmosphere off). */
@@ -1710,7 +1807,7 @@ export class Viewport3D {
     const env = this.state.level.environment ?? {};
     const f = this.cam.focus;
     if (env.dust !== false && !this._dust) {
-      this._dust = this.particles.createEmitter({ preset: 'dust', bounds: { center: new THREE.Vector3(f.x, f.y + 2.4, f.z), size: new THREE.Vector3(22, 4.5, 18) }, count: 120 });
+      this._dust = this.particles.createEmitter({ preset: 'dust', bounds: { center: new THREE.Vector3(f.x, f.y + 2.4, f.z), size: new THREE.Vector3(DUST_BOX.x, DUST_BOX.y, DUST_BOX.z) }, count: 120 });
     } else if (env.dust === false && this._dust) {
       this._dust.dispose();
       this._dust = null;
@@ -1718,7 +1815,7 @@ export class Viewport3D {
     // god rays in every weather, as in the game (rain fades them to 0, snow to a quarter — see
     // _updateWeatherAtmosphere). Rebuilt only when their layout changes, so a weather edit (or any
     // other environment edit) leaves the shafts — and their program — alone.
-    const layout = this._godRayLayout(env);
+    const layout = godRayLayout(env, this.state.level, this.terrain.tileMap ?? null);
     const key = JSON.stringify(layout);
     if (key === this._godRayKey) return;
     this._godRayKey = key;
@@ -1729,46 +1826,6 @@ export class Viewport3D {
     // disposing first would free it and the next frame would compile it again
     if (g.shafts.length > old.length) this._warmWeatherFx([g.object]);
     for (const s of old) s.dispose();
-  }
-
-  /**
-   * The god-ray shafts a level gets, by the game's rules (World.js): the level's
-   * `environment.godRayAreas`, else one area over the walkable ground; none with `godRays: false`.
-   * @returns {{ bounds: { minX: number, maxX: number, minZ: number, maxZ: number, y: number }, count: number, seed: number }[]}
-   */
-  _godRayLayout(env) {
-    const out = [];
-    if (env.godRays === false) return out;
-    const areas = Array.isArray(env.godRayAreas) && env.godRayAreas.length ? env.godRayAreas : [this._autoGodRayArea()];
-    for (const a of areas) {
-      if (!a || typeof a !== 'object') continue;
-      const count = Math.min(12, Math.max(0, Math.round(a.count ?? 3)));
-      if (!count || !(a.maxX > a.minX) || !(a.maxZ > a.minZ)) continue;
-      out.push({
-        bounds: { minX: a.minX, maxX: a.maxX, minZ: a.minZ, maxZ: a.maxZ, y: Number.isFinite(a.y) ? a.y : 0 },
-        count,
-        seed: Number.isFinite(a.seed) ? a.seed : 7,
-      });
-    }
-    return out;
-  }
-
-  /** God-ray area for levels without `environment.godRayAreas` (World._autoGodRayArea). */
-  _autoGodRayArea() {
-    const level = this.state.level;
-    const r = computeCameraBounds(level, 1);
-    const hist = new Map();
-    const tm = this.terrain.tileMap;
-    tm?.forEachTile((i, j, t) => {
-      if (!t.walkable || t.water) return;
-      const k = Math.round(t.h * 2);
-      hist.set(k, (hist.get(k) ?? 0) + 1);
-    });
-    let y = 0;
-    let best = -1;
-    for (const [k, n] of hist) if (n > best) { best = n; y = k / 2; }
-    const area = Math.max(1, (r.maxX - r.minX) * (r.maxZ - r.minZ));
-    return { ...r, y, count: Math.max(1, Math.min(6, Math.round(area / 90))), seed: 7 };
   }
 
   // ===========================================================================================
@@ -1838,14 +1895,18 @@ export class Viewport3D {
     return ev;
   }
 
-  /** Call a tool method (default: the active tool), isolating tool failures. */
+  /**
+   * Call a tool method (default: the active tool), isolating tool failures: an exception takes the
+   * 2D map's path (`reportToolError`: logged, the open transaction committed, "Tool error: …" in
+   * the status bar).
+   */
   _callTool(method, ev, tool = this.tool) {
     const fn = tool?.[method];
     if (typeof fn !== 'function') return;
     try {
       fn.call(tool, ev, this.state);
     } catch (err) {
-      console.error(`[Viewport3D] tool "${tool.id ?? this.state.toolId}" ${method} failed:`, err);
+      reportToolError(this.state, err, `[Viewport3D] (${tool.id ?? this.state.toolId}.${method})`);
     }
   }
 
@@ -2150,10 +2211,10 @@ export class Viewport3D {
  * Tag every WebGL object with the context generation it was created in and make the delete calls
  * skip objects of an earlier (lost) generation. Returns a function starting the next generation
  * (call it when the context is lost).
- * @param {(WebGLRenderingContext|WebGL2RenderingContext) & { __luminaGuard?: boolean }} gl
+ * @param {(WebGLRenderingContext|WebGL2RenderingContext) & { __luminatiGuard?: boolean }} gl
  */
 function guardContextObjects(gl) {
-  if (!gl || gl.__luminaGuard) return () => {};
+  if (!gl || gl.__luminatiGuard) return () => {};
   let gen = 0;
   const kinds = ['Buffer', 'Texture', 'Framebuffer', 'Renderbuffer', 'Program', 'Shader', 'VertexArray', 'Query', 'Sampler', 'TransformFeedback'];
   for (const k of kinds) {
@@ -2162,16 +2223,30 @@ function guardContextObjects(gl) {
     if (typeof create !== 'function' || typeof del !== 'function') continue;
     gl[`create${k}`] = function createTagged(...a) {
       const o = create.apply(gl, a);
-      if (o) o.__luminaGen = gen;
+      if (o) o.__luminatiGen = gen;
       return o;
     };
     gl[`delete${k}`] = function deleteCurrent(o) {
-      if (o && o.__luminaGen !== undefined && o.__luminaGen !== gen) return undefined;
+      if (o && o.__luminatiGen !== undefined && o.__luminatiGen !== gen) return undefined;
       return del.call(gl, o);
     };
   }
-  gl.__luminaGuard = true;
+  gl.__luminatiGuard = true;
   return () => { gen++; };
+}
+
+/**
+ * The rect a critter group scatters its animals over (`critterStartPoints`): its yard
+ * (`critterYard`), else the square of its roam radius.
+ * @param {LevelObjectOf<'critters'>} o
+ */
+function critterScatterRect(o) {
+  const yard = critterYard(o);
+  if (yard) return yard;
+  const x = Number(o.x) || 0;
+  const z = Number(o.z) || 0;
+  const R = Math.max(0.3, Number(o.radius) || 2.5);
+  return { minX: x - R, maxX: x + R, minZ: z - R, maxZ: z + R };
 }
 
 function unionRect(a, b) {

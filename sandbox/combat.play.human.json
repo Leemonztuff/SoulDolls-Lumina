@@ -1,5 +1,5 @@
 [
-  {"goto": "index.html?level=cinderwatch-pass&autostart=1&fixedstep=1"},
+  {"goto": "game.html?level=cinderwatch-pass&autostart=1&fixedstep=1"},
   {"eval": "import('/sandbox/combat_play.js').then((m) => m.start({ renderEvery: 4, skill: 'human' }))"},
   {"shot": "p00_start"},
   {"eval": "import('/sandbox/combat_play.js').then((m) => m.until(120000))"},

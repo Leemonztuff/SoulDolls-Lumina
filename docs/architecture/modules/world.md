@@ -4,7 +4,7 @@
 >
 > **Audience:** Engine developers and AI agents who add tile features, props or water behaviour, or who tune draw calls. Also integrators who wire prop results into a scene.
 >
-> **Source of truth:** [`TileMap.js`](../../../src/engine/world/TileMap.js), [`Water.js`](../../../src/engine/world/Water.js), [`WaterShore.js`](../../../src/engine/world/WaterShore.js), [`shoreWorker.js`](../../../src/engine/world/shoreWorker.js), [`Props.js`](../../../src/engine/world/Props.js), [`props/*.js`](../../../src/engine/world/props/), [`SpatialSplit.js`](../../../src/engine/world/SpatialSplit.js) and [`ShadowCasters.js`](../../../src/engine/world/ShadowCasters.js). Game wiring: [`src/demo/World.js`](../../../src/demo/World.js). If this page and the code disagree, the code is right.
+> **Source of truth:** [`TileMap.js`](../../../src/engine/world/TileMap.js), [`Water.js`](../../../src/engine/world/Water.js), [`WaterShore.js`](../../../src/engine/world/WaterShore.js), [`shoreWorker.js`](../../../src/engine/world/shoreWorker.js), [`Props.js`](../../../src/engine/world/Props.js), [`props/*.js`](../../../src/engine/world/props/), [`SpatialSplit.js`](../../../src/engine/world/SpatialSplit.js) and [`ShadowCasters.js`](../../../src/engine/world/ShadowCasters.js). Game wiring: [`src/game/World.js`](../../../src/game/World.js). If this page and the code disagree, the code is right.
 >
 > **Related:** [Module index](README.md) · [pixel (TextureLibrary)](pixel.md) · [lighting](lighting.md) · [level (format → TileMap input, `ObjectBuilder`)](level.md) · [fx (Particles for emitter descriptors)](fx.md) · [Level format spec](../../specs/LEVEL_FORMAT.md) · [Object catalog](../../specs/OBJECT_CATALOG.md) · [Performance](../PERFORMANCE.md) · [Game architecture](../GAME.md) · [Editor architecture](../EDITOR.md) · binding contracts: [ARCHITECTURE.md §4.7](../../../ARCHITECTURE.md), [LEVEL_EDITOR.md §3, §5, §9](../../contracts/LEVEL_EDITOR.md) · builder notes: [MODULE_NOTES › terrain / props / scalability](../../contracts/MODULE_NOTES.md)
 
@@ -19,15 +19,15 @@
 | `TileMap.js` | `TileMap`, `ORGANIC_TOPS`, `GRASS_TOPS`, `FRINGE_RECEIVERS`, `FRINGE_PRIORITY`, `paintDecalMask` | Terrain geometry (tops, 4-step stairs, cliff faces, baked AO and tint, grass fringes, brims and skirts, merged per material and chunk). Also height, walkability and water queries, circle movement with sliding, colliders with a spatial grid, walk surfaces (bridge decks) and incremental rebuilds for the editor. |
 | `Water.js` | `Water`, `createWaterfall`, `waterfallDir` | One lit, fogged water mesh over every water tile, with a baked shore/depth/flow texture. Waterfalls with a foam pool and a mist emitter spec; the one facing → direction table every waterfall reader shares. |
 | `WaterShore.js` | `bakeShore` | The shore bake as a pure function of typed arrays (no three.js), so it runs on the main thread or in a worker. |
-| `shoreWorker.js` | (worker) | Runs `bakeShore` off the main thread for `Water.refreshAsync()`. (The editor has its own copy, [`src/editor/viewport3d/shoreWorker.js`](../../../src/editor/viewport3d/shoreWorker.js), for windowed re-bakes.) |
+| `shoreWorker.js` | (worker) | Runs `bakeShore` off the main thread for `Water.refreshAsync()` and `Water.rebakeShoreAsync()`. (The editor has its own copy, [`src/editor/viewport3d/shoreWorker.js`](../../../src/editor/viewport3d/shoreWorker.js), for windowed re-bakes.) |
 | `Props.js` | `PropFactory` | Procedural diorama props, each returning a `PropResult`. `mergeStatic` batches static meshes. |
 | `props/MeshBuilder.js` | `MeshBuilder`, `trs` | Low-poly geometry builder with world-space UVs at 16 px/unit, merged per material. |
 | `props/Wind.js` | `applyWind`, `createWindDepthMaterial` | Wind sway and camera/sun-facing foliage cards (shader patches). |
 | `props/Flame.js` | `createFlame`, `createFlameMaterial`, `createGlowMaterial` | Pixel flame billboards and additive glow cards. |
 | `props/PropTextures.js` | `PropTextureSet` | Prop textures not in the library: `birch`, `produce`, `sail`, `leaf_litter`, `ash`, `boulder`, `boulder_moss`. |
 | `props/House.js`, `Trees.js`, `LightProps.js`, `Structures.js`, `SmallProps.js`, `Details.js` | `build*` functions | One builder per prop family (called by `PropFactory`). |
-| `SpatialSplit.js` | `kdSplit`, `triangleCount`, `cullByBox` | Spatially compact batching and box culling for big levels. |
-| `ShadowCasters.js` | `buildShadowCasters`, `isProxyCaster`, `makeShadowOnly`, `isShadowFrustum` | Shadow-only proxy meshes for big levels. |
+| `SpatialSplit.js` | `kdSplit` (+ `kdSplitSteps`, `sortByKey`), `triangleCount`, `cullByBox`, `groupByTag`, `taggedRanges`, `CollapsibleRanges` | Spatially compact batching and box culling for big levels; vertex ranges of merged batches hidden and shown per tag (the game's live story groups). |
+| `ShadowCasters.js` | `buildShadowCasters`, `isProxyCaster`, `makeShadowOnly`, `isShadowFrustum`, `primeShadowPrograms` | Shadow-only proxy meshes for big levels; the load-time priming of every depth program. |
 
 Only `TileMap` (and its constants and `paintDecalMask`), `Water`, `createWaterfall`, `PropFactory`, `MeshBuilder`, `trs`, `applyWind`, `createWindDepthMaterial`, the flame functions and `PropTextureSet` are re-exported from the barrel [`src/engine/index.js`](../../../src/engine/index.js). Import `SpatialSplit`, `ShadowCasters`, `WaterShore`, `waterfallDir` and the `props/*` builders by path. Everything here needs a browser in practice: `TextureLibrary` paints through a DOM canvas.
 
@@ -47,7 +47,7 @@ Only `TileMap` (and its constants and `paintDecalMask`), `Water`, `createWaterfa
   legend: { g: { top: 'grass', side: 'cliff', lip: 'grass_side', walkable: true }, … },
   tiles:   ['gggg..cc', …],          // one string per row (z), one char per tile (x)
   heights: ['11112222', …],          // '0'-'9' → 0-9, 'a'-'z' → 10-35 ('A'-'Z' also accepted)
-  waterLevel: 0.35,                  // global water surface (world Y); default 0.35
+  waterLevel: 0.4,                   // global water surface (world Y); default 0.4 (as a new level)
 }
 ```
 
@@ -84,7 +84,7 @@ new TileMap(map, { textures, seed, baseDepth, chunkSize, uvVariation, fringes, o
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `textures` | **required** | `TextureLibrary`. It throws without one. |
-| `seed` | `hashString(map.name ?? 'lumina-map')` | Seeds the tint noise, the organic variation and the decal mask. |
+| `seed` | `hashString(map.name)`; a nameless map takes `NAMELESS_MAP_SEED`, a numeric constant (the value it has always had) | Seeds the tint noise, the organic variation and the decal mask. |
 | `baseDepth` | `2` | How far below the lowest tile the diorama edge faces extend (`baseY = minHeight − baseDepth`). |
 | `chunkSize` | `32` | Tiles per merged-mesh chunk, per material. The game uses **64** on levels ≤ 64 tiles (one chunk) and 32 on big levels. The editor uses **16** (`EDIT_CHUNK_SIZE`). |
 | `uvVariation` | `true` | Random quarter-turns and mirrors of organic tops, done in the shader per about 1-unit cell. |
@@ -101,7 +101,7 @@ new TileMap(map, { textures, seed, baseDepth, chunkSize, uvVariation, fringes, o
 | `width`, `depth` | Size in tiles. |
 | `bounds` | `{ minX: 0, maxX: width, minZ: 0, maxZ: depth }`. |
 | `baseY`, `minHeight`, `maxHeight` | Bottom of the edge faces, and the lowest and highest surface (stairs count +0.5). |
-| `waterLevel` | Global water level (`map.waterLevel ?? 0.35`). |
+| `waterLevel` | Global water level (`map.waterLevel ?? 0.4`, the default of a new level and of `normalizeLevel`). |
 | `colliders`, `walkSurfaces` | Live arrays, tested in order. |
 | `tileAt(i, j)` | Tile record `{ char, type, level, h, walkable, i, j, water, stairs, blocked, waterSurface, waterSource }`, or `null` for void or out of bounds. **Shared, do not mutate.** |
 | `worldToTile(x, z, out?)` | `{ i: floor(x), j: floor(z) }`. |
@@ -120,6 +120,7 @@ new TileMap(map, { textures, seed, baseDepth, chunkSize, uvVariation, fringes, o
 | `wallBounce` | Get/set, see the options. |
 | `stats` | `{ meshes, triangles, vertices, materials }`. |
 | `rebuildRect`, `updateTiles`, `rebuildChunks`, `rebuildChunkSteps`, `consolidateChunks` | Incremental rebuilds and batching (§2.6). |
+| `* buildSteps()` | The terrain meshes as a step generator ([`src/engine/utils/steps.js`](../../../src/engine/utils/steps.js)): a step per tile emitted, per tile's fringes and per mesh made, in the order of a whole build. The constructor runs it at once; with the option `deferBuild: true` it makes no meshes (every query answers at once) and the caller runs `buildSteps()` to its end, once (`buildLevelTerrainSteps`: a campaign's next level built ahead in time slices, KNOWN_ISSUES CMP-01). |
 | `dispose()` | Frees geometries, TileMap-owned materials and the decal mask. It **never** touches `TextureLibrary` textures. |
 
 ### 2.4 Movement and colliders
@@ -132,7 +133,7 @@ new TileMap(map, { textures, seed, baseDepth, chunkSize, uvVariation, fringes, o
 
 **Collider grid** (added for 128×128 levels). With 16 or more colliders, colliders are binned by their AABB into 2-unit cells covering the map plus a 16-unit margin; below 16 every query is a linear scan. The grid is rebuilt lazily after `addCollider` / `removeCollider`, a change of the array's length, or `collidersChanged()`. Colliders marked `dynamic: true`, non-finite ones, those reaching outside the grid, and those covering more than 256 cells go to an always-tested list. The grid visits exactly the colliders, in the same order, that the linear scan pushes against: 0 differences on 30,000 random moves. Those moves took 66 ms with the grid versus 1555 ms linear on the uniform stress level (Emberfall: 72 versus 296 ms).
 
-> Walking villagers (`src/demo/Npc.js`) add `{ type: 'circle', r: 0.34, dynamic: true }` and move it in place. Any collider you move in place must be `dynamic`, or you must call `collidersChanged()` afterwards.
+> Walking villagers (`src/game/Npc.js`) add `{ type: 'circle', r: 0.34, dynamic: true }` and move it in place. Any collider you move in place must be `dynamic`, or you must call `collidersChanged()` afterwards.
 
 ### 2.5 How the geometry is built
 
@@ -159,7 +160,7 @@ flowchart TB
   - organic variation (`ORGANIC_TOPS` with square repeats): a jittered, pixel-quantised cell field choosing a quarter-turn or mirror, sampled with `textureGrad`, with the normal-map sample rotated back;
   - decal shading from the mask.
 
-  The program cache keys are `lumina-tilemap[-var][-decal]`. Decals use `alphaTest 0.5`, `DoubleSide`, polygon offset −1/−2 and `renderOrder 1`.
+  The program cache keys are `luminati-tilemap[-var][-decal]`. Decals use `alphaTest 0.5`, `DoubleSide`, polygon offset −1/−2 and `renderOrder 1`.
 - **Meshes and chunks.** One mesh per (builder key, chunk). The key is `kind:texture`, where kind is `top | topX | side | brim | brimX | skirt | fringe | fringeX` (`X` = the legend has `uvVariation: false`; stair treads always use `top`). `mesh.name` is the key, `userData.kind` the kind **without** the `X` (`top`, `side`, `brim`, `skirt`, `fringe`) and `userData.chunk` the `"ci,cj"` chunk. A batch made by `consolidateChunks` has `userData.chunks` (the list) instead of `userData.chunk`.
 - **Shadows.** Every mesh receives shadows. **Tops and fringes do not cast** (they face the always-above-horizon sun, so the shadow pass would only draw culled back faces). Sides, brims and skirts cast. This saved about 10 shadow draw calls and 60k shadow triangles on Emberfall with identical shadows.
 
@@ -186,7 +187,7 @@ sequenceDiagram
 | `rebuildChunks(keys)` | new meshes | Re-bakes those chunks from the current data. A batch made by `consolidateChunks` that touches a dirty chunk is dissolved with all its chunks. |
 | `* rebuildChunkSteps(key)` | generator → meshes | The same for one chunk, yielding after every tile row. The old meshes stay until the last step. Do not rebuild the same chunk by other means while it runs. It only replaces meshes tagged with that one `userData.chunk`, so do not use it on a TileMap after `consolidateChunks` (use `rebuildChunks`). |
 | `rebuildRect(map, rect)` | chunk keys or `null` | `updateTiles(..., { rebase: false })` plus `rebuildChunks`. It returns `null` (and changes nothing) when `updateTiles` does, or when the terrain now dips below the built `baseY`. |
-| `consolidateChunks({ maxTriangles = 48000, maxExtent = Infinity, minTriangles = 0 })` | meshes removed | Big levels, after the build: the per-chunk meshes of each (name, material, castShadow, renderOrder) are merged into spatially compact batches (`kdSplit` over chunk centres). The game passes `48000 / 48 / 12000`. |
+| `consolidateChunks({ maxTriangles = 48000, maxExtent = Infinity, minTriangles = 0 })` | meshes removed | Big levels, after the build: the per-chunk meshes of each (name, material, castShadow, renderOrder) are merged into spatially compact batches (`kdSplit` over chunk centres). The game passes `48000 / 48 / 12000`. `* consolidateChunkSteps(opts)` is the same as a step generator (a step per batch merged). |
 
 Once every returned chunk is rebuilt, the meshes equal a fresh `TileMap`. The editor's performance scripts (`sandbox/editor_perf.json`, `editor_perf.stress.json`) check this with `exactCheck()` from [`sandbox/editor_perf.helpers.js`](../../../sandbox/editor_perf.helpers.js), which compares a fingerprint of the 3D view (terrain meshes and the water shore bytes included) with a forced full rebuild.
 
@@ -214,7 +215,7 @@ scene.add(water.object);
 | `maxDistance` / `maxDepth` | `2` / `1.5` | Normalisation of the shore-distance and depth channels. |
 | `deferShore` | `false` | Skip the initial shore bake. The owner adds the colliders standing in water, then calls `refresh()` or `refreshAsync()` **before the first render**. |
 
-**Mesh and material.** Each water tile has a surface quad at its surface Y. Vertical "cross-section" faces are added where the water ends above lower ground, void, or lower water. The `ShaderMaterial` (`'Lumina:Water'`) has `fog: true`, `lights: true`, `transparent: true`, `depthWrite: true` (so DOF sees the surface), `renderOrder RENDER_ORDER.WATER` (10), `receiveShadow` and no cast. It references `uTime`, `uNight`, `uSunDirection`, `uSunColor` and `uFogColor` from `globalUniforms` directly. The shading has:
+**Mesh and material.** Each water tile has a surface quad at its surface Y. Vertical "cross-section" faces are added where the water ends above lower ground, void, or lower water. The `ShaderMaterial` (`'Luminati:Water'`) has `fog: true`, `lights: true`, `transparent: true`, `depthWrite: true` (so DOF sees the surface), `renderOrder RENDER_ORDER.WATER` (10), `receiveShadow` and no cast. It references `uTime`, `uNight`, `uSunDirection`, `uSunColor`, `uFogColor` and `uFogStart` (the game's fog start) from `globalUniforms` directly. The shading has:
 
 - depth bands from `PALETTE.water` with dithered edges and drifting deep patches;
 - flow-map-advected pixel ripple dashes (16 px/unit);
@@ -234,9 +235,10 @@ Live tweaks go through `water.uniforms`, for example `uGlint`, `uBrightness`, `u
 | `refreshAsync()` → Promise | The same bake in `shoreWorker.js`, byte-identical. It falls back to the main thread without workers or on error. The game uses it on big levels while trees and foliage build. |
 | `updateTiles()` → `{ flowChanged, hasWater }` | Re-reads the water tiles after `TileMap.updateTiles` and rebuilds the geometry in place, keeping the material (no recompile). The shore texture is left as it was (re-bake with `rebakeShore`, or `refresh()` when `flowChanged`). It throws if the TileMap size changed. |
 | `rebakeShore(rect, { expand = true })` | Re-bakes the texels of the tile rect, ± `shoreReach` tiles with `expand`. Byte-identical to a full bake there. |
+| `rebakeShoreAsync(rect, { expand = true })` → Promise | `rebakeShore` in a worker kept by the `Water` (`shoreWorker.js`; windows are answered in order): baked from the colliders as they are at the call, written a frame or so later, the same bytes. It takes the collider signature at once, so `update()` does not bake everything meanwhile; a `refresh()` before the answer drops it (the full bake is newer). Main thread without workers or on error. The game uses it on big levels for live story groups (`World.applyStory`). |
 | `rebuild(rect = null)` → hasWater | `updateTiles()` plus a re-bake: of `rect` (± `shoreReach`), or of the whole texture when `rect` is null or the flow scale changed. The result equals a new `Water` on the edited TileMap. |
 | `shoreInput(copy)`, `shoreJob(rect, { expand })`, `applyShore(job, bytes)` | The bake split into pieces so an editor can run it in a worker. `shoreReach = ceil(maxDistance) + 1` tiles. |
-| `dispose()` | Frees the geometry, material and texture and removes the mesh from its parent. |
+| `dispose()` | Frees the geometry, material and texture, ends the `rebakeShoreAsync` worker and removes the mesh from its parent. |
 
 ### 3.1 `createWaterfall`
 
@@ -248,7 +250,7 @@ for (const e of fall.emitters) particles.createEmitter(e);   // { preset: 'mist'
 
 `(x, z)` is the centre of the fall on the cliff edge line, and `facing` is the direction the water falls toward: `waterfallDir(facing)` gives `N` [0, −1], `S` [0, 1], `E` [1, 0], `W` [−1, 0], and for any other value (missing, misspelt, an `Object.prototype` name such as `'constructor'`) `S`. It returns one of four frozen, shared arrays (read them, never modify them); `buildWaterfall`, the game's spray anchors (`World._buildWaterfalls`) and the editor preview use it too, so they always agree. `top` and `bottom` are **water-surface** Y values, usually from `tileMap.getWaterSurface()`. The result is `{ object, sheet, pool, emitters, update, dispose }`.
 
-- The sheet is a curved profile (x ∝ √drop): 3 points reaching back `lip` units over the upper water, then 14 rows down the drop, across `max(2, ceil(width × 4))` columns. Without `seed`, one is derived from the position. Its material `'Lumina:Waterfall'` is lit, fogged, transparent and depth-writing, with `renderOrder WATER + 1`, and draws accelerating pixel streaks, lip and foot foam and HDR droplets.
+- The sheet is a curved profile (x ∝ √drop): 3 points reaching back `lip` units over the upper water, then 14 rows down the drop, across `max(2, ceil(width × 4))` columns. Without `seed`, one is derived from the position. Its material `'Luminati:Waterfall'` is lit, fogged, transparent and depth-writing, with `renderOrder WATER + 1`, and draws accelerating pixel streaks, lip and foot foam and HDR droplets.
 - The pool (optional) is a `(width + 1.1) × 1.25` churning foam decal, `renderOrder WATER + 2`.
 - `update` is a no-op kept for API symmetry: the animation runs on `uTime`.
 - The fall is axis-aligned only and makes no particles itself.
@@ -298,11 +300,11 @@ Flames, glows and foliage animate on the GPU from `globalUniforms` (`uTime`, `uC
 | `campfire(x, y, z, opts)` | `rotation` (random), `stones 10, logs 4, seat` (on unless `false`), `intensity 14, distance 10` | Circle r 0.95. Light `0xff8c3a`, flicker 0.5, day and night. Embers (`rate 6`) and smoke (`rate 2.5`). Interact r 1.6, id `'campfire'`. |
 | `fence(x0, z0, x1, z1, y, opts)` | `spacing 1.0, height 0.95, rails 2, endPosts true` | Box colliders along the run, split into short pieces on diagonal runs. |
 | `well(x, y, z, opts)` | `rotation 0, roof 'wood_planks'` (or any roof texture) | Circle r 0.94. Interact r 1.72, id `'well'`. |
-| `marketStall(x, y, z, opts)` | `cloth 'cloth_stripe', rotation 0, width 3, depth 1.6, display` (on unless `false`) | Box (+0.5 in front with the display). Interact 1.2 in front, r 1.3, id `'stall'`. |
+| `marketStall(x, y, z, opts)` | `cloth 'cloth_stripe', rotation 0, width 3, depth 1.6, display` (on unless `false`), `crates` (`left` / `right` / `none`; absent: by the seed) | Box (+0.5 in front with the display), and a box for the crates beside it. Interact 1.2 in front, r 1.3, id `'stall'`. |
 | `barrel(x, y, z, opts)` | `height 1.0, radius 0.4, lying, rotation` | Circle. |
 | `crate(x, y, z, opts)` | `size 0.9, rotation` | Box. |
-| `crateStack(x, y, z, opts)` | `count` crates on the ground (random 2–3) plus 1 on top (1–2 when `count ≥ 3`), `size 0.85, barrel` (60% chance), `rotation` | Box. |
-| `bridge(x0, z0, x1, z1, y, opts)` | `width 2, arch min(0.4, L × 0.05), postDepth 1.4, rails` (on unless `false`) | Rail box colliders along both sides, one per unit of length (added even with `rails: false`), and **`walkRects`**: one per half unit (`max(2, round(L / 0.5))`, or a single rect when `arch ≤ 0.02`), 0.1 narrower than the deck on each side, at deck height `y + arch·sin(πt)` taken at each rect's middle, and reaching 0.25 past each end. |
+| `crateStack(x, y, z, opts)` | `count` crates on the ground (random 2–3) plus 1 on top (1–2 when `count ≥ 3`), `size 0.85, barrel` (60% chance), `rotation` | Box over the crates (and the barrel's side when there is one). |
+| `bridge(x0, z0, x1, z1, y, opts)` | `width 2, arch min(0.4, L × 0.05), postDepth 1.4, rails` (on unless `false`) | Rail box colliders along both sides, one per unit of length (added even with `rails: false`, on purpose: the posts stay and nobody walks off a rail-less deck into the water), and **`walkRects`**: one per half unit (`max(2, round(L / 0.5))`, or a single rect when `arch ≤ 0.02`), 0.1 narrower than the deck on each side, at deck height `y + arch·sin(πt)` taken at each rect's middle, and reaching 0.25 past each end. |
 | `signpost(x, y, z, opts)` | `rotation, boards 2` | Circle r 0.22. Interact r 1.2, id `'signpost'`. |
 | `rock(x, y, z, opts)` | `size 1, flat` | Circle(s). A faceted granite boulder with moss on upward facets. |
 | `bench(x, y, z, opts)` | `rotation, length 1.8, back` | Box. Interact r 0.9, id `'bench'`. |
@@ -311,14 +313,33 @@ Flames, glows and foliage animate on the GPU from `globalUniforms` (`uTime`, `uC
 | `flowerbox(x, y, z, opts)` | `rotation, length 1.2, wall` | Box, or none with `wall: true`. |
 | `chest(x, y, z, opts)` | `rotation 0` (front = local +Z), `id, seed` | ~0.88 × 0.6 × 0.6 iron-banded plank chest with brass fittings and coins inside ([`props/CombatProps.js`](../../../src/engine/world/props/CombatProps.js)). Circle r 0.45. Interact 0.8 in front, r 1.2, id `opts.id ?? 'chest'`. The barrel-vault lid is a separate one-material group (`userData.dynamic`, `res.lid`) hinged at the back: **`controls.open(instant)`** swings it open over 0.4 s in `update(dt)` (eased, a little overshoot; `instant` skips the swing); `controls.opened`. No lights, no emissives. |
 | `waystone(x, y, z, opts)` | `id, seed` (not rotatable) | ~2.1 u tapered stone pillar on two octagonal steps with iron claws and a floating octahedral crystal (≈ 3 u to its tip), glowing runes on the four faces and an additive glow card (the flame glow shader, `createGlowMaterial`, `day 0.8`: it reads by day). Circle r 0.5. Interact at the stone, r 1.5, id `opts.id ?? 'waystone'`. The crystal and runes share a **per-instance** material (a clone of the library `plaster` material — same program — with its own colour and emissive), registered through `emissives` as `{ day: 0.9, night: 1.6 }`; **`controls.setAttuned(on)`** changes that material's `emissive` colour (`#3a8fb0` → `#7fe3ff`, `WAYSTONE_COLORS`) and the glow card's colour / intensity, never `emissiveIntensity` (the LightingSystem writes it every frame). `update(dt)` bobs and turns the crystal (`res.crystal`). The crystal and runes cast no shadow (`userData.castShadow = false`: they are unmerged). No light descriptors. |
+| `bed(x, y, z, opts)` | `width 1.2` (0.8–2.4; two pillows from 1.6), `length 2.2, blanket 'red'` (`BLANKETS`: red / blue / green / ochre / plum → `quilt_<colour>`), `rotation, seed` | Box (width + 0.1) × length. Head panel 1.2 at local −Z, mattress top 0.56. 4 draw calls. |
+| `table(x, y, z, opts)` | `shape 'rect' \| 'round', width 1.6` (round: the diameter, 1.2), `depth 0.9, cloth, items` (on unless `false`), `candle, rotation, seed` | Box width × depth (round: circle r width/2 + 0.02). Height 0.82. Seeded plates, pewter mugs, a jug, bread; `candle`: a flame (2 draw calls), no light. |
+| `chair(x, y, z, opts)` | `style 'chair' \| 'stool', rotation, seed` | Circle r 0.27 (stool 0.22). The back at local −Z. |
+| `shelf(x, y, z, opts)` | `kind 'books' \| 'pantry', width 1.6, height 2.2, rotation, seed` | Box width × 0.5. One 0.5-high compartment card of the `books` / `pantry` texture per shelf (seeded u offset). |
+| `hearth(x, y, z, opts)` | `width 2.2, height 2.6` (chimney breast top), `lit` (on unless `false`), `embers` (on unless `false`), `pot, intensity 10, distance 9, rotation, seed` | Box (width + 0.3) × 1.0 (local z −0.5…0.5; the body 0.7 deep on the wall, the hearthstone 0.3). Lit: light `0xff8a3a`, flicker 0.5, **day and night**, 0.35 in front of the firebox; `embers` material emissive `{ day 1.3, night 1.9 }` (emissive colour `#ff6a1e`); a flame (2 draw calls); embers emitter (`rate 3`). Unlit: `ash`, nothing else. |
+| `counter(x, y, z, opts)` | `style 'bar' \| 'shop', width 2.6, items` (on unless `false`), `rotation, seed` | Box width × 0.76 (z −0.35…0.41). Bar: mugs, bottles, a keg on a cradle (`barrelGeom`); shop: scales, a ledger, jars. |
+| `rug(x, y, z, opts)` | `color 'red'` (`RUGS`: red / blue / green), `width 2, length 3, fringe` (on unless `false`), `rotation, seed` | **No collider**, casts no shadow (its materials carry `userData.castShadow = false`). 0.025 high: field + border band + tassels. |
+| `staircase(x, y, z, opts)` | `dir 'up' \| 'down', width 1.2, steps 7, height 2.5` (up), `flip` (up: rises to local −X), `rail` (on unless `false`), `rotation, seed` | One box over the footprint: up steps × 0.4 by width + 0.04 (back on local −Z), down (width + 0.2) × (steps × 0.38 + 0.1). Not walkable: it marks a `use` exit (`staircaseFoot`, ObjectCatalog). |
+| `wardrobe(x, y, z, opts)` | `kind 'wardrobe' \| 'drawers', width 1.4` (drawers 1.2), `rotation, seed` | Box (width + 0.08) × 0.64 (drawers 0.54). |
+| `wallWindow(x, y, z, opts)` | `(x, y, z)` = the wall face at floor height, local +Z into the room; `panes 1` (1–3 casements, 1 wide), `sill 0.9, glow 'daylight' \| 'warm', curtains 'red' \| 'linen' \| 'none', beam` (on unless `false`), `flowers, rotation` | No collider, no light. Panes: `window_inside` with its own emissive colour per glow — daylight `{ day 1.15, night 0.03 }` (`#dcecff`), warm `{ day 0.95, night 1.1 }` (`#ffc070`); `beam`: a black, additive, depth-write-off `light_beam` material (emissive only, no shadow) `{ day 0.32 / 0.36, night 0 }` on two sheets from the opening to the floor and the lit patch — one more program (transparent) on a level that has one. |
+| `sacks(x, y, z, opts)` | `count 3` (1–4), `rotation, seed` | Box (min(count, 3) × 0.52 + 0.1) × 0.66. |
 | `dispose()` | | Frees factory-owned geometries, materials, depth materials, flame materials, per-instance materials still alive and `extra` textures. It never touches `TextureLibrary` textures. |
+
+The interior furniture (`bed` … `sacks`, [`props/Furniture.js`](../../../src/engine/world/props/Furniture.js),
+the catalog's `interior: true` types, [OBJECT_CATALOG.md § Interior](../../specs/OBJECT_CATALOG.md#interior))
+shares one convention: `(x, y, z)` is the footprint's centre on the floor (the wall window: the wall
+face), local +Z is the front and a wall piece's back is on local −Z. The footprints are mirrored by
+`interiorFootprint` in `ObjectCatalog.js` (picking, the 2D map, the level checks) and checked against
+the builders by `sandbox/props.html?mode=interior` (`__props.furnitureCheck()`). Their textures are
+the library's on-demand furniture set ([pixel.md](pixel.md)); a level without furniture paints none.
 
 Seeding: `factory.rng(kind, x, z, seed)` combines the factory seed, the prop kind, the position and `opts.seed`. The same level therefore produces the same props, and a new `opts.seed` gives a variation. The editor's Place tool rolls a new seed after each placement.
 
 ### 4.3 `mergeStatic`: batching props
 
 ```js
-const merged = factory.mergeStatic(results, { name, maxTriangles, maxExtent, minTriangles, shadowCasters });
+const merged = factory.mergeStatic(results, { name, maxTriangles, maxExtent, minTriangles, shadowCasters, tags });
 scene.add(merged.object);          // and keep every result.object in the scene too
 ```
 
@@ -327,7 +348,9 @@ This merges the static meshes of many props into one mesh per (material, castSha
 - **Left alone:** meshes with a `ShaderMaterial` (flames, glows), wind materials (`userData.wind`, meaning trunks and foliage), anything under an object flagged `userData.dynamic` (windmill sails, a chest's lid, a waystone's crystal and runes), multi-material meshes, mirrored transforms and meshes not created by this factory.
 - `maxTriangles` / `maxExtent` / `minTriangles` cut each material batch into compact pieces with `kdSplit` (big levels: 16 000 triangles / 64 units / 3 000).
 - `shadowCasters: { lights, maxTriangles?, maxExtent? }` draws the shadows of opaque, non-alpha-tested batches through `buildShadowCasters` proxies, and those batches stop casting.
-- It returns `{ object, meshes, dispose() }`. Call it once, after the props are placed at the root or under a common identity parent.
+- `* mergeStaticSteps(results, opts)` is `mergeStatic` as a step generator (a step per result gathered, per shadow proxy and per batch merged); `mergeStatic` runs it to its end.
+- `tags` (a `Map` from a result to any tag; the game's live story groups) changes no batch: the meshes of a tagged result are bucketed and split like any other. Within each batch, and each shadow proxy, the pieces of one tag are merged next to each other (`groupByTag`: the untagged ones first, in their order), and `ranges` reports where — one `TaggedRange` `{ tag, geometry, start, count, attributes: ['position'] }` per tag and batch (these materials place a vertex by its position alone) — for `CollapsibleRanges` ([§5](#5-spatialsplit-and-shadowcasters-big-level-batching)). Without tags (`null` or an empty map) nothing changes and `ranges` is `[]`.
+- It returns `{ object, meshes, ranges, dispose() }`. Call it once, after the props are placed at the root or under a common identity parent.
 
 ### 4.4 Helpers for custom props
 
@@ -340,6 +363,7 @@ This merges the static meshes of many props into one mesh per (material, castSha
 | `finish(b, name, x, y, z, rotation)` | Builds the merged meshes into a placed `Group` and tracks the geometries for disposal. |
 | `world(group, p)` | A local point as a world `Vector3` (the prop at the root). |
 | `boxCollider(group, minX, maxX, minZ, maxZ)`, `localRect(...)` | The world AABB of a local rectangle. |
+| `boxColliders(group, minX, maxX, minZ, maxZ, strip = 0.25)` | A local rectangle as colliders that follow it on a prop turned by other than a quarter turn: AABB strips ≤ `strip` wide along world X (≈ 0.18 u over the outline at 45°); otherwise `[boxCollider(…)]`. Houses use it (KNOWN_ISSUES PROP-15: a 45° house's door step lay inside its one AABB); `boxUnion(colliders)` (exported) is their AABB together (the game's and the editor's house footprints). |
 | `result(group, parts)` | Assembles a `PropResult` with defaults and `dispose()`. Pass `flames: [fl]` to have their materials freed, and `materials: [m]` for materials the prop owns alone (a per-instance clone, a glow card's `ShaderMaterial`): they are tracked by the factory and freed by the prop's `dispose()` or `factory.dispose()`. Neither key stays on the result. |
 | `flame(opts)` | `createFlame` with tracking. |
 | `windowMaterial()`, `glassMaterial()` | Library `window` and `lantern_glass` variants with `emissiveIntensity: 0`. |
@@ -363,17 +387,21 @@ This merges the static meshes of many props into one mesh per (material, castSha
 
 ## 5. `SpatialSplit` and `ShadowCasters` (big-level batching)
 
-The game uses these helpers when either side of a level exceeds 64 tiles (the static `World.isBigLevel(level)`). The budgets are the exported constant `BIG_LEVEL_BATCHING` in [`src/demo/World.js`](../../../src/demo/World.js), documented in [PERFORMANCE.md](../PERFORMANCE.md). The editor's 3D preview uses `buildShadowCasters` and `isProxyCaster` for its own big-level batching (`TerrainPreview`, `ObjectPreview`) and `makeShadowOnly` for sprite shadow quads on every level (`ActorPreview`).
+The game uses these helpers when either side of a level exceeds 64 tiles (the static `World.isBigLevel(level)`). The budgets are the exported constant `BIG_LEVEL_BATCHING` in [`src/game/World.js`](../../../src/game/World.js), documented in [PERFORMANCE.md](../PERFORMANCE.md). The editor's 3D preview uses `buildShadowCasters` and `isProxyCaster` for its own big-level batching (`TerrainPreview`, `ObjectPreview`) and `makeShadowOnly` for sprite shadow quads on every level (`ActorPreview`).
 
 | Function | Description |
 | --- | --- |
-| `kdSplit(items, { x, z, weight = () => 1, maxWeight = Infinity, maxExtent = Infinity, minWeight = 0 })` → `T[][]` | Deterministic k-d partition. A group heavier than `maxWeight`, or spanning more than `maxExtent` world units while heavier than `minWeight`, is halved at the weighted median along its longer axis, recursively. A single item heavier than `maxWeight` forms its own group. With no limits the result is one group with every item, in input order. |
+| `kdSplit(items, { x, z, weight = () => 1, maxWeight = Infinity, maxExtent = Infinity, minWeight = 0 })` → `T[][]` | Deterministic k-d partition. A group heavier than `maxWeight`, or spanning more than `maxExtent` world units while heavier than `minWeight`, is halved at the weighted median along its longer axis, recursively. A single item heavier than `maxWeight` forms its own group. With no limits the result is one group with every item, in input order. `* kdSplitSteps(items, opts)` is the same as a step generator (a step after the setup, per group halved and per group finished); each halving orders its items by (position, index) with `sortByKey(idx, key)` — a comparator-free quicksort over typed arrays, exactly `idx.slice().sort((a, b) => key[a] - key[b] \|\| a - b)` (NaN keys take that sort), ≈ 2× faster (a 29 000-tuft foliage field: one 25 ms step became steps of ≤ 4 ms). |
 | `triangleCount(geometry)` | Triangles of an indexed or non-indexed geometry. |
 | `cullByBox(mesh, { pad = 0, only = null })` | Frustum-culls a **static** mesh by its world bounding box instead of the bounding sphere, which stays "visible" far outside the tilted camera's view for flat, wide batches. `only(frustum)` restricts which frustums may draw it. The box is cached: the mesh must not move. |
-| `buildShadowCasters(pieces, { lights, maxTriangles = 64000, maxExtent = 48, name = 'shadowCasters' })` → `{ object, meshes, dispose }` | `pieces` are `{ geometry, side? }` in world space. It merges their positions and index only into shadow-only proxies, grouped by face side (and indexed or not) and split with `kdSplit`. Their material is a `MeshBasicMaterial` with `colorWrite: false, depthWrite: false`, and `cullByBox` with `only: isShadowFrustum` keeps them out of the colour pass. The input geometries are neither modified nor kept. |
+| `buildShadowCasters(pieces, { lights, maxTriangles = 64000, maxExtent = 48, name = 'shadowCasters' })` → `{ object, meshes, ranges, dispose }` (step generator: `* shadowCasterSteps`, a step per proxy) | `pieces` are `{ geometry, side?, tag? }` in world space. It merges their positions and index only into shadow-only proxies, grouped by face side (and indexed or not) and split with `kdSplit`. Their material is a `MeshBasicMaterial` with `colorWrite: false, depthWrite: false`, and `cullByBox` with `only: isShadowFrustum` keeps them out of the colour pass. The input geometries are neither modified nor kept. Tagged pieces are merged next to each other within each proxy (the split is the same) and reported in `ranges` (`position`); `[]` without tags. |
+| `groupByTag(items, tagOf)` → `T[]` | Stable reorder: the untagged items (`null` / `undefined`) first in their order, then each tag's, tags in order of first appearance. Without tags the same order. |
+| `taggedRanges(geometry, counts, tags, attributes)` → `TaggedRange[]` | The vertex ranges of a geometry merged from pieces of `counts[k]` vertices tagged `tags[k]` (`mergeGeometries` appends in order): consecutive pieces of one tag form one range. `attributes` lists what places a vertex (names the geometry lacks are dropped). |
+| `new CollapsibleRanges()` · `add(ranges)` · `setHidden(tag, hidden, { upload = true })` → vertices written · `isHidden(tag)` · `info(tag)` → `{ ranges, vertices }` · `clear()` | Hides and shows a tag's ranges without touching a mesh, material or draw call. `add` saves a copy of each range's values (a range of an already hidden tag is collapsed at once). Hiding writes every vertex of each range onto the range's first vertex in its `attributes`, so all its triangles are degenerate — in every pass that draws the geometry, the shadow pass included; showing copies the saved values back. Each write marks only the range for upload (`addUpdateRange` + `needsUpdate`); `upload: false` (a geometry not on the GPU yet) leaves the first upload to send the whole array. The collapsed point is one of the range's vertices, so the bounding sphere / box and a `cullByBox` box stay valid. Used by the game's `World.storyRanges` ([GAME.md §4.9](../GAME.md#49-live-story-groups-in-the-levels-batches)). |
 | `isProxyCaster(mesh)` | True for a casting, non-instanced, single-material mesh (not a `ShaderMaterial`) without a custom depth material, alpha-tested map, displacement, alpha-to-coverage or shadow clipping. |
 | `makeShadowOnly(mesh, lights)` | Lets any mesh render only in the shadow passes of `lights`. The game uses it for sprite shadow quads on big levels. |
 | `isShadowFrustum(lights, frustum)` | True when `frustum` is one of the lights' shadow frustums. |
+| `primeShadowPrograms(root, { lights })` → `{ object, count, dispose }` | Every level, not only big ones (KNOWN_ISSUES REN-13). `compileAsync` builds main-pass programs only; three.js builds a caster's **depth** program the first time a caster of its kind is drawn into the shadow map, i.e. when one first comes within the sun's shadow frustum. This groups the casters under `root` (skinned and batched meshes left out) by depth-program variant — the `customDepthMaterial` (per mesh material, as three.js copies map / alpha test / side into it), else the material itself when it gets its own depth material (map or alpha map with alpha test, displacement, alpha-to-coverage, shadow clipping), else the face side; plus the object kind (mesh, instanced with or without instance colours, points, lines) and the geometry's attribute names — and makes one proxy per variant: the caster with the smallest geometry, sharing its geometry, material(s) and custom depth material (an instanced caster as a one-instance copy), 1000 units below the world, drawn by the shadow pass of `lights` whatever the frustum and by no other pass. `count` is the number of proxies. Add `object` to the scene for the frames that draw the shadow map once, then `dispose()` (it frees only the proxies' own instance buffers): the programs stay, held by the real casters' depth materials. The game does this during its warm-up frames (`Game._primeShadows`, [GAME.md](../GAME.md)). |
 
 Shadow-only meshes rely on three.js r16x+ routing frustum culling through `Object3D.intersectsFrustum(frustum)`.
 
@@ -381,7 +409,7 @@ Shadow-only meshes rely on three.js r16x+ routing frustum culling through `Objec
 
 ## 6. How the game wires a level's world
 
-[`World.build`](../../../src/demo/World.js) (see [GAME.md](../GAME.md)) runs these steps:
+[`World.build`](../../../src/game/World.js) (see [GAME.md](../GAME.md)) runs these steps:
 
 ```mermaid
 flowchart TB
@@ -391,7 +419,7 @@ flowchart TB
   P --> Wire["colliders → addCollider · walkRects → addWalkSurface · emissives → registerEmissive (dedup) · lights → descriptor list · update → per frame"]
   Wire --> Shore["water.refreshAsync() (big) or refresh(): colliders in water now exist"]
   Wire --> Pool["LightPool(12) from the sorted descriptors"]
-  Wire --> M["factory.mergeStatic(results, big ? split + shadowCasters : {})"]
+  Wire --> M["factory.mergeStatic(results, big ? split + shadowCasters : {}) — live story props tagged"]
   M --> C["big: cullByBox on terrain, merged props, trees, foliage"]
 ```
 
@@ -401,7 +429,33 @@ examine text "The chest is locked tight." / "An old waystone hums quietly.") tha
 `object` and the prop's `controls` as `prop`; on a combat level the combat system rewrites the label
 and sets `onInteract` ([COMBAT.md §9.8](../../contracts/COMBAT.md#98-world-interactables-level-package-and-game_interact-combat-core)).
 
-Per frame, `World.update(dt, view)` runs the prop updaters (windmill, waterfalls, chest lids, waystone crystals), `water.update(dt)` and `lightPool.update(dt, view)` (`view` = `{ focus: rig.focusPoint, camera }` from the game). On big levels it also switches off (`Emitter.enabled`) the particle areas, waterfall mist and chimney smoke whose box is more than `BIG_LEVEL_BATCHING.particleCull` (34) units from the focus; the camera-following dust is never culled.
+An interactable's text stays the level's English, translated at display
+([I18N.md §4.8](../../specs/I18N.md), [GAME.md §4.3](../GAME.md#43-interactables-fires-and-falls)):
+its `text` is an `InteractText` — `speaker`, `lines`, `sfx?`, and `keys`: the text key the object
+holds for each page (`pageKeyOf(obj, 'text', i)` at the page's raw index, `''` where it holds none;
+a house's door reads the house's keys). `World.textPagesOf(obj)` pages a `text` field with
+ContentKeys.js `textPages` and returns `{ lines, keys }` (it replaced `textLines`: a blank entry is
+skipped and its index not reused, `null` no longer shows as "null"). `speakerDefault` /
+`linesDefault` name a code default standing in for blank data (`signpost`, `waystone`; `chest`,
+`waystoneText`), which the game shows as `t('game.default.<id>')`; the English strings beside them
+are the identities (an absent sign speaker is `'Signpost'`, an explicit `''` shows no plate). The
+keys come from the object itself, so a world built ahead or set aside needs nothing per file; an
+interactable another module adds carries its level `object`, whose keys the prompt reads
+(`promptLabel(it)`: `textKeyOf(it.object, 'label')`).
+
+On a level played with a story, the props that come and go with the story (live story groups:
+every prop type but the combat ones — houses, windmills, wells and waterfalls too — and the
+particle areas) are merged like the others: their results go to `mergeStatic` and `mergeTrees`
+with `tags` (result → group), and the returned `ranges` go to `World.storyRanges`, a
+`CollapsibleRanges` that collapses an absent group's vertices — in the batches and the shadow
+proxies — and restores them when it comes back
+([GAME.md §4.9](../GAME.md#49-live-story-groups-in-the-levels-batches)). What the merge leaves in
+a prop's own root (flames, a windmill's sails, a waterfall's sheet and foam pool from
+`createWaterfall`) is hidden with the root; the water a waterfall falls between, with its step
+face and shore, is terrain and stays. A level without story conditions passes no tags and builds
+exactly as before.
+
+Per frame, `World.update(dt, view)` runs the prop updaters (windmill, waterfalls, chest lids, waystone crystals; a live story prop's only while its group is there), `water.update(dt)` and `lightPool.update(dt, view)` (`view` = `{ focus: rig.focusPoint, camera }` from the game). On big levels it also switches off (`Emitter.enabled`) the particle areas, waterfall mist and chimney smoke whose box is more than `BIG_LEVEL_BATCHING.particleCull` (34) units from the focus (and keeps an absent story group's off); the camera-following dust is never culled.
 
 ---
 
@@ -413,7 +467,7 @@ Per frame, `World.update(dt, view)` runs the prop updaters (windmill, waterfalls
 | A new prop kind | Write a `buildX(f, x, y, z, opts)` in `props/`, add a `PropFactory` method (with an `opts` JSDoc that names every key the builder reads), then make it placeable: an `OBJECT_TYPES` entry in [ObjectCatalog](level.md#4-objectcatalogjs) plus a `case` in [`LevelObjectBuilder.build`](level.md#5-objectbuilderjs). The assertions at the end of [`world/types.d.ts`](../../../src/engine/world/types.d.ts) make `npm run typecheck` fail for a catalog prop type without a `PropFactory` method of its name, and for a catalog default `opts` key that a method with typed options does not declare (KNOWN_ISSUES PROP-10). |
 | Animated parts in a prop | Put them in a child group with `userData.dynamic = true` (so `mergeStatic` skips them) and return an `update(dt)`. |
 | Water look per level | Use the level's `water` object (`flow`, `reflect`, `neutral`, `glint`) or legend `flow`, `waterLevel` and `waterDepth`. |
-| Fewer draw calls | Tune `BIG_LEVEL_BATCHING` in `src/demo/World.js`. Keep small levels on the single-merge path (they must render identically). |
+| Fewer draw calls | Tune `BIG_LEVEL_BATCHING` in `src/game/World.js`. Keep small levels on the single-merge path (they must render identically). |
 
 ---
 
@@ -488,11 +542,12 @@ beacon.colliders.forEach((c) => tileMap.addCollider(c));
 6. **Don't reparent or move props after building.** World-space colliders, lights and walk rects would be wrong, and `cullByBox` boxes are cached.
 7. **`mergeStatic` changes disposal.** A merged prop's own `dispose()` no longer frees merged parts: dispose the merge handle or the factory.
 8. **Prop light budget.** Each house with a door lantern (two with `windowLights`), each lamppost, each torch and each campfire returns a light descriptor. (In levels, `LevelObjectBuilder` keeps a house's lights only when the object has `light: true`; see [level.md](level.md#52-levelobjectbuilder).) Route them through `LightPool` ([lighting.md](lighting.md#4-lightpool-sharing-12-lights)); never hand every descriptor to `addPointLight` on a big level.
-9. **Diagonal bridges and fences.** Walk rects and rail colliders are AABBs of rotated pieces, so on a diagonal bridge they slightly over-cover the water beside the deck (diagonal fences are split into 0.3-unit boxes). Axis-aligned runs are exact.
+9. **Diagonal bridges and fences.** On a bridge laid at a slant the deck's walk rects and the rail colliders are strips that follow it (`PropFactory.localRects` / `boxColliders`: 0.5-wide strips for the deck, 0.25 for the rails, since 2026-10-07, KNOWN_ISSUES PROP-02): the rails cover ≈ 0.18 u more than their outline, which keeps the outer ≈ 0.15 of the deck's width; what the deck strips cover beyond the deck lies inside the rails. Before, the AABBs of the rotated pieces let the rails take a third of the deck at 45°. Diagonal fences are split into 0.3-unit boxes. Axis-aligned runs are exact (one rect a piece, as before).
 10. **Stair entry.** A stairs tile joins level L to L + 1 only. The default `maxStep` lets players step onto it from the side where the heights meet.
 11. **Cliff textures look regular** (1×1-unit strata). `sideVariation` hides this but breaks joints, so it is off.
 12. **Canopy cards assume the default ~32° camera pitch** (fixed card tilt of about 23°) and read `uSunDirection` in the shadow pass. LightingSystem must be updating it (the props sandbox writes it by hand).
 13. **Torch glow meets the wall.** Viewed more than about 30° off the wall normal, a wall torch's glow card can show a faint vertical line where it meets the wall (about 5% intensity). A proper fix would need scene depth.
+14. **Collapsible ranges keep the merge's bounds.** A batch with `CollapsibleRanges` ranges (the game's live story groups) has its bounding sphere / box from the merge, covering every range. Never recompute them (or anything else derived from the positions) while a tag is hidden: they would shrink to what is shown and cull the group when it comes back. Restore every tag first, or compute from the saved values.
 
 ---
 
@@ -500,7 +555,7 @@ beacon.colliders.forEach((c) => tileMap.addCollider(c));
 
 | Page | What it shows | Hooks / scripts |
 | --- | --- | --- |
-| [`sandbox/terrain.html`](../../../sandbox/terrain.html) | Hand-made map with a plateau, cliffs, a river, a waterfall, two staircases, a pond and void corners, in raw three.js. `?view=overview\|hd2d\|cliffs\|waterfall\|edge\|pond\|terrace` (also `fringe`, `lip`), `&time=day\|golden\|night`. | `window.__terrain`: `setView`, `setTime`, `setCamera`, `runTests()`, `stats()`, `setClock(t)`. Scripts: `terrain.actions.json` (asserts + shots), `terrain.quick.json`, `terrain.detail.json`, `terrain.perf.json`. |
+| [`sandbox/terrain.html`](../../../sandbox/terrain.html) | Hand-made map with a plateau, cliffs, a river, a waterfall, two staircases, a pond and void corners, in raw three.js. `?view=overview\|diorama\|cliffs\|waterfall\|edge\|pond\|terrace` (also `fringe`, `lip`), `&time=day\|golden\|night`. | `window.__terrain`: `setView`, `setTime`, `setCamera`, `runTests()`, `stats()`, `setClock(t)`. Scripts: `terrain.actions.json` (asserts + shots), `terrain.quick.json`, `terrain.detail.json`, `terrain.perf.json`. |
 | [`sandbox/props.html`](../../../sandbox/props.html) | A 52-prop showcase lot. `?mode=gallery` (option coverage; its back row holds the combat props — a closed and an opened chest, an idle and an attuned waystone: `frame('gCombat')`, `frame('gChests')`), `?night=1`, `?merge=1` (mergeStatic), `?view=house\|trees\|market\|bridge\|windmill\|campfire\|well\|flames\|overview…`. | `window.__props`: `setNight`, `frame(view)`, `info()`, `check()`, `disposeTest()`. Scripts: `props.actions.json`, `props.gallery.json`, `props.flame.json`, `props.wind.json`, `props.merge.json`. |
 | [`sandbox/level_builder.html`](../../../sandbox/level_builder.html) | Every catalog type except `waterfall` and `region` placed on a 24×18 test level and built through `buildLevelTerrain` + `LevelObjectBuilder`, with one raw `THREE.PointLight` per light descriptor. | `window.__smoke` (build counts and times). |
 
@@ -514,7 +569,7 @@ npm run check -- --page=sandbox/props.html --query=merge=1 --out=props_merge --s
 
 ---
 
-## 11. History and decisions
+## 11. Design notes
 
 - **Organic UV variation moved to the shader.** Per-tile 90° geometry rotation of the 4×4-unit organic textures gave an obvious patchwork grid in screenshots. The shader version is a pure function of world position, so fringes and brims match exactly.
 - **Tops stopped casting shadows** (the shadow pass only drew their back faces): about 10 shadow draw calls fewer on Emberfall, with the same shadows.
@@ -523,4 +578,4 @@ npm run check -- --page=sandbox/props.html --query=merge=1 --out=props_merge --s
 - **Big levels (Starfall Vale).** A naive 32-tile chunking gave 459–818 draw calls. k-d batching, box culling and shadow proxies brought every measured spot to 300 or fewer, and the triangles drawn per view from 1.08–1.53 M to 0.81–1.17 M. The collider grid, a single shore bake in a worker and time-sliced prop building cut `World.build` on Starfall Vale from about 4.4–5.2 s to 3.1–3.6 s on a loaded machine. Small levels render identically: same draw calls, triangles and light parameters.
 - **Editor exactness.** The incremental API (`updateTiles`, `rebuildChunkSteps`, `Water.updateTiles`, windowed shore bakes) was built so that the editor preview equals a fresh build once it is idle.
 
-See [PROJECT_HISTORY.md](../../history/PROJECT_HISTORY.md) and [DECISIONS.md](../../history/DECISIONS.md).
+See the [architecture overview](../OVERVIEW.md) for the current module relationships.

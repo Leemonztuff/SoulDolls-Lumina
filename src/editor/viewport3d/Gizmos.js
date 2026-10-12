@@ -9,7 +9,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
  * thin grid lines, translucent fills, screen-sized handles and bracket boxes.
  */
 
-/** Overlay palette (Lumina navy / gold accents). */
+/** Overlay palette (Luminati navy / gold accents). */
 export const COLORS = Object.freeze({
   hover: '#8fe3ff',
   select: '#ffc94d',
@@ -20,6 +20,8 @@ export const COLORS = Object.freeze({
   line: '#ffd36b',
   rect: '#ffd36b',
   region: '#e3b35c',
+  exit: '#7fd6a8',
+  event: '#e8c25a',
   spawn: '#7fe3ff',
   critters: '#f0a060',
   gridMinor: '#ffffff',

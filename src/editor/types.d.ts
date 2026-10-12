@@ -25,13 +25,16 @@ export interface EditorChange {
 export interface EditorEvents {
   change: [info: EditorChange];
   selection: [ids: string[]];
+  /** After undo / redo / cancel: the ids of the restored selection that `selectionFilter` left out. */
+  selectionFiltered: [ids: string[]];
   history: [h: { canUndo: boolean; canRedo: boolean }];
   dirty: [dirty: boolean];
   tool: [id: string];
   toolOptions: [options: EditorState['toolOptions']];
   view: [view: EditorState['view']];
   hover: [hover: EditorState['hover']];
-  status: [message: string];
+  /** opts.stale: asked while the message shows; true drops it (`EditorState.notify`). */
+  status: [message: string, opts?: { stale?: () => boolean }];
   preview: [];
 }
 

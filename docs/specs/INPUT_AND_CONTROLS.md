@@ -12,11 +12,11 @@
 > **Source of truth.** [`src/engine/core/Input.js`](../../src/engine/core/Input.js)
 > (`DEFAULT_BINDINGS`, `DEFAULT_PAD_BINDINGS`, `GAMEPAD_BUTTON_CODES`, focus handling),
 > [`src/engine/core/CameraRig.js`](../../src/engine/core/CameraRig.js) (camera input),
-> [`src/demo/Game.js`](../../src/demo/Game.js) (`update`, `CONTROLS`, `toggleMap`,
-> `togglePhotoMode`, `_armAudioUnlock`), [`src/demo/Player.js`](../../src/demo/Player.js),
+> [`src/game/Game.js`](../../src/game/Game.js) (`update`, `CONTROLS`, `toggleMap`,
+> `togglePhotoMode`, `_armAudioUnlock`), [`src/game/Player.js`](../../src/game/Player.js),
 > [`src/engine/ui/DialogBox.js`](../../src/engine/ui/DialogBox.js),
 > [`src/engine/ui/TitleScreen.js`](../../src/engine/ui/TitleScreen.js),
-> [`src/demo/Weather.js`](../../src/demo/Weather.js) (time presets, weather cycle),
+> [`src/game/Weather.js`](../../src/game/Weather.js) (time presets, weather cycle),
 > [`src/editor/EditorApp.js`](../../src/editor/EditorApp.js) (`_buildCommands`, `_onKeyDown`,
 > `_shortcutGroups`), [`src/editor/tools/`](../../src/editor/tools/) (tool keys),
 > [`src/editor/viewport3d/Viewport3D.js`](../../src/editor/viewport3d/Viewport3D.js) and
@@ -126,11 +126,13 @@ different pad layout are added at runtime — see [§9](#9-combat-levels).
   stick's x rotates the camera (its y is unused on peaceful levels; combat levels zoom with it,
   [§9](#9-combat-levels)).
 - With a non-standard mapping only buttons 0–11 are read (the d-pad indices are meaningless there).
-- The title screen polls every pad itself: any newly pressed button dismisses it.
+- The title screen polls every pad itself: any newly pressed button dismisses it — except LB / RB
+  (buttons 4 / 5), which move to the language row, and, while that row has the focus, the d-pad
+  left / right, A (switch) and B (back).
 
 ## 4. What the game does with each action
 
-`Game.update` ([`Game.js`](../../src/demo/Game.js)) reads the actions every frame. Its behaviour
+`Game.update` ([`Game.js`](../../src/game/Game.js)) reads the actions every frame. Its behaviour
 depends on the mode (`loading` → `title` → `play`) and on what is open.
 
 ```mermaid
@@ -169,6 +171,14 @@ Details:
   F11 and F12; so does a click on it or any gamepad button. The dismissing key is stopped before it
   reaches gameplay input. Dismissing unlocks audio and (unless `environment.music` is `false`)
   starts the music.
+- **The title's language row** (added 2026-10-09; [I18N.md §1](I18N.md#1-choosing-the-language)):
+  **L** or pad **LB / RB** gives the row (EN · 日本語 · 中文, bottom right) the focus on the
+  current language — pressed again it moves on —; **← / →** choose; **Enter** / **Space** / pad
+  **A** switch (the game saves the choice and reloads the page); **Esc** / **Backspace** / pad
+  **B** (or any other key) go back without dismissing the title. A click on a language switches at
+  once. On a title with the row, L no longer starts the game. A campaign's Continue / New journey
+  menu takes only its own keys (↑ / ↓, ← / →, W / S, the d-pad, a confirm). The keys are handled by
+  `TitleScreen` itself (capture-phase listeners), not by Input actions.
 - **`?autostart`** skips the title. Audio is then unlocked by the first key press or click, which
   also starts the level's music — unless that first key is bound to `music` (M), which toggles it
   on in the same frame instead.
@@ -190,14 +200,14 @@ Details:
 - **Photo mode** (`togglePhotoMode`): not while talking, not with the map open. From the keyboard a
   toast "Photo mode · P or Esc to return" shows first and the UI hides 1.2 s later; the automation
   hook hides it at once. `help` still toggles the legend, but the whole UI is hidden.
-- **Time presets** (`TIME_PRESETS` in [`Weather.js`](../../src/demo/Weather.js)): Dawn 6.5 →
+- **Time presets** (`TIME_PRESETS` in [`Weather.js`](../../src/game/Weather.js)): Dawn 6.5 →
   Midday 12.5 → Golden Hour 17.2 → Dusk 18.9 → Night 22.5 → Dawn…; `T` glides forward to the next
   preset after the current hour over 2 s and shows its name.
 - **Weather**: `R` cycles clear → rain → snow → clear (blended over a few seconds) with a toast
   ("Clear skies", "Rain", "Snowfall").
 - **Music**: `M` toggles and toasts "♪ Music on" / "Music off".
 - **Debug panel**: a lil-gui panel with Time & Weather, Post FX, Lighting, Camera, Atmosphere and
-  Render folders ([`DebugControls.js`](../../src/demo/DebugControls.js)).
+  Render folders ([`DebugControls.js`](../../src/game/DebugControls.js)).
 - The on-screen controls legend lists: WASD Move, Shift Run, Space Talk / Examine, Q/E Rotate
   camera, Z/X Zoom (or wheel), N/Tab World map, T Time of day, R Weather, P Photo mode, M Music,
   \` Debug panel (`CONTROLS` in `Game.js`); H hides it.
@@ -241,7 +251,9 @@ are part of the engine contract.
 The editor ([`EditorApp.js`](../../src/editor/EditorApp.js)) uses `KeyboardEvent.key` combos
 (`Ctrl` also matches ⌘ on macOS). Mouse gestures (painting, box selection, handles, orbit / pan /
 zoom) are described in [../user/LEVEL_EDITOR_GUIDE.md](../user/LEVEL_EDITOR_GUIDE.md); Help ›
-Keyboard shortcuts (`?`) shows the same list in the app.
+Keyboard shortcuts (`?`) shows the same list in the app: its File / Edit / View / Help groups are
+generated from the command registry (`shortcut`, `aliases`, `keyLabel`), the tool keys from
+`TOOLS`, the rest (tool gestures, view controls) is written in `_shortcutGroups`.
 
 ### 7.1 Commands
 
@@ -268,11 +280,14 @@ Keyboard shortcuts (`?`) shows the same list in the app.
 | ] / [ | Bigger / smaller brush (1–9) | `view.brushBigger` / `view.brushSmaller` |
 | ? (Shift+/) | Keyboard shortcut list | `help.shortcuts` |
 
-Menu-only commands (no key): Open file from disk (`file.openFile`), Level settings
-(`level.settings`), Resize level (`level.resize`), Check for problems (`level.validate`), Open saved
+Menu-only commands (no key): Open file from disk (`file.openFile`), Find by text key… (Edit menu,
+`edit.findTextKey`), Level settings (`level.settings`), Resize level (`level.resize`), Check for
+problems (`level.validate`), Assign text keys (Level menu, `level.assignTextKeys`; see
+[I18N.md §4.10](I18N.md#410-keys-through-edits-the-editor-the-generators-the-tools)), Open saved
 level in the game (`level.openInGame`, only for a project-folder level), the View toggles
 (`view.textured2d`, `view.objects`, `view.markers`, `view.showAll` "Show all hidden types",
-`view.gameCamera`, `view.postfx`, `view.atmosphere`), Open the Emberfall demo (`help.game`), About
+`view.gameCamera`, `view.postfx`, `view.atmosphere`), Open the Emberfall demo (`help.game`:
+`game.html`), All campaigns and levels (`help.launcher`: the launcher, `index.html`), About
 (`help.about`). Scripts can run any
 command with `window.__editor.app.run('<id>')` ([AUTOMATION_API.md](AUTOMATION_API.md)).
 
@@ -291,7 +306,7 @@ command with `window.__editor.app.run('<id>')` ([AUTOMATION_API.md](AUTOMATION_A
 | I | Eyedropper | Click a tile: picks its tile and level, then returns to the previous terrain tool (Paint, Fill, Rectangle or Height; otherwise Paint). Click an object: picks its type and switches to Place. Shift: stay in the eyedropper |
 | X | Erase objects | — (click an object, or drag across several) |
 
-With a tool other than Select active, arrow keys still nudge the selection (0.5, Shift 2).
+With a tool other than Select active, arrow keys still nudge the selection (0.5, Shift 2, Alt 0.1).
 
 ### 7.3 View keys
 
@@ -301,7 +316,7 @@ With a tool other than Select active, arrow keys still nudge the selection (0.5,
 | Right button held + W A S D | 3D view | Fly (Shift: 2.5× faster) |
 | Right button held + Q / E | 3D view | Turn |
 | Q / E | 3D view in gameplay-camera mode (View › 3D: gameplay camera), pointer over the view | Rotate like the game camera |
-| F | anywhere (the `view.frameSelection` command) | Frame the selection in both views (the 3D view only frames it itself when no other handler took the key) |
+| F | anywhere (the `view.frameSelection` command) | Frame the selection in both views; with nothing selected (the command is disabled and leaves the key alone) the 3D view, pointer over it, focuses the point under the pointer |
 
 ## 8. Editor key dispatch and focus rules
 
@@ -318,13 +333,16 @@ With a tool other than Select active, arrow keys still nudge the selection (0.5,
    tool's keys and **Esc** work. Esc cancels the gesture and restores the level as it was.
    Commands are not run, so they cannot fold into the stroke's undo step.
 5. Ctrl+C / Ctrl+X / Ctrl+V go through the browser's copy / cut / paste events (the clipboard
-   carries `{ "format": "lumina-objects", "objects": [...] }` as text; pasting a whole
-   `lumina-level` JSON replaces the document after asking about unsaved changes).
+   carries `{ "format": "luminati-objects", "objects": [...] }` as text; pasting a whole
+   `luminati-level` JSON replaces the document after asking about unsaved changes).
 6. **Ctrl combos and F-keys** run their command first — except Ctrl+D, Ctrl+R and Ctrl+Shift+R,
    which the active tool may handle first (the Place tool rotates its ghost by 90°).
 7. The **active tool's** `keyDown` (Esc, R, Delete, arrows…).
-8. Any other **command** shortcut.
-9. A **tool letter** (V, B, G, U, H, T, O, P, I, X) switches tools; **arrows** nudge the selection.
+8. Any other **command** shortcut — when the command is enabled; a disabled one does nothing and
+   leaves a plain key to the views (F with nothing selected: the 3D view's focus), while a Ctrl
+   combo is still kept from the browser.
+9. A **tool letter** (V, B, G, U, H, T, O, P, I, X) switches tools; **arrows** nudge the selection
+   (0.5, Shift 2, Alt 0.1).
 
 The 3D view and the 2D map listen on `window` in the capture phase for their own keys: while the
 right button is held in the 3D view, W A S D Q E and Shift fly the camera and never reach the
@@ -338,7 +356,7 @@ Levels with combat ([COMBAT.md §3](../contracts/COMBAT.md#3-enabling-combat-per
 `enemy` object, or `environment.combat: true`) register extra bindings at load with
 `input.addBindings(COMBAT_BINDINGS, COMBAT_PAD_BINDINGS)`, report mouse buttons with
 `input.enableMouseButtons(canvas)` and set `rig.stickZoom = 14`
-([`src/demo/combat/bindings.js`](../../src/demo/combat/bindings.js), combat-core;
+([`src/game/combat/bindings.js`](../../src/game/combat/bindings.js), combat-core;
 engine side in [core.md §3.6](../architecture/modules/core.md#36-runtime-bindings-and-mouse-buttons-combat-levels-opt-in)).
 **Peaceful levels never do any of this:** there J, K, L, U, I, O, C, 1–4 and mouse clicks do
 nothing and are not `preventDefault`ed, pad X / Y keep zooming and RS keeps taking photos.

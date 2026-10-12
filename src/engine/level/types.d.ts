@@ -1,4 +1,4 @@
-// Types of the Lumina level document (`lumina-level` v1) for the type check (tsconfig.json).
+// Types of the Luminati level document (`luminati-level` v1) for the type check (tsconfig.json).
 // Types only: nothing here reaches a bundle. The format is specified in docs/specs/LEVEL_FORMAT.md
 // and the object types in docs/specs/OBJECT_CATALOG.md (binding contract:
 // docs/contracts/LEVEL_EDITOR.md §1–§2); where they and the code differ, these types follow the
@@ -84,8 +84,8 @@ export type DeepPartial<T> = {
  * (LEVEL_FORMAT.md §15) — read them with `level[key]`.
  */
 export interface Level {
-  /** Always 'lumina-level' (`LEVEL_FORMAT`); a file with another value throws on load. */
-  format: 'lumina-level';
+  /** Always 'luminati-level' (`LEVEL_FORMAT`); a file with another value throws on load. */
+  format: 'luminati-level';
   /** Written as 1 (`LEVEL_VERSION`); a file with a newer version loads with a warning. */
   version: number;
   /**
@@ -119,6 +119,28 @@ export interface Level {
   heights: string[];
   /** Every placed object, in file order (ranks equal-priority lights and overlapping regions). */
   objects: LevelObject[];
+  /**
+   * The content-text keys of the level's own texts (`subtitle`, `title.title` …: the
+   * `environment.title` overrides), GUIDs (docs/specs/I18N.md §4.2; ContentKeys.js). Absent when
+   * none; written after `objects`.
+   */
+  textKeys?: Partial<Record<'subtitle' | 'title.title' | 'title.subtitle' | 'title.prompt' | 'title.credit', string>>;
+}
+
+/**
+ * The content-text keys of a level object's translatable fields (docs/specs/I18N.md §4.2,
+ * ContentKeys.js `TEXT_KEY_FIELDS`): a GUID per one-string field (`title`, `sub`, `banner`,
+ * `label`), a list parallel to the raw list for `text` / `locked` (null: a blank entry), and per
+ * dialogue page a GUID or `{ key, choices }`. Scripts (`talk`, `run`) carry tags on their lines.
+ */
+export interface ObjectTextKeys {
+  text?: (string | null)[];
+  locked?: (string | null)[];
+  dialogue?: (string | { key?: string | null; choices?: (string | null)[] } | null)[];
+  title?: string;
+  sub?: string;
+  banner?: string;
+  label?: string;
 }
 
 /**
@@ -227,6 +249,17 @@ export interface LevelEnvironment
   minimap?: boolean;
   /** Combat: absent = auto (on iff an `enemy` exists), true / false force it (`levelHasCombat`). */
   combat?: boolean;
+  /**
+   * An interior's surround instead of the sky (absent: the sky): 'void' (black) or a `#rrggbb`
+   * colour — no sky, the fog and the background that colour (LEVEL_FORMAT.md §9).
+   */
+  backdrop?: string;
+  /**
+   * A room (absent: no): no forest border, outer scenery, god rays or weather inside whatever
+   * those fields say; a campaign keeps the level the player came from while they are in it and
+   * the last room after they leave (`LevelLook.isInterior`, CAMPAIGN_FORMAT.md).
+   */
+  interior?: boolean;
 }
 
 /** `environment.camera` (LEVEL_FORMAT.md §9.3). */
@@ -264,11 +297,11 @@ export interface HighGround {
 export interface TitleTexts {
   /** Default: the level name in capitals. */
   title?: string;
-  /** Default: `subtitle` or "A Lumina HD-2D Level". */
+  /** Default: `subtitle` or "A Luminati 2.5D Level". */
   subtitle?: string;
   /** Default: "Press any key". */
   prompt?: string;
-  /** Default: "Lumina HD-2D Engine · three.js". */
+  /** Default: "Luminati 2.5D Pixel-Art Engine · three.js". */
   credit?: string;
 }
 
@@ -358,6 +391,22 @@ export interface ObjectTypeDef {
    * it, Starfall Vale's coverage skips it.
    */
   combat?: boolean;
+  /**
+   * Campaign type (exit, entrance — docs/specs/CAMPAIGN_FORMAT.md): a level played on its own
+   * ignores it; Starfall Vale's coverage skips it, the campaign generators cover it.
+   */
+  campaign?: boolean;
+  /**
+   * Story type (event, marker — docs/specs/STORY_SCRIPT.md): read by the story runtime; Starfall
+   * Vale's coverage skips it, the demo campaign's generator covers it.
+   */
+  story?: boolean;
+  /**
+   * Interior type (bed, table, chair, shelf, hearth, counter, rug, staircase, wardrobe, wallWindow,
+   * sacks — the furniture of rooms, props/Furniture.js): Starfall Vale's coverage skips it, the
+   * interiors demo's generator covers it.
+   */
+  interior?: boolean;
 }
 
 /** Placement styles of `ObjectTypeDef.placement`. */
@@ -383,14 +432,21 @@ export interface FieldDef {
   options?: (string | SelectOption)[];
   /** Inspector help text. */
   help?: string;
+  /**
+   * A field players read (a name, a text, dialogue, a script): extracted for translation by
+   * src/engine/i18n/ContentStrings.js (docs/specs/I18N.md §4). Identity fields never carry it.
+   */
+  i18n?: boolean;
 }
 
 /**
  * Inspector widget types: 'angle' stores radians and shows degrees; 'lines' is string[] (one
- * entry per paragraph); 'dialogue' is `DialoguePage[]` edited as text (OBJECT_CATALOG.md §13).
+ * entry per paragraph); 'dialogue' is `DialoguePage[]` edited as text (OBJECT_CATALOG.md §13);
+ * 'script' is string[], one line of a story script each (STORY_SCRIPT.md); 'condition' is a story
+ * condition (text).
  */
 export type FieldType =
-  'number' | 'int' | 'angle' | 'bool' | 'select' | 'text' | 'textarea' | 'lines' | 'dialogue' | 'color';
+  'number' | 'int' | 'angle' | 'bool' | 'select' | 'text' | 'textarea' | 'lines' | 'dialogue' | 'color' | 'script' | 'condition';
 
 /** A select option with a label different from its stored value. */
 export interface SelectOption {
@@ -525,6 +581,8 @@ export interface ObjectExtras {
       depth?: number;
       /** Produce display in front (on unless false). */
       display?: boolean;
+      /** Which side the crates beside the stall stand on, seen from the front (absent: the seed picks one). */
+      crates?: 'left' | 'right' | 'none';
     };
   };
   tree: {
@@ -606,6 +664,40 @@ export interface ObjectExtras {
     /** Sign text, one page per entry; empty = not interactive. */
     text: string[];
   };
+  // interior furniture (props/Furniture.js): the variation seed (an inspector field without a
+  // default) and the builder options without an inspector field
+  bed: { opts: { /** Variation seed. */ seed?: number } };
+  table: { opts: { /** Variation seed. */ seed?: number } };
+  chair: { opts: { /** Variation seed. */ seed?: number } };
+  shelf: { opts: { /** Variation seed. */ seed?: number } };
+  hearth: {
+    opts: {
+      /** Variation seed. */
+      seed?: number;
+      /** Light intensity (10). */
+      intensity?: number;
+      /** Light range (9). */
+      distance?: number;
+    };
+  };
+  counter: { opts: { /** Variation seed. */ seed?: number } };
+  rug: {
+    opts: {
+      /** Variation seed (the tassels). */
+      seed?: number;
+      /** Cream tassels at the two short ends (on unless false). */
+      fringe?: boolean;
+    };
+  };
+  staircase: { opts: { /** Variation seed. */ seed?: number } };
+  wardrobe: { opts: { /** Variation seed. */ seed?: number } };
+  wallWindow: {
+    opts: {
+      /** A flower box on the sill (inspector field, no default). */
+      flowers?: boolean;
+    };
+  };
+  sacks: { opts: { /** Variation seed. */ seed?: number } };
   fence: {
     opts: {
       /** Fence height (0.95). */
@@ -622,7 +714,7 @@ export interface ObjectExtras {
     opts: {
       /** Post depth (1.4). */
       postDepth?: number;
-      /** Rails (on unless false). */
+      /** Rail planks (on unless false; the posts and the edge colliders stay either way). */
       rails?: boolean;
     };
   };
@@ -635,6 +727,11 @@ export interface ObjectExtras {
   npc: {
     /** Pages (strings or choice pages); ignored when `script` names a known script. */
     dialogue: DialoguePage[];
+    /**
+     * Hand-written sprite overrides merged over the preset (`createCharacterSheet` spec fields:
+     * hair, outfit, hat …); no inspector field. The game and the editor preview draw them.
+     */
+    spec?: Record<string, any>;
     /** Where the player talks to the NPC, relative to x / z (e.g. across a counter). */
     talkOffset?: XZ;
     /** Talk distance (default 1.6, floor 0.5). */
@@ -645,6 +742,18 @@ export interface ObjectExtras {
     talkPoint?: XZ;
     /** Legacy absolute `area` (converted on load; the game still reads it). */
     bounds?: Rect;
+    /** The story flag set when a conversation with this villager ends. */
+    flag?: string;
+    /** Talk script (STORY_SCRIPT.md): replaces `dialogue` / `action` / `script` when it holds a line. */
+    talk?: string[];
+    /** The story character this villager is (story files' `actors`; visit counts, speakers). */
+    actor?: string;
+    /**
+     * The small title beside the dialogue's name plate (*Warden of the Cinderwatch*; Game.js
+     * `speakerTitle`, shown by its key: `loc(textKeyOf(object, 'title'), title)`). Absent or blank =
+     * none.
+     */
+    title?: string;
   };
   critters: {
     /** Animals (the game accepts 0–16); null or '' = the number of spots (`critterStartPoints`). */
@@ -676,6 +785,40 @@ export interface ObjectExtras {
   region: {
     /** Only counts while the player stands above this world height; null = any. */
     minY: number | null;
+  };
+  exit: {
+    /** 'walk': walking into the rect travels; 'use': Space travels (a door, a cave mouth). */
+    mode: 'walk' | 'use';
+    /** Read when the `requires` flag is missing (one dialog page each; empty: a stock line). */
+    locked: string[];
+  };
+  entrance: {
+    /** Facing on arrival. */
+    facing: 'down' | 'up' | 'left' | 'right';
+  };
+  event: {
+    /** When the script runs (EVENT_TRIGGERS). */
+    on: 'use' | 'enter' | 'leave' | 'arrive' | 'change' | 'time' | 'cleared';
+    /** The script (STORY_SCRIPT.md), one line each. */
+    run: string[];
+    /** The Space prompt of a `use` event ('' / absent: "Look"). */
+    label?: string;
+    /** Condition: a guard, or (`change`) the condition whose becoming true fires the event. */
+    if?: string;
+    /** `time`: the hour (0–24). */
+    at?: number | null;
+    /** `cleared`: the enemy group object's id. */
+    group?: string;
+    /**
+     * A background run (no default: absent unless set): the script plays while the player walks —
+     * it holds no one, opens no dialog window and may use only `BACKGROUND_OPS` (StoryScript.js).
+     * Read as `=== true`.
+     */
+    background?: boolean;
+  };
+  marker: {
+    /** Facing of an actor put here. */
+    facing: 'down' | 'up' | 'left' | 'right';
   };
   enemy: {
     /** Creatures (0–8, a golem group 0–1); null or '' = one per spot (`enemyStartPoints`). */
@@ -712,11 +855,25 @@ type _ObjectExtrasKeysAreTypes = AssertNever<Exclude<keyof ObjectExtras, ObjectT
 /** The `ObjectExtras` entry of type `T` (none: {}). */
 type ExtrasOf<T extends ObjectType> = T extends keyof ObjectExtras ? ObjectExtras[T] : {};
 
+/**
+ * Story conditions every object may carry (`STORY_FIELDS`; no default): present only while `when`
+ * holds, gone while `unless` holds (STORY_SCRIPT.md §2; a bare flag name as before).
+ */
+export interface StoryFields {
+  /** Story condition the object needs (blank / absent: always there). */
+  when?: string;
+  /** Story condition that removes the object (blank / absent: never removed). */
+  unless?: string;
+  /** The content-text keys of its translatable fields (absent: none; never a catalog default). */
+  textKeys?: ObjectTextKeys;
+}
+
 /** The fields of a normalised `T` object, exactly: id, type, position, catalog defaults, extras. */
 export type ObjectShapeOf<T extends ObjectType> =
   { id: string; type: T }
   & PlacementFields[PlacementOf<T>]
-  & Override<Widen<Catalog[T]['defaults']>, ExtrasOf<T>>;
+  & Override<Widen<Catalog[T]['defaults']>, ExtrasOf<T>>
+  & StoryFields;
 
 type AnyObjectShape = { [T in ObjectType]: ObjectShapeOf<T> }[ObjectType];
 type AnyOpts = FlattenUnion<FieldOfUnion<AnyObjectShape, 'opts'>>;

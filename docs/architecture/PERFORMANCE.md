@@ -1,16 +1,16 @@
 # Performance
 
-> **Purpose.** The performance budget Lumina is built to, what was measured (Emberfall, Starfall
+> **Purpose.** The performance budget Luminati is built to, what was measured (Emberfall, Starfall
 > Vale, the level editor), the mechanisms that keep a 128 × 128 level inside the budget, how to
-> measure a change yourself, and the known limits. The numbers come from the project's multi-agent
-> build and review passes (September 2026) — they are recorded here because the reports themselves
-> are not in git.
+> measure a change yourself, and the known limits. The dated numbers are historical benchmark
+> observations, not guaranteed results on other hardware or a substitute for measuring the current
+> build. The reproduction steps and committed scripts are linked below.
 >
 > **Audience.** Anyone adding content or effects, touching batching / lights / loading, or asked
 > "is it still fast?"; AI agents who need a reproducible measurement recipe.
 >
-> **Source of truth.** [`src/demo/World.js`](../../src/demo/World.js) (`BIG_LEVEL_BATCHING`),
-> [`src/demo/Game.js`](../../src/demo/Game.js), [`src/demo/ResolutionGovernor.js`](../../src/demo/ResolutionGovernor.js),
+> **Source of truth.** [`src/game/World.js`](../../src/game/World.js) (`BIG_LEVEL_BATCHING`),
+> [`src/game/Game.js`](../../src/game/Game.js), [`src/game/ResolutionGovernor.js`](../../src/game/ResolutionGovernor.js),
 > [`src/engine/world/SpatialSplit.js`](../../src/engine/world/SpatialSplit.js),
 > [`ShadowCasters.js`](../../src/engine/world/ShadowCasters.js),
 > [`TileMap.js`](../../src/engine/world/TileMap.js), [`Water.js`](../../src/engine/world/Water.js) /
@@ -23,7 +23,7 @@
 >
 > **Related.** [RENDER_PIPELINE.md](RENDER_PIPELINE.md) · [OVERVIEW.md](OVERVIEW.md) ·
 > [EDITOR.md](EDITOR.md) · [../development/TESTING_AND_VERIFICATION.md](../development/TESTING_AND_VERIFICATION.md) ·
-> [../specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md) · [../history/DECISIONS.md](../history/DECISIONS.md) ·
+> [../specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md) ·
 > [../ai/KNOWN_ISSUES.md](../ai/KNOWN_ISSUES.md)
 
 ---
@@ -40,8 +40,10 @@
 
 ## 1. Budgets
 
-The reference machine is the development PC: **GTX 1060 3 GB, 1600 × 900, pixel ratio 1**,
-Windows 10, Chrome through ANGLE / D3D11.
+The targets below assume **hardware-accelerated desktop rendering at 1600 × 900, pixel ratio 1**.
+They are engineering budgets, not minimum system requirements. Browser, GPU, driver, operating
+system and background workload all affect elapsed times; measure on the hardware you intend to
+support with the [profiling procedure](#4-how-to-measure).
 
 | Budget | Value | How it is enforced / checked |
 | --- | --- | --- |
@@ -55,7 +57,7 @@ Windows 10, Chrome through ANGLE / D3D11.
 | Level editor | 60 fps while editing a 64 × 64 level with ~200 objects; brush feedback in the 3D view within ~100 ms | `sandbox/editor_perf*.json`. |
 
 The budgets come from [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §1 and
-[`CLAUDE.md`](../../CLAUDE.md); the draw-call budget counts the scene render (colour + shadow),
+[`AGENTS.md`](../../AGENTS.md); the draw-call budget counts the scene render (colour + shadow),
 which is what `PostFX.sceneInfo` records.
 
 ---
@@ -64,15 +66,18 @@ which is what `PostFX.sceneInfo` records.
 
 > **Read these with their conditions.** The headless harness runs at the host compositor's cadence
 > — about 56–60 Hz, the same for a blank page — so "57 fps" means "at the cap". Other apps and
-> parallel agents often shared the GPU, so averaged GPU times were noisy; the reviews therefore
+> background workloads often shared the GPU, so averaged GPU times were noisy; these runs therefore
 > quote **best-case (minimum) GPU timings** per stage. Draw calls and triangles are deterministic
-> and the most reliable comparison. All at 1600 × 900 on the GTX 1060 unless noted; "CPU update"
-> and "render submission" were measured with the reviewers' in-page recorders (not part of the
-> repository).
+> and the most reliable comparison. Unless noted, the historical measurements used hardware-
+> accelerated desktop Chrome at 1600 × 900, pixel ratio 1. The original GPU model and complete
+> driver/browser versions are not recorded here, so compare trends within each table, not elapsed
+> times across machines. The older "CPU update" and "render submission" samples used ad hoc in-page
+> recorders; use §4 to produce fresh measurements with the committed tooling.
 
 ### 2.1 Emberfall (48 × 40, 136 objects)
 
-Final verification of the demo (phase 2), six locations:
+Historical demo measurements at six locations, with 136 objects in the measured level revision
+(the current level has 137):
 
 | Spot | fps (harness) | Draw calls | GPU avg |
 | --- | --- | --- | --- |
@@ -113,6 +118,30 @@ GPU minimum saved by switching it off):
 CPU (same review): ≈ 3.7 ms main thread per frame, of which render submission 2.9 ms (shadow pass
 0.65) and the game update 0.34 ms; no GC pauses; heap flat at ≈ 65 MB across weather / time /
 dialog cycles.
+
+**Loading with the pixel UI and the languages** (2026-10-10, cold harness runs on a
+quiet GPU, navigation → first gameplay frame, `__luminati.loadMs`):
+
+| Language · fonts | `loadMs` | Fonts in (`state().fonts.ms`) | `fontsWait` · `glyphsWait` |
+| --- | --- | --- | --- |
+| English · `dist/` (`--fonts=local`) | 3,306–3,381 ms | 456–533 ms | 0 · — |
+| Japanese · `dist/` | 3,438 ms | 611 ms | 0 · 0 |
+| Chinese · `dist/` | 4,094 ms | 537 ms | 0 · 0 |
+| English · Google | 3,272 ms | 569 ms | 0 · — |
+| Japanese · Google | 3,894 ms | 789 ms | 0 · 0 |
+
+The fonts start at the top of boot and arrive while the world builds: `Game` awaits
+`ui.fontsReady` only after the world and the villagers are built (`fontsWait` 0 above), and in
+Japanese and Chinese the glyphs of the level's first texts load with the build (`glyphsWait`);
+the rest of a page's translated texts load in idle time once play starts (`prefetchGlyphs`).
+Moving the await there did not measurably shorten a load on a reachable network (G-game measured
+3.1–3.5 s before and after); it pays when the fonts are slow. A Google that hangs costs the
+2.5 s timeouts once, then the failure is remembered for a day (KNOWN_ISSUES I18N-03). The UI is
+DOM: draw calls (230), triangles and programs (57) are the same in every language. The game's
+CSS is 27 kB since Cinzel, Crimson Pro and Pixelify Sans left the game UI (≈ 170 kB before).
+One-time UI costs: the world map lays out on its first open (≈ 200 ms in Cinderwatch, during the
+fade), the tactics panel's first open paints its frame (≈ 63 ms), the death screen is primed at
+load (≈ 18 ms per screen size) — KNOWN_ISSUES UI-09.
 
 ### 2.2 Starfall Vale (128 × 128)
 
@@ -200,39 +229,115 @@ dayIntensity, positions) and frozen-time screenshots must match too.
 
 ### 2.5 Cinderwatch Pass (96 × 120, combat)
 
-Measured at the combat integration (2026-09-28, GTX 1060 3 GB, 1600 × 900, render scale 1; the
-budgets are in [COMBAT.md §18](../contracts/COMBAT.md#18-performance-budgets)):
+Measured at the combat integration (2026-09-28, reference desktop GPU, 1600 × 900, render scale 1; the
+budgets are in [COMBAT.md §18](../contracts/COMBAT.md#18-performance-budgets)); rows marked
+*2026-10-11* were measured again after the party-of-four rebalance
+([Party balance](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass):
+58 enemies instead of 53, Rook a seventh villager at the camp):
 
 | What | Value |
 | --- | --- |
-| Shader programs | 63 at load and 63 after `showcase()` + a tour of every zone with woken enemies, every skill, both boss phases, the kill, a level-up, death and respawn (`combat.programs.json`) |
+| Shader programs | 63 at load and 63 after `showcase()` + a tour of every zone with woken enemies, every skill, both boss phases, the kill, a level-up, death and respawn (`combat.programs.json`; *2026-10-11*: still 63 = 63, and 63 in `combat.perf.json`) |
 | Frame gaps after warm-up | max 17.2–18.5 ms, none over 45 ms, run alone (the death-screen / fade transition is not timed). The death screen is pre-rendered at load since 2026-09-28: its first show stays at 16–18.7 ms per frame (unprimed it cost two 45–73 ms frames, KNOWN_ISSUES COMBAT-02); the respawn frame (teleport and reset, ≈ 117–167 ms) stays behind the fade |
 | Draw calls, enemies hidden (tour, zoom 42, yaw 0 / ±60) | 106–187 at integration; ≤ 188 after the known-issues pass of 2026-09-28 (budget 200 per the level's rule; the `crag` ridge material and the marsh wisps' particle pool added a few, three fewer scattered trees and the lodge's lost chimney took some away) |
-| Draw calls, enemies shown | 114–237 (tour); busiest zones with every enemy woken, zoom 30 / 42, yaw −60 / 0 / +60: glade 182–228, Ruins 187–231, Mire 191–224, quarry 173–198, caldera 121–154 — worst 231 of 300 at integration, 229–231 after the known-issues pass (`combat.perf.json`, alone) |
-| Spawn fingerprint (TASK_PLAYBOOKS §16) | ≈ 163–166 calls, ≈ 611 900 triangles, 12 lights, 63 programs, 277 objects (after the known-issues pass; 165–166 / ≈ 617 600 / 278 objects at integration) |
-| Combat CPU (`update` + `afterPlayer`) | p50 0.2–0.3 ms, p95 0.3–0.5 ms (budget 1.0 ms) with up to 30 aggroed enemies (spread over the integration runs); p50 / p95 0.2 / 0.3 ms after the known-issues pass (the path searches included) |
-| Enemy paths (`Nav`, since 2026-09-28) | walk grid built once at load: 192 × 240 = 46 080 cells, ≈ 24 250 open, ≈ 20 ms (16–48 ms on the shared machine); ≤ 2 searches per combat sub-step, each ≤ 6000 cells expanded (≈ 1.5 ms warm for the longest; measured 0.01–0.4 ms, ≤ 868 cells), so the worst case after a 3-sub-step hitch is ≈ 9 ms; one throw-away search at load keeps the first real one JIT-warm. The mock-context sandbox: 0.054–0.059 ms per sub-step for its whole enemy set |
+| Draw calls, enemies shown | 114–237 (tour); busiest zones with every enemy woken, zoom 30 / 42, yaw −60 / 0 / +60: glade 182–228, Ruins 187–231, Mire 191–224, quarry 173–198, caldera 121–154 — worst 231 of 300 at integration, 229–231 after the known-issues pass (`combat.perf.json`, alone); *2026-10-11*: worst 240 of 300 |
+| Spawn fingerprint (TASK_PLAYBOOKS §16) | *2026-10-11*: 175 calls, 611 932 triangles, 12 lights, 63 programs, 283 objects, 373 colliders, story on (Rook and the glade's extra foes in view; 166 calls and 280 objects with Sela alone). Before: ≈ 163–166 calls, ≈ 611 900 triangles, 12 lights, 63 programs, 277 objects (after the known-issues pass; 165–166 / ≈ 617 600 / 278 objects at integration) |
+| Combat CPU (`update` + `afterPlayer`) | p50 0.2–0.3 ms, p95 0.3–0.5 ms (budget 1.0 ms) with up to 30 aggroed enemies (spread over the integration runs); p50 / p95 0.2 / 0.3 ms after the known-issues pass (the path searches included); *2026-10-11*: p95 0.4 ms (`combat.perf.json`) |
+| Enemy paths (`Nav`, since 2026-09-28) | walk grid built once at load: 192 × 240 = 46 080 cells, ≈ 24 250 open, ≈ 20 ms (16–48 ms on the shared machine); ≤ 2 searches per combat sub-step, each ≤ 6000 cells expanded (≈ 1.5 ms warm for the longest; measured 0.01–0.4 ms, ≤ 868 cells), so the worst case after a 3-sub-step hitch is ≈ 9 ms; one throw-away search at load keeps the first real one JIT-warm. The mock-context sandbox: 0.054–0.059 ms per sub-step for its whole enemy set. A story presence change rebuilds only the cells the changed rect can reach (`Nav.buildRect`, since 2026-10-07, KNOWN_ISSUES STORY-04): a 10 × 3 u bridge with four posts (275 cells) 0.05–0.1 ms, against a warm full build of 5 ms on Cinderwatch and 14–20 ms on Gildhaven / Starfall Vale (128 × 128, 65 536 cells; `sandbox/combat.navrect.json`) |
 | GPU time per zone (`postfx` timings reset per zone; 6 views each; alone on the GPU, 2026-09-28 fix pass) | scene: best view 2.9 (caldera) – 5.4 ms (glade), smoothed worst view 4.5 (caldera) – 8.2 ms (quarry); DOF 1.5–2.1 ms best / 1.6–3.4 ms worst; bloom 0.3 / ≤ 1.6 ms; output 0.3 / ≤ 1.0 ms. (The first published row, "scene 3.2–6.0 ms", was a running minimum since the first zone, not per-zone figures.) |
 | Load | 4.2–5 s to the first gameplay frame on a quiet machine (10–11 s with three harness runs sharing the GPU); final verification (alone): 4.5 s cold on the harness dev server and 1.8–2.3 s on a warm reload, 3.6–3.7 s from the production build (`vite preview`, a fresh browser each; Emberfall 2.7–2.8 s there, unchanged from before combat). Cold figures from before the `.check/` watcher fix (KNOWN_ISSUES TOOL-16) were ≈ 3.5 s too high; enemy sheets + player combat sheet 50–90 ms, FX atlas ≈ 9 ms, marker height texture ≈ 18 ms of CPU in ≤ 6 ms slices (4 slices, the longest ≈ 6 ms; it was one 10–23 ms piece with a half-resolution fallback above 40 ms before 2026-09-28, KNOWN_ISSUES COMBAT-09), the `crag` texture ≈ 9 ms |
 | Batches | `FxQuads` and `GroundMarkers` one draw call each (hidden at zero instances); the nine combat bursts add exactly one particle pool (the marsh light's two wisp emitters one more, as level emitters) |
-| Download (production build, 2026-09-28) | a peaceful level fetches `main` 225.4 kB (72.6 kB gzip), `LevelStorage` 330.9 kB (99.0) and the shared `WeatherLook` chunk 777.0 kB (225.8) plus `main.css` 52.5 kB (13.9) — Starfall also `shoreWorker`; Cinderwatch also `CombatSystem` 231.5 kB (77.9 gzip, the combat rules, FX batches and combat UI), `defs` 31.2 kB (11.5, with the enemy sheet painter) and `CombatSystem.css` 26.5 kB (5.8). Peaceful JS gzip: 372.9 kB before combat, 422.5 kB on the combat commit, ≈ 397 kB now — the remaining ≈ 24 kB is combat code inside shared modules (KNOWN_ISSUES COMBAT-23). The editor loads `editor` 233.1 kB (76.2), `LevelStorage`, `WeatherLook`, `Viewport3D` 162.3 kB (52.6) and `defs`, and its own `editor.css` only (no longer the game's stylesheet) |
+| Download (production build, 2026-09-28) | a peaceful level fetches `main` 225.4 kB (72.6 kB gzip; the game's entry chunk, `game-*.js` in the [current launcher architecture](OVERVIEW.md)), `LevelStorage` 330.9 kB (99.0) and the shared `WeatherLook` chunk 777.0 kB (225.8) plus `main.css` 52.5 kB (13.9; now `game-*.css`) — Starfall also `shoreWorker`; Cinderwatch also `CombatSystem` 231.5 kB (77.9 gzip, the combat rules, FX batches and combat UI), `defs` 31.2 kB (11.5, with the enemy sheet painter) and `CombatSystem.css` 26.5 kB (5.8). Peaceful JS gzip: 372.9 kB before combat, 422.5 kB on the combat commit, ≈ 397 kB now — the remaining ≈ 24 kB is combat code inside shared modules (KNOWN_ISSUES COMBAT-23). The editor loads `editor` 233.1 kB (76.2), `LevelStorage`, `WeatherLook`, `Viewport3D` 162.3 kB (52.6) and `defs`, and its own `editor.css` only (no longer the game's stylesheet) |
 
 The fixture level of `sandbox/combat_fixture.js` (48 × 40): 54 programs at load and after the boss
 fight, 90–122 draw calls.
 
 ### 2.6 Gildhaven (128 × 128, a town)
 
-Measured 2026-10-02 with `sandbox/gildhaven.tour.json` (GTX 1060 3 GB, 1600 × 900, render scale 1,
+Measured 2026-10-02 with `sandbox/gildhaven.tour.json` (reference desktop GPU, 1600 × 900, render scale 1,
 the default camera distance 30): 518 objects, 68 villagers, 53 houses, 86 light descriptors.
 
 | What | Value |
 | --- | --- |
 | Draw calls | 124–274 at 26 views (the busiest: the Market Square at yaw +60, 274; Market Street 262; the square 250); 280 zoomed out (42) over the square; 167 at the spawn |
 | Triangles | ≈ 0.67 M at the spawn |
-| Shader programs | 59 at load and 59 after the tour — once two pines stood by the spawn; before, the pine's shadow program compiled on the first walk into High Town (KNOWN_ISSUES REN-13) |
+| Shader programs | 59 at load and 59 after the tour. The load-time shadow primer (`Game._primeShadows`) compiles every caster kind's depth program, so this holds without the two pines by the spawn too (`sandbox/gildhaven.shadows.json`); before it, those pines were the workaround — without them the pine's shadow program compiled on the first walk into High Town (KNOWN_ISSUES REN-13) |
 | Lights | 12 pooled for 86 descriptors |
 | Load | 4.0–4.5 s to the first gameplay frame on the harness dev server |
 | Editor | ≈ 944 draw calls in the split layout (Starfall ≈ 915), idle at the display rate |
+
+### 2.7 Campaign travel
+
+Measured 2026-10-07 (KNOWN_ISSUES CMP-01, the next level built ahead —
+[GAME.md §3.9](GAME.md#39-campaigns-the-level-half-and-swaplevel)) with
+[`sandbox/campaign.prepare.json`](../../sandbox/campaign.prepare.json) (the demo: four rounds,
+each travel after a walk toward its exit) and
+[`campaign.prepare.big.json`](../../sandbox/campaign.prepare.big.json) (the 128 × 128 Gildhaven
+played as the demo's `mill-road`, four travels to it), the same scripts on the code before and
+after. Medians of four; *travel* = fade-out start → fade-in start (`stats.lastMs`, the fade-out is
+350 ms of it), *swap* = its `Game.swapLevel` part (`lastBuildMs`).
+
+| Travel | Before: travel / swap | After: travel / swap | Built ahead (CPU, idle slices, ready after) |
+| --- | --- | --- | --- |
+| millbrook → mill-road (56 × 18) | 824 / 446 ms | 548 / 171 ms | 130–210 ms, 18–28 slices, 0.3–0.5 s |
+| mill-road → old-quarry (36 × 30, combat) | 776 / 400 ms | 538 / 159 ms | same |
+| old-quarry → mill-road | 869 / 497 ms | 560 / 184 ms | same |
+| mill-road → millbrook (40 × 32) | 814 / 437 ms | 567 / 190 ms | same |
+| millbrook → Gildhaven (128 × 128) | 2134 / 1761 ms (another run: 2562 / 2189) | 702 / 325 ms | 865–930 ms, ≈ 110 slices, 1.8–2.0 s |
+
+The first travel of a session (cold code, a combat level's first load) takes longer either way.
+The world part of the swap (`loadStats.world`) went from 224–345 ms (Gildhaven ≈ 1.5–1.9 s) to
+1–5 ms. What a prepared Gildhaven travel still spends: villagers, critters and the HUD ≈ 95 ms, the
+maps 25–60 ms, the second `compileAsync` ≈ 75 ms and the five warm-up frames ≈ 80 ms.
+
+**Frames while the next level is built** (`CP.walk`: a rAF gap probe while walking 3.5–4.2 s
+toward the exit, the preparation running): the demo, 15 walks / 3 432 frames — the longest frame
+17.3 ms, none over 25 ms (before, without the preparation: 16.8 ms, none); Gildhaven, 3 walks /
+756 frames — 16.8 ms, none (before: 17.2 ms). The first walk after the page loads has one 83 ms
+frame before and after (a ~100 ms task right after the first arrival, not the preparation). A
+preparation's longest idle slice is 8–10 ms on the demo (15 ms the first of a session) and 9–18 ms
+on Gildhaven (26 ms the first), its longest single step ≤ 4.5 ms on the demo and 6–11 ms on
+Gildhaven (the outer ground's normals; up to 19 ms cold or with a GC in it). Without
+`requestIdleCallback` (3 ms slices in the frame) a demo level is ready after 0.85–1.0 s, the
+walks again without a frame over 25 ms.
+
+**Same result.** The worlds built ahead hash equal to the worlds the old code built (every mesh's
+attributes, index, matrices and materials, the colliders, interactables, lights, emitters, shore
+texels — `CP.hashWorld`; also Emberfall, Willowmere, Brightwater, Starfall, Cinderwatch,
+Gildhaven built in slices vs in one go). Draw calls and the programs the scene uses (their cache
+keys) are the same; `renderer.info.programs` reads 5 fewer after a prepared arrival because a build
+at the travel draws frames of the half-built world behind the fader and compiles variants of its
+terrain materials (before the snow cover patch) that nothing draws afterwards — they stay attached
+to those materials until the level is left. No program compiles after arrival either way.
+
+**Rooms: the levels set aside** (measured 2026-10-07,
+[CAMPAIGN_FORMAT.md §6.3](../specs/CAMPAIGN_FORMAT.md#rooms-the-levels-set-aside)) with
+[`sandbox/campaign.interior.json`](../../sandbox/campaign.interior.json) (the demo's Millbrook,
+40 × 32, and its mill cellar, 16 × 12) and
+[`campaign.interior.big.json`](../../sandbox/campaign.interior.big.json) (the 128 × 128 Gildhaven
+standing in for Millbrook; its "before" rows are the same run with `campaign.keepRooms = false`);
+the Millbrook "before" rows are the same trips on the code before. *At once*: the player turns
+round at the door as soon as the fade-in ends; *waited*: after standing 2–2.5 s by the door (the
+build-ahead had time).
+
+| Travel | Before: travel / swap | After: travel / swap |
+| --- | --- | --- |
+| cellar → Millbrook, at once | 638–705 / 262–323 ms | 382–407 / 10–24 ms (attached again) |
+| cellar → Millbrook, waited | 608 / 234 ms | 390–397 / 12–22 ms (434 / 54 ms with a story change: Hollis gone) |
+| Millbrook → cellar | 502–716 / 120–343 ms | 385–403 / 8–21 ms (the last room); the first visit 460–510 / 105–136 ms (built) |
+| cellar → Gildhaven, at once | 1067–1409 / 691–1035 ms | 396–406 / 21–24 ms |
+| cellar → Gildhaven, waited 2 s | 690–719 / 318–339 ms | 447 / 68–70 ms (with a story change: the crates came, the maps painted again) |
+| Gildhaven → cellar | 490–539 / 115–164 ms | 377–387 / 4–6 ms; the first visit 447–450 / 72–73 ms (built) |
+
+What an attach spends: `World.attach` and the actors back ≈ 1–6 ms (`_buildLevel`), the painted
+map reused (≈ 0.1–0.6 ms; 45 ms when the story changed what it shows), the compile check
+(`compileAsync` finds every program ready) 2–15 ms, two frames 3–20 ms — everything else of the
+travel is the 350 ms fade-out. Programs at the arrival equal those after 1.5 s of play on every
+trip; the world hashes (`CP.hashWorld`) when it comes back as it did when it was left; the GPU
+memory (`renderer.info.memory`), the scene's objects and the programs are the same after every
+return (Millbrook with the cellar set aside: 119 geometries, 137 textures, 52 programs; Gildhaven:
+303 / 156 / 59). The price is that memory: in the cellar with Gildhaven set aside the renderer
+holds 303 geometries and 156 textures, against 29 and 111–118 for the cellar alone.
 
 ---
 
@@ -254,7 +359,7 @@ flowchart TB
   merges them **per material** (bucket key: material uuid + cast / receive flags). Wind materials,
   shader materials and mirrored instances stay separate. A whole village becomes a few dozen
   draw calls.
-- **Trees**: [`Scenery.mergeTrees`](../../src/demo/Scenery.js) merges the level's trees and the
+- **Trees**: [`Scenery.mergeTrees`](../../src/game/Scenery.js) merges the level's trees and the
   forest border per material while keeping them swaying: `aCenter` is baked to world space and a
   per-tree phase is folded into `aPhase`. On small levels the outer forest is merged per quadrant
   (N / S / E / W) so frustum culling can skip what is behind the camera; outer trees cast no
@@ -268,7 +373,7 @@ flowchart TB
 ### 3.2 Big levels: k-d batching and box culling
 
 Levels with `max(width, depth) > 64` (`World.isBigLevel`) use `BIG_LEVEL_BATCHING`
-([`World.js`](../../src/demo/World.js)). One batch per material over a 128-tile map is never
+([`World.js`](../../src/game/World.js)). One batch per material over a 128-tile map is never
 culled, so batches are cut into **spatially compact pieces** by
 [`SpatialSplit.kdSplit`](../../src/engine/world/SpatialSplit.js): split the heavier-than-budget
 (or wider-than-extent) group at the weighted median of its longer axis, recursively. Deterministic.
@@ -384,6 +489,15 @@ the grid vs 1555 ms linear on a stress level (Emberfall 72 vs 296 ms).
 - **Parallel compile.** The world's programs start compiling (`compileAsync`,
   `KHR_parallel_shader_compile`) while villagers, weather and UI are created; see
   [RENDER_PIPELINE.md §9](RENDER_PIPELINE.md#9-warm-up-no-shader-compiles-during-play).
+- **A campaign's next level, built ahead** (KNOWN_ISSUES CMP-01,
+  [GAME.md §3.9](GAME.md#39-campaigns-the-level-half-and-swaplevel)). The world build is one step
+  generator (`World.buildSteps`) over step generators of the long builders (terrain per tile,
+  merges per batch, the forest scatter, the foliage per 32 tiles, `kdSplit` per halving — with a
+  comparator-free sort —, the outer ground per two rows); a whole build runs them in one go, a
+  campaign runs the level behind the nearest open exit in the page's idle time
+  (`requestIdleCallback`, ≤ 8 ms a slice, 3 ms kept for the frame) while the player walks toward
+  it, with everything that touches the running game held until `World.attach()` at the travel.
+  Measured in [§2.7](#27-campaign-travel).
 - Load phases are recorded in `world.stats.phases` and `game.loadStats`. Starfall Vale's
   `World.build` went from 4.4–5.2 s to 3.1–3.6 s with this work (interleaved runs on a heavily
   loaded machine; total load 9.6–10.3 s → 7.1–8.5 s) and measured 1.5–2.1 s in the final
@@ -403,7 +517,7 @@ the grid vs 1555 ms linear on a stress level (Emberfall 72 vs 296 ms).
 
 ### 3.9 ResolutionGovernor
 
-[`ResolutionGovernor`](../../src/demo/ResolutionGovernor.js) (game only):
+[`ResolutionGovernor`](../../src/game/ResolutionGovernor.js) (game only):
 
 1. **Pixel budget.** When the window changes, `engine.maxPixelRatio` becomes
    `min(1.25, √(2.1 MP / (width × height)))`: a 2560 × 1440 window renders at ≈ 1930 × 1086 and
@@ -469,24 +583,24 @@ hundreds of props ([`Viewport3D._syncAll` / `_runJobs`](../../src/editor/viewpor
 ### 3.11 Combat (combat levels only)
 
 How Cinderwatch Pass stays inside the budgets of [COMBAT.md §18](../contracts/COMBAT.md#18-performance-budgets)
-with 53 enemies ([ADR-033](../history/DECISIONS.md#adr-033--two-instanced-batches-for-vfx-and-telegraphs-no-runtime-lights-d8)):
+with 58 enemies ([Combat effects budgets](PERFORMANCE.md)):
 
 - **Nothing on peaceful levels.** `Game` imports `CombatSystem` dynamically and only when
   `levelHasCombat(level)`: peaceful levels fetch no combat rules, compile no combat program and
-  build no pool. Since 2026-09-28 (KNOWN_ISSUES COMBAT-17, [ADR-042](../history/DECISIONS.md#adr-042--combat-only-engine-modules-stay-out-of-peaceful-chunks))
+  build no pool. Since 2026-09-28 (KNOWN_ISSUES COMBAT-17, [Combat loading](PERFORMANCE.md))
   they also fetch none of the combat engine modules: `CombatSystem` imports `FxQuads`,
   `GroundMarkers`, `FxSprites`, `MonsterSprites` and the combat UI from their own files,
   `vite.config.js` marks those 9 modules side-effect free (so the engine barrel's re-exports put
   nothing into chunks that do not use them), `UI.js` gets the combat UI classes from
   `UI.useCombatUI()` instead of importing them, the combat CSS is its own `combat.css`, and the
-  demo modules the editor shares import engine modules directly, not the barrel. What remains in
+  game modules the editor shares import engine modules directly, not the barrel. What remains in
   shared modules is COMBAT-23 (≈ 24 kB gzip).
 - **Two batches for all combat visuals.** Every slash, star, pickup, projectile and ember-wall
   flame is an instance of one `FxQuads` batch; every telegraph an instance of one `GroundMarkers`
   batch (draped in the vertex shader over a height texture baked at load in ≤ 6 ms slices). Both
   are hidden at zero instances. The nine burst presets share one new particle pool. No runtime
   point lights.
-- **One sprite program.** All combat sprites use `lumina-sprite3d-lit-fx-v1`; flash, glow and
+- **One sprite program.** All combat sprites use `luminati-sprite3d-lit-fx-v1`; flash, glow and
   highlight are per-sprite uniforms, not materials. Enemy shadows use the existing shadow-only
   proxies and the instanced `BlobBatch`.
 - **Dormancy.** Enemies more than 32 u from the player that are not aggroed are not updated at
@@ -511,8 +625,8 @@ with 53 enemies ([ADR-033](../history/DECISIONS.md#adr-033--two-instanced-batche
 
 ```bash
 # frame rate at the start position (fps window 3 s by default; --fps=0 disables it)
-npm run check -- --page=index.html --query=autostart=1 --out=perf_ember --wait=6000
-npm run check -- --page=index.html --query="level=starfall-vale&autostart=1" --out=perf_sv --wait=8000
+npm run check -- --page=game.html --query=autostart=1 --out=perf_ember --wait=6000
+npm run check -- --page=game.html --query="level=starfall-vale&autostart=1" --out=perf_sv --wait=8000
 ```
 
 `.check/<out>/report.json` holds `fps: [{ label, fps, p50ms, p95ms }]`, the `evals` results of
@@ -530,7 +644,7 @@ A reusable measurement script (save it under `.check/`, which is gitignored, and
   { "eval": "__game.postfx.enableTimings(true)" },
   { "fps": 3000, "label": "square" },
   { "eval": "JSON.stringify({ state: __game.state(), gpuMin: __game.postfx.timingsMin, gpu: __game.postfx.timings })" },
-  { "eval": "JSON.stringify({ load: __game.game.loadStats, phases: __game.world.stats.phases, loadMs: __lumina.loadMs, programs: __game.engine.renderer.info.programs.length })" },
+  { "eval": "JSON.stringify({ load: __game.game.loadStats, phases: __game.world.stats.phases, loadMs: __luminati.loadMs, programs: __game.engine.renderer.info.programs.length })" },
   { "shot": "square" }
 ]
 ```
@@ -547,8 +661,9 @@ A reusable measurement script (save it under `.check/`, which is gitignored, and
 | GPU per stage | `__game.postfx.timings` (smoothed ms: `scene`, `dof`, `bloom`, `output`), `timingsMin` (minimum since enabled) | Needs `EXT_disjoint_timer_query_webgl2`; `enableTimings(true)` returns false without it. The game's governor already enables timings; calling `enableTimings(true)` again **resets** the minimums (do it after moving to a spot). `state().gpuMs` = the governor's last summed sample. |
 | Point lights | `state().pointLights` (THREE lights: descriptors up to 12, else 12), `state().activeLights` (descriptors drawn right now); `__game.world.lightPool.pooled`, `.activeCount`, `.active`; `__game.world.stats.lightDescriptors` | |
 | Resolution | `state().renderScale`, `state().pixelRatio`; `__game.game.resolution` (`enabled`, `manual`, `medianMs`) | Turn the governor off for comparable numbers. |
-| Loading | `__game.game.loadStats` (`engine`, `world`, `characters`, `map`, `compile` — wall ms), `__game.world.stats.phases` (CPU ms per build step), `__game.world.stats.buildMs`, `window.__lumina.loadMs` (navigation → first gameplay frame) | |
+| Loading | `__game.game.loadStats` (`engine`, `world`, `characters`, `map`, `compile` — wall ms; `shadowVariants` — the shadow primer's proxy count), `__game.world.stats.phases` (CPU ms per build step), `__game.world.stats.buildMs`, `window.__luminati.loadMs` (navigation → first gameplay frame) | |
 | World contents | `__game.world.stats` (`objects`, `colliders`, `pointLights`, `lightDescriptors`, `lightsPooled`, `batching`, `terrainMeshes`, `trees`, `foliage`) | |
+| Campaign travel | `state().campaign.stats` (`lastMs`: fade-out → fade-in, `lastBuildMs`: its `swapLevel`, `prepared`, `lastPrep`), `state().campaign.prep` (the level built ahead now: `state`, `cpuMs`, `slices`, `maxSliceMs`, `maxStepMs` / `maxStepAt`, `ms`), `__game.game.loadStats.lastSwap` | `sandbox/campaign.prepare.json` / `.big.json` with `sandbox/campaign_prepare.js` (`CP.travel`, `CP.walk` — a rAF gap probe —, `CP.summary()`); `__game.game.campaign.prepareAhead = false` for an A/B in one page ([§2.7](#27-campaign-travel)). |
 | Shader programs | `__game.engine.renderer.info.programs.length` | Must not grow after load (tour times, weather, map, dialog). |
 | Editor | `__editor.view3d.stats` (`drawCalls`, `triangles`, `cpuMs`, `fps`, `lights`, `lightDescriptors`, `pendingChunks`, `batches`, `batchMeshes`, `terrainBatches`, `terrainBatchMeshes`, `terrainMs`, `waterMs`, `objectMs`, `sceneryMs`, `foliageMs`), `__editor.view3d.busy`, `__editor.ready3d` | |
 | Editor strokes | `sandbox/editor_perf.json`, `editor_perf.stress.json` with `sandbox/editor_perf.helpers.js` (`P.setup`, `P.start` / `P.stop` rAF recorder, `P.exactCheck()`) | `npm run check -- --page=editor.html --query=new --out=perf --fps=0 --script=sandbox/editor_perf.json`. Drag coordinates assume the default 1600 × 900 split layout. |

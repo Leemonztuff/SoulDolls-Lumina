@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lumina Shortcuts</title>
-<meta name="description" content="Every key binding and mouse gesture of the Lumina game and level editor on one printable page.">
+<title>Luminati Shortcuts</title>
+<meta name="description" content="Every key binding and mouse gesture of the Luminati game and level editor on one printable page.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' rx='3' fill='%231a2238'/%3E%3Cpath fill='%23c9a45c' d='M7 2h2v1h1v2h1v2h1v4h-1v1h-1v1H6v-1H5v-1H4V7h1V5h1V3h1z'/%3E%3Cpath fill='%23f59a2e' d='M7 5h2v2h1v3H9v1H7v-1H6V7h1z'/%3E%3Cpath fill='%23fff6d0' d='M7 8h2v2H7z'/%3E%3C/svg%3E">
 <script>
   /* Apply a remembered docs theme before the first paint (shared with docs/index.html). */
   (function () {
     try {
-      var t = localStorage.getItem('lumina-docs-theme');
+      var t = localStorage.getItem('luminati-docs-theme');
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) { /* no storage: follow the system */ }
   })();
@@ -297,7 +297,7 @@
         <path fill="#fff6d0" d="M7 8h2v2H7z"/>
       </svg>
       <div>
-        <div class="eyebrow">Lumina · Cheat-sheet</div>
+        <div class="eyebrow">Luminati · Cheat-sheet</div>
         <h1>Keys &amp; Gestures</h1>
         <p class="lede">Every key binding and mouse gesture of the game and the level editor, on one page.</p>
       </div>
@@ -328,7 +328,7 @@
   <section class="sheet" id="game" aria-labelledby="game-title">
     <div class="sheet-head">
       <h2 id="game-title">The Game</h2>
-      <p>index.html · any level</p>
+      <p>game.html · any level</p>
     </div>
     <svg class="ornament" viewBox="0 0 360 14" preserveAspectRatio="none" aria-hidden="true"><path d="M0 7h160M200 7h160" stroke="currentColor" stroke-width="1" opacity=".7"/><path d="M180 1l6 6-6 6-6-6z" fill="currentColor"/><circle cx="164" cy="7" r="1.6" fill="currentColor"/><circle cx="196" cy="7" r="1.6" fill="currentColor"/></svg>
 
@@ -372,6 +372,7 @@
           <li><span class="k"><kbd>H</kbd></span><span class="d">Controls legend on / off</span></li>
           <li><span class="k"><kbd>`</kbd><span class="sep">/</span><kbd>F1</kbd></span><span class="d">Debug panel <small>(the legend shows ~)</small></span></li>
           <li><span class="k"><span class="g">Any key</span></span><span class="d">Leave the title screen <small>(also a click or any gamepad button; not Shift, Ctrl, Alt, Tab, F5, F11, F12…)</small></span></li>
+          <li><span class="k"><kbd>L</kbd></span><span class="d">Title screen: the language row <small>(← / → choose EN · 日本語 · 中文, Enter switches and reloads, Esc back; pad LB / RB, A, B)</small></span></li>
         </ul>
       </div>
 
@@ -408,12 +409,12 @@
         <ul class="tips">
           <li>Keys are <b>physical positions</b>: on AZERTY, move with Z Q S D.</li>
           <li>Sound starts after your first key press or click.</li>
-          <li>URL: <code>?level=starfall-vale</code>, <code>?level=cinderwatch-pass</code> (combat), <code>?autostart=1</code> skips the title. On the title, ← / → pick a level and Enter travels.</li>
+          <li>URL: <code>game.html?level=starfall-vale</code>, <code>?level=cinderwatch-pass</code> (combat), <code>?autostart=1</code> skips the title, <code>?lang=ja</code> / <code>?lang=zh</code> plays in Japanese / Chinese. On the title, ← / → pick a level and Enter travels.</li>
           <li>Console (F12): <code>__game.teleport(x, z)</code>, <code>__game.setTime(22)</code>, <code>__game.state()</code>.</li>
         </ul>
       </div>
     </div>
-    <p class="src">Source of truth: <code>src/engine/core/Input.js</code> (<code>DEFAULT_BINDINGS</code>, <code>DEFAULT_PAD_BINDINGS</code>), <code>src/demo/Game.js</code>, <code>src/engine/ui/DialogBox.js</code>, <code>src/demo/combat/bindings.js</code> (combat).</p>
+    <p class="src">Source of truth: <code>src/engine/core/Input.js</code> (<code>DEFAULT_BINDINGS</code>, <code>DEFAULT_PAD_BINDINGS</code>), <code>src/game/Game.js</code>, <code>src/engine/ui/DialogBox.js</code>, <code>src/game/combat/bindings.js</code> (combat).</p>
   </section>
 
   <!-- ============================================================================= EDITOR -->
@@ -476,7 +477,7 @@
           <li><span class="k"><span class="g"><svg><use href="#i-mouse"/></svg>Drag</span><span class="sep">+</span><kbd>Alt</kbd></span><span class="d">Move · Alt = no snapping (also when placing)</span></li>
           <li><span class="k"><kbd>R</kbd><span class="sep">/</span><kbd>Shift</kbd><kbd>R</kbd></span><span class="d">Rotate ±15° <small>(selection or Place ghost)</small></span></li>
           <li><span class="k"><kbd>Ctrl</kbd><kbd>R</kbd><span class="sep">/</span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd></span><span class="d">Rotate ±90°</span></li>
-          <li><span class="k"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></span><span class="d">Nudge 0.5 · Shift 2 · Alt 0.1 <small>(Alt: Select tool)</small></span></li>
+          <li><span class="k"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></span><span class="d">Nudge 0.5 · Shift 2 · Alt 0.1</span></li>
           <li><span class="k"><span class="g"><svg><use href="#i-mouse"/></svg>Double-click</span></span><span class="d">Focus · inside an area: select it</span></li>
           <li><span class="k"><span class="g"><svg><use href="#i-mouse"/></svg>Click, click</span><span class="sep">or</span><span class="g">drag</span></span><span class="d">Place a fence or bridge · drag a region</span></li>
         </ul>
@@ -500,7 +501,7 @@
         <h3><svg><use href="#i-diamond"/></svg>View</h3>
         <ul class="sc">
           <li><span class="k"><kbd>1</kbd><span class="sep">/</span><kbd>2</kbd><span class="sep">/</span><kbd>3</kbd></span><span class="d">Layout: 3D + 2D / 3D only / 2D only</span></li>
-          <li><span class="k"><kbd>F</kbd></span><span class="d">Frame the selection</span></li>
+          <li><span class="k"><kbd>F</kbd></span><span class="d">Frame the selection <small>(nothing selected: the 3D view focuses the pointer)</small></span></li>
           <li><span class="k"><kbd>Home</kbd></span><span class="d">Frame the level</span></li>
           <li><span class="k"><kbd>Ctrl</kbd><kbd>G</kbd></span><span class="d">Grid on / off</span></li>
           <li><span class="k"><kbd>?</kbd></span><span class="d">Shortcut list</span></li>
@@ -539,6 +540,7 @@
           <li><span class="k"><kbd>Enter</kbd></span><span class="d">Commit a field · confirm a dialog</span></li>
           <li><span class="k"><kbd>Esc</kbd></span><span class="d">Restore a field · close a dialog or menu</span></li>
           <li><span class="k"><kbd>Ctrl</kbd><kbd>Enter</kbd></span><span class="d">Commit a multi-line text</span></li>
+          <li><span class="k"><kbd>Tab</kbd><span class="sep">·</span><kbd>Shift</kbd><kbd>Tab</kbd></span><span class="d">In a script: indent / outdent at a line's start or on selected lines <small>(elsewhere: next / previous field)</small></span></li>
           <li><span class="k"><span class="g"><svg><use href="#i-mouse"/></svg>Wheel</span></span><span class="d">Step a focused number box</span></li>
           <li><span class="k"><kbd>Ctrl</kbd><kbd>S</kbd><span class="sep">·</span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>S</kbd><span class="sep">·</span><kbd>F5</kbd></span><span class="d">Work even while typing <small>(the field commits first)</small></span></li>
         </ul>
@@ -551,7 +553,7 @@
 
 <footer>
   <div class="wrap">
-    <span>Lumina HD-2D Engine · docs/user/shortcuts.html</span>
+    <span>Luminati 2.5D Pixel-Art Engine · docs/user/shortcuts.html</span>
     <a href="../README.md">Documentation index</a>
     <a href="PLAYING_THE_GAME.md">Playing the game</a>
     <a href="LEVEL_EDITOR_GUIDE.md">Level editor guide</a>
@@ -571,7 +573,7 @@
   if (themeBtn) themeBtn.addEventListener('click', function () {
     var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
-    try { localStorage.setItem('lumina-docs-theme', next); } catch (e) { /* no storage */ }
+    try { localStorage.setItem('luminati-docs-theme', next); } catch (e) { /* no storage */ }
   });
   var printBtn = document.getElementById('printBtn');
   if (printBtn) printBtn.addEventListener('click', function () { window.print(); });

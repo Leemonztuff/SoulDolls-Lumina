@@ -1,5 +1,5 @@
 /**
- * Lumina level format (v1) — a JSON-serialisable description of a whole playable diorama:
+ * Luminati level format (v1) — a JSON-serialisable description of a whole playable diorama:
  * terrain (legend / tiles / heights, the TileMap contract format), water, environment, the player
  * spawn and every placed object (props, trees, lights, NPCs, critters, particle areas, regions).
  *
@@ -12,14 +12,15 @@
  */
 import { LEVEL_HEIGHT } from '../constants.js';
 import { OBJECT_TYPES, createObject, normalizeObject } from './ObjectCatalog.js';
-import { isOwnKey, showValue, toText, toNumber } from '../utils/own.js';
+import { isOwnKey, showValue, toText, toNumber, hasUnconvertible, stripUnconvertible } from '../utils/own.js';
+import { cleanTextKeysOf, LEVEL_TEXT_FIELDS } from '../i18n/ContentKeys.js';
 
 /**
  * @import { Level, LevelEnvironment, LevelObjectOf, ObjectType, ObjectOverrides, TileDef,
  *   XZ } from './types.js'
  */
 
-export const LEVEL_FORMAT = 'lumina-level';
+export const LEVEL_FORMAT = 'luminati-level';
 export const LEVEL_VERSION = 1;
 
 /** Highest terrain level encodable in one height char ('0'-'9', 'a'-'z'). */
@@ -171,6 +172,18 @@ export function createEmptyLevel({ name = 'Untitled', width = 32, depth = 24, fi
   };
 }
 
+/** A JSON copy (load-time: only for the rare data `stripUnconvertible` must change). */
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
+/**
+ * The fields of a level section (`environment`, `water`) to spread over its defaults: `v` itself,
+ * or a copy without the values String() cannot convert (LVL-18); null / undefined → {}.
+ */
+function ownCopy(v) {
+  if (v == null) return {};
+  return hasUnconvertible(v) ? stripUnconvertible(clone(v)) : v;
+}
+
 function clampSize(n) {
   return Math.max(MIN_SIZE, Math.min(MAX_SIZE, Math.round(toNumber(n) || MIN_SIZE)));
 }
@@ -190,7 +203,7 @@ export function normalizeLevel(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Level data is not an object');
   if (raw.format && raw.format !== LEVEL_FORMAT) throw new Error(`Unknown level format "${showValue(raw.format)}"`);
   // any other JSON (package.json, a settings file…) must not open as a blank level
-  if (!raw.format && !Array.isArray(raw.tiles) && !Array.isArray(raw.heights)) throw new Error('Not a Lumina level (no "format": "lumina-level" and no tiles)');
+  if (!raw.format && !Array.isArray(raw.tiles) && !Array.isArray(raw.heights)) throw new Error('Not a Luminati level (no "format": "luminati-level" and no tiles)');
   if (toNumber(raw.version ?? 1) > LEVEL_VERSION) warnings.push(`Level version ${showValue(raw.version)} is newer than this engine (${LEVEL_VERSION}); some data may be ignored.`);
 
   // (rows String() cannot convert — a JSON object with an own `toString` key — become '')
@@ -201,6 +214,9 @@ export function normalizeLevel(raw) {
   if (!tilesIn.length) warnings.push('Level has no tiles; filled with grass.');
 
   const legend = { ...defaultLegend(), ...(raw.legend && typeof raw.legend === 'object' ? raw.legend : {}) };
+  // a tile field String() cannot convert (a texture name `{"toString": 1}`) is dropped from a copy
+  // of its entry, so TileMap / TextureLibrary / the editor never convert it (KNOWN_ISSUES LVL-18)
+  for (const k of Object.keys(legend)) if (hasUnconvertible(legend[k])) legend[k] = stripUnconvertible(clone(legend[k]));
   // a tile is one character of a row: a longer key (e.g. "constructor") is kept in the file, but
   // no tile can use it (the editor's palette leaves it out)
   for (const k of Object.keys(legend)) if (k.length !== 1) warnings.push(`Legend key "${k}" is not a single character; no tile can use it.`);
@@ -221,8 +237,9 @@ export function normalizeLevel(raw) {
   }
   if (tilesIn.length && tilesIn.length !== depth) warnings.push(`Row count ${tilesIn.length} ≠ depth ${depth}; padded / truncated.`);
 
-  const env = { ...DEFAULT_ENVIRONMENT, ...(raw.environment ?? {}) };
-  const water = { ...DEFAULT_WATER, ...(raw.water ?? {}) };
+  // (environment and water values String() cannot convert are dropped: the defaults apply, LVL-18)
+  const env = { ...DEFAULT_ENVIRONMENT, ...ownCopy(raw.environment) };
+  const water = { ...DEFAULT_WATER, ...ownCopy(raw.water) };
   if (!Array.isArray(water.flow) || water.flow.length !== 2) water.flow = [...DEFAULT_WATER.flow];
 
   const spawnIn = raw.spawn && typeof raw.spawn === 'object' ? raw.spawn : {};
@@ -245,7 +262,11 @@ export function normalizeLevel(raw) {
   const taken = new Set(rawObjects.map((o) => toText(o.id ?? '', '')).filter(Boolean));
   const ids = new Set();
   for (const o of rawObjects) {
-    const n = normalizeObject(o);
+    // (the object's text keys are cleaned once, by normalizeObject, which counts what it drops)
+    const report = { textKeys: 0, upcased: 0 };
+    const n = normalizeObject(o, report);
+    if (report.textKeys) warnings.push(`Object "${showValue(n.id)}": ${report.textKeys} malformed or unknown text key(s) dropped (a key is 32 hex digits of a translatable field the object holds; a key list is no longer than its field).`);
+    if (report.upcased) warnings.push(`Object "${showValue(n.id)}": ${report.upcased} text key(s) of lower-case digits written in upper case.`);
     // 'spawn' is how the editor addresses the player start: never an object id
     if (!n.id || ids.has(n.id) || n.id === SPAWN_ID) {
       const was = n.id;
@@ -257,10 +278,27 @@ export function normalizeLevel(raw) {
     objects.push(n);
   }
 
+  // the content-text keys of the level's own texts (docs/specs/I18N.md §4.2), bounded like an
+  // object's by the texts it holds: a key of a title line its environment lacks (or holds as no
+  // string) is dropped; the subtitle is always held (a blank one keeps its key: `textKeyIssues`
+  // lists it as stray)
+  /** @type {Record<string, unknown>} */
+  const rootTexts = { subtitle: toText(raw.subtitle ?? '', '') };
+  const envTitle = env.title && typeof env.title === 'object' && !Array.isArray(env.title) ? env.title : {};
+  for (const f of LEVEL_TEXT_FIELDS) {
+    if (f.startsWith('title.') && Object.prototype.hasOwnProperty.call(envTitle, f.slice(6))) rootTexts[f] = envTitle[f.slice(6)];
+  }
+  const rootKeys = cleanTextKeysOf('root', raw.textKeys, rootTexts);
+  if (rootKeys.dropped) warnings.push(`textKeys: ${rootKeys.dropped} malformed or unknown text key(s) dropped (a key is 32 hex digits of a text the level holds: its subtitle or a line of environment.title).`);
+  if (rootKeys.upcased) warnings.push(`textKeys: ${rootKeys.upcased} text key(s) of lower-case digits written in upper case.`);
+
   // top-level fields this engine does not know (a newer version, a tool's notes) are kept as
-  // they are and written back after `objects`
+  // they are and written back after `objects` — in the file's own order, the level's `textKeys`
+  // among them where the file has it (a field written before it stays before it)
+  /** @type {Record<string, any>} */
   const extra = {};
   for (const [k, v] of Object.entries(raw)) {
+    if (k === 'textKeys') { if (rootKeys.keys) extra.textKeys = rootKeys.keys; continue; }
     if (KNOWN_KEYS.has(k) || v === undefined || k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     extra[k] = v;
   }
@@ -278,7 +316,8 @@ export function normalizeLevel(raw) {
     legend,
     tiles,
     heights,
-    waterLevel: finite(raw.waterLevel, 0.35),
+    // (the same default as createEmptyLevel and TileMap: KNOWN_ISSUES LVL-06)
+    waterLevel: finite(raw.waterLevel, 0.4),
     water,
     environment: env,
     spawn,
@@ -291,7 +330,7 @@ export function normalizeLevel(raw) {
 /** The selection token of the player start in the editor; reserved (never an object id). */
 export const SPAWN_ID = 'spawn';
 
-const KNOWN_KEYS = new Set(['format', 'version', 'name', 'subtitle', 'author', 'description', 'width', 'depth', 'legend', 'tiles', 'heights', 'waterLevel', 'water', 'environment', 'spawn', 'objects']);
+const KNOWN_KEYS = new Set(['format', 'version', 'name', 'subtitle', 'author', 'description', 'width', 'depth', 'legend', 'tiles', 'heights', 'waterLevel', 'water', 'environment', 'spawn', 'objects', 'textKeys']);
 
 /**
  * Is (x, z) on the deck of one of the level's bridges (the game walks bridge decks)?
@@ -316,7 +355,9 @@ export function onBridgeDeck(level, x, z) {
 }
 
 /**
- * Is world point (x, z) walkable ground for the player: a walkable tile or a bridge deck?
+ * Is world point (x, z) walkable ground for the player: a walkable tile or a bridge deck? A tile
+ * is walkable by TileMap's rule, `walkable ?? !water` (so a water tile with `walkable: true` — a
+ * ford — is walkable; KNOWN_ISSUES LVL-13); void never is.
  * @param {Level} level
  * @param {number} x
  * @param {number} z
@@ -325,7 +366,7 @@ export function onBridgeDeck(level, x, z) {
 export function isWalkablePoint(level, x, z) {
   if (onBridgeDeck(level, x, z)) return true;
   const t = level.legend[getTile(level, Math.floor(x), Math.floor(z))];
-  return !!t && !t.void && !t.water && t.walkable !== false;
+  return !!t && !t.void && !!(t.walkable ?? !t.water);
 }
 
 /**
@@ -409,8 +450,10 @@ export function serializeLevel(level) {
   }
   lines.push('  "objects": [');
   level.objects.forEach((o, i) => lines.push(`    ${q(o)}${i < level.objects.length - 1 ? ',' : ''}`));
-  // fields this engine does not know (kept from the file that was loaded)
-  const extra = Object.keys(level).filter((k) => !KNOWN_KEYS.has(k) && level[k] !== undefined);
+  // the level's own text keys (when it has any) and the fields this engine does not know (kept
+  // from the file that was loaded), in the level's own order: a file keeps its order (an unknown
+  // field before `textKeys` stays before it); an older engine writes `textKeys` as an unknown field
+  const extra = Object.keys(level).filter((k) => (k === 'textKeys' ? !!level.textKeys : !KNOWN_KEYS.has(k) && level[k] !== undefined));
   lines.push(extra.length ? '  ],' : '  ]');
   extra.forEach((k, i) => lines.push(`  ${q(k)}: ${q(level[k])}${i < extra.length - 1 ? ',' : ''}`));
   lines.push('}');

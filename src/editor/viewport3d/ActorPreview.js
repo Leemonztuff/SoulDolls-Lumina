@@ -7,10 +7,10 @@ import {
   OBJECT_TYPES, ENEMY_KINDS, ENEMY_INFO, objectBounds, critterStartPoints, critterYard, enemyStartPoints,
 } from '../../engine/level/ObjectCatalog.js';
 import { RNG, hashString } from '../../engine/utils/math.js';
-import { isOwnKey, ownValue, showValue } from '../../engine/utils/own.js';
+import { isOwnKey, ownValue, showValue, ownColor } from '../../engine/utils/own.js';
 import { PARTICLE_PRESETS } from '../../engine/fx/Particles.js';
-import * as DEMO from '../../demo/config.js';
-import { ENEMY_DEFS } from '../../demo/combat/defs.js';
+import * as GAME from '../../game/config.js';
+import { ENEMY_DEFS } from '../../game/combat/defs.js';
 import { enemyKind, enemyArena, enemyGate, bossArena, bossGate } from '../enemyGroups.js';
 import { COLORS, EMITTER_COLORS, fatSegments, fillMesh, pointsObject, boxEdges, disposeGeometry } from './Gizmos.js';
 import { rectFill, drapedRect, drapedCircle, drapedPath, pathToSegments } from './Drape.js';
@@ -26,9 +26,9 @@ import { SpriteBatch } from './SpriteBatch.js';
  * @import { SceneNode } from '../../engine/render/types.js'
  */
 
-/** Character look shared with the game (src/demo/config.js), with local fallbacks. */
-const SPRITE_OPTS = DEMO.CHARACTER_SPRITE_OPTS ?? { normalUp: 0.6, wrap: 0.6, roundness: 0.55, emissive: '#ffe9d2', emissiveIntensity: 0.06 };
-const SPRITE_FILL = DEMO.SPRITE_FILL ?? { day: 0.05, night: 0.03 };
+/** Character look shared with the game (src/game/config.js), with local fallbacks. */
+const SPRITE_OPTS = GAME.CHARACTER_SPRITE_OPTS ?? { normalUp: 0.6, wrap: 0.6, roundness: 0.55, emissive: '#ffe9d2', emissiveIntensity: 0.06 };
+const SPRITE_FILL = GAME.SPRITE_FILL ?? { day: 0.05, night: 0.03 };
 /** World direction of a level `facing`. */
 const FACING_VEC = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] };
 const CAT_COLORS = { fur: '#d8893c', fur2: '#a95a24', fur3: '#f3c27a' };
@@ -41,8 +41,11 @@ const ENEMY_FACINGS = [[0, 1], [-1, 0], [1, 0], [-0.7, 0.7], [0.7, 0.7]];
 // and the app; re-exported here for the 3D modules)
 export { enemyKind, enemyArena, enemyGate, bossArena, bossGate };
 
-/** Hover height of an enemy kind (fliers; src/demo/combat/defs.js). */
+/** Hover height of an enemy kind (fliers; src/game/combat/defs.js). */
 export const enemyHover = (kind) => ENEMY_DEFS[kind]?.hover ?? (ENEMY_INFO[kind]?.flier ? 1.3 : 0);
+
+/** World direction [x, z] of an entrance's arrival facing ('down' = +Z, toward the camera). */
+const ENTRANCE_DIR = Object.freeze({ down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] });
 
 /** A villager's collider radius (`Npc`: the game adds one per villager before critters and enemies spawn). */
 const NPC_R = 0.34;
@@ -86,7 +89,7 @@ const _m = new THREE.Matrix4();
  * `box` exist for some types only.
  * @typedef {object} ActorEntry
  * @property {string} id
- * @property {'npc'|'critters'|'enemy'|'emitter'|'region'|'light'} type
+ * @property {'npc'|'critters'|'enemy'|'emitter'|'region'|'exit'|'entrance'|'event'|'marker'|'light'} type
  * @property {LevelObject} obj          private copy of the level object
  * @property {string} sig               JSON signature of `obj`
  * @property {Sprite3D[]} sprites       its sprites (npc, critters, enemy; [] for markers)
@@ -107,7 +110,7 @@ const _m = new THREE.Matrix4();
  *   emitter: live particles (atmosphere on)
  * @property {THREE.Box3} [volume]      emitter: the particle box
  * @property {THREE.Vector3} [center]   emitter: centre of the particle box
- * @property {Label} [label]  region: its name label
+ * @property {Label} [label]  region / exit / entrance / event / marker: its label
  * @property {THREE.Material} [mat]     light: bulb material
  */
 
@@ -116,7 +119,7 @@ const _m = new THREE.Matrix4();
  *  - NPCs as idle Sprite3D characters facing their `facing` (sheets cached per preset),
  *  - critter groups as creature sprites where the game starts them (the same `count`, relative
  *    `spotOffsets` / absolute `spots`, `area` / `bounds` yard and seeded scatter as
- *    src/demo/Critters.js) (+ roam ring),
+ *    src/game/Critters.js) (+ roam ring),
  *  - enemy groups (COMBAT.md §17) as enemy sprites where the game starts them
  *    (`enemyStartPoints` with the combat spawn's test: standable ground, bridge decks over water
  *    included; fliers hover, and may start over water) with a red home ring (gold for elite
@@ -128,7 +131,9 @@ const _m = new THREE.Matrix4();
  *    placement test), and scatter again when the ground, a prop or a villager there changes,
  *  - the player start as a translucent traveler with a glowing ring and a facing chevron,
  *  - particle areas as wireframe boxes (+ real particles while the atmosphere preview is on),
- *  - regions as translucent draped rectangles with a floating name label,
+ *  - regions as translucent draped rectangles with a floating name label; campaign exits (green)
+ *    and story events (gold) likewise, with their target / trigger as the label; entrances and
+ *    story markers as rings with a facing arrow and their name,
  *  - invisible point lights ('light' objects) as glowing bulbs.
  * Sprites live in the lit scene; wireframes, rectangles and bulbs in the overlay scene.
  */
@@ -161,6 +166,8 @@ export class ActorPreview {
     this.showMarkers = true;
     /** Object types hidden in the views (state.view.hiddenTypes). */
     this.hiddenTypes = new Set();
+    /** Objects the story preview hides (src/editor/story.js). */
+    this.hiddenIds = new Set();
     this._time = 0;
     /** The view's placement tests (see sync) and the villagers' collider centres [x, z, …]. */
     this._isWalkable = null;
@@ -183,6 +190,12 @@ export class ActorPreview {
       eliteRing: kit.lineMaterial({ color: ENEMY_COLORS.elite, width: 1.75, opacity: 0.75, dashed: true, dashSize: 0.45, gapSize: 0.22 }),
       arenaLine: kit.lineMaterial({ color: ENEMY_COLORS.arena, width: 2, opacity: 0.85, dashed: true, dashSize: 0.7, gapSize: 0.35 }),
       gateLine: kit.lineMaterial({ color: ENEMY_COLORS.gate, width: 3.5, opacity: 0.95 }),
+      exitFill: kit.fillMaterial({ color: COLORS.exit, opacity: 0.16 }),
+      exitLine: kit.lineMaterial({ color: COLORS.exit, width: 2, opacity: 0.9, dashed: true, dashSize: 0.8, gapSize: 0.3 }),
+      entranceRing: kit.lineMaterial({ color: COLORS.exit, width: 2.25, opacity: 0.9 }),
+      eventFill: kit.fillMaterial({ color: COLORS.event, opacity: 0.14 }),
+      eventLine: kit.lineMaterial({ color: COLORS.event, width: 2, opacity: 0.9, dashed: true, dashSize: 0.5, gapSize: 0.3 }),
+      markerRing: kit.lineMaterial({ color: COLORS.event, width: 2, opacity: 0.9 }),
       emitter: new Map(),
       bulb: new Map(),
     };
@@ -201,12 +214,14 @@ export class ActorPreview {
     this._baseOpacity = new Map(/** @type {[THREE.Material, number][]} */ ([
       [this._mat.regionFill, 0.13], [this._mat.regionLine, 0.85], [this._mat.critterRing, 0.55],
       [this._mat.enemyRing, 0.7], [this._mat.eliteRing, 0.75], [this._mat.arenaLine, 0.85], [this._mat.gateLine, 0.95],
+      [this._mat.exitFill, 0.16], [this._mat.exitLine, 0.9], [this._mat.entranceRing, 0.9],
+      [this._mat.eventFill, 0.14], [this._mat.eventLine, 0.9], [this._mat.markerRing, 0.9],
     ]));
   }
 
   /**
    * Dim the marker wireframes / region fills (e.g. in the gameplay camera, where they would
-   * clutter the HD-2D preview). 1 = normal.
+   * clutter the diorama preview). 1 = normal.
    */
   setMarkerDim(k) {
     if (k === this._dim) return;
@@ -313,6 +328,10 @@ export class ActorPreview {
       case 'enemy': e = this._createEnemy(o, sig); break;
       case 'emitter': e = this._createEmitter(o, sig); break;
       case 'region': e = this._createRegion(o, sig); break;
+      case 'exit': e = this._createExit(o, sig); break;
+      case 'entrance': e = this._createEntrance(o, sig); break;
+      case 'event': e = this._createEvent(o, sig); break;
+      case 'marker': e = this._createMarker(o, sig); break;
       case 'light': e = this._createBulb(o, sig); break;
       default: return null;
     }
@@ -580,8 +599,53 @@ export class ActorPreview {
     return e;
   }
 
+  /** A campaign exit: a green dashed rectangle with its target as the label. */
+  _createExit(o, sig) {
+    const label = this.labels.create('region exit');
+    label.id = o.id;
+    label.setText(`→ ${o.to || '?'}`, o.entrance || '');
+    const e = { id: o.id, type: 'exit', obj: o, sig, sprites: [], over: [], label };
+    this._place(e);
+    return e;
+  }
+
+  /** A campaign entrance: a green ring with an arrow toward the arrival facing, named above. */
+  _createEntrance(o, sig) {
+    const label = this.labels.create('entrance');
+    label.setText(o.name || o.id);
+    const e = { id: o.id, type: 'entrance', obj: o, sig, sprites: [], over: [], label };
+    this._place(e);
+    return e;
+  }
+
+  /**
+   * A story event: a gold dashed rectangle with its trigger and prompt as the label ("! use · Read";
+   * "(background)" after it for an event that runs without holding the player).
+   */
+  _createEvent(o, sig) {
+    const label = this.labels.create('region event');
+    label.id = o.id;
+    const on = typeof o.on === 'string' && o.on ? o.on : 'use';
+    const prompt = typeof o.label === 'string' ? o.label.trim() : '';
+    const bg = /** @type {{ background?: unknown }} */ (o).background === true ? ' (background)' : '';
+    label.setText(`! ${on}${prompt ? ` · ${prompt}` : ''}${bg}`, typeof o.if === 'string' && o.if.trim() ? `if ${o.if.trim()}` : '');
+    const e = { id: o.id, type: 'event', obj: o, sig, sprites: [], over: [], label };
+    this._place(e);
+    return e;
+  }
+
+  /** A story marker (a named spot): a gold ring with an arrow toward its facing, named above. */
+  _createMarker(o, sig) {
+    const label = this.labels.create('marker');
+    label.setText(`✦ ${(typeof o.name === 'string' && o.name.trim()) || o.id}`);
+    const e = { id: o.id, type: 'marker', obj: o, sig, sprites: [], over: [], label };
+    this._place(e);
+    return e;
+  }
+
   _createBulb(o, sig) {
-    const color = o.color ?? '#ffb46b';
+    // (a prototype colour name, which three.js turns black, takes the default as in the game: LVL-19)
+    const color = ownColor(o.color, THREE.Color.NAMES) ?? '#ffb46b';
     let mat = this._mat.bulb.get(color);
     if (!mat) {
       mat = this.kit.glowMaterial({ color, size: 0.75, opacity: 1 });
@@ -677,7 +741,49 @@ export class ActorPreview {
         const cx = (r.minX + r.maxX) / 2;
         const cz = (r.minZ + r.maxZ) / 2;
         e.label.world.set(cx, S.surfaceAt(cx, cz) + 1.6, cz);
+        // (kept inside the view over the rect's visible part: Labels.update)
+        e.label.area = { ...r, y: e.label.world.y };
         e.box = null;
+        break;
+      }
+      case 'exit': {
+        const r = { minX: o.minX, maxX: o.maxX, minZ: o.minZ, maxZ: o.maxZ };
+        add(fillMesh(rectFill(S, r, 0.04), this._mat.exitFill));
+        const line = add(fatSegments(pathToSegments(drapedRect(S, r, { lift: 0.07, step: 0.5 })), this._mat.exitLine));
+        line.computeLineDistances();
+        const cx = (r.minX + r.maxX) / 2;
+        const cz = (r.minZ + r.maxZ) / 2;
+        e.label.world.set(cx, S.surfaceAt(cx, cz) + 1.6, cz);
+        e.label.area = { ...r, y: e.label.world.y };
+        e.box = null;
+        break;
+      }
+      case 'event': {
+        const r = { minX: o.minX, maxX: o.maxX, minZ: o.minZ, maxZ: o.maxZ };
+        add(fillMesh(rectFill(S, r, 0.045), this._mat.eventFill));
+        const line = add(fatSegments(pathToSegments(drapedRect(S, r, { lift: 0.075, step: 0.5 })), this._mat.eventLine));
+        line.computeLineDistances();
+        const cx = (r.minX + r.maxX) / 2;
+        const cz = (r.minZ + r.maxZ) / 2;
+        e.label.world.set(cx, S.surfaceAt(cx, cz) + 1.6, cz);
+        e.label.area = { ...r, y: e.label.world.y };
+        e.box = null;
+        break;
+      }
+      case 'entrance':
+      case 'marker': {
+        // a ring with an arrow toward the facing (a marker's a little smaller, in gold)
+        const y = S.groundAt(o.x, o.z);
+        const a = ownValue(ENTRANCE_DIR, o.facing) ?? ENTRANCE_DIR.down;
+        const rr = e.type === 'marker' ? 0.42 : 0.55;
+        const tip = { x: o.x + a[0] * (rr + 0.55), z: o.z + a[1] * (rr + 0.55) };
+        const segs = pathToSegments(drapedCircle(S, o.x, o.z, rr, { lift: 0.07, segments: 32 }));
+        pathToSegments(drapedPath(S, [{ x: o.x + a[0] * rr, z: o.z + a[1] * rr }, tip], { step: 0.25, lift: 0.08 }), segs);
+        pathToSegments(drapedPath(S, [tip, { x: tip.x - a[0] * 0.35 + a[1] * 0.25, z: tip.z - a[1] * 0.35 - a[0] * 0.25 }], { step: 0.25, lift: 0.08 }), segs);
+        pathToSegments(drapedPath(S, [tip, { x: tip.x - a[0] * 0.35 - a[1] * 0.25, z: tip.z - a[1] * 0.35 + a[0] * 0.25 }], { step: 0.25, lift: 0.08 }), segs);
+        add(fatSegments(segs, e.type === 'marker' ? this._mat.markerRing : this._mat.entranceRing));
+        e.label.world.set(o.x, y + 1.3, o.z);
+        e.box = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(o.x, y + 0.3, o.z), new THREE.Vector3(rr * 2, 0.6, rr * 2));
         break;
       }
       case 'light': {
@@ -779,6 +885,9 @@ export class ActorPreview {
         bounds: { center: e.center.clone(), size: new THREE.Vector3(size[0], size[1], size[2]) },
         count: Math.max(1, Math.min(200, o.count | 0 || 30)),
       });
+      // (an area hidden — its type, or by the story preview — stays off: the atmosphere preview
+      // turned on again must not bring it back)
+      e.particle.enabled = !this.hiddenTypes.has(e.type) && !this.hiddenIds.has(e.id);
     } catch (err) {
       console.error('[Viewport3D] particle area failed:', err);
     }
@@ -800,9 +909,19 @@ export class ActorPreview {
     this._applyVisibility();
   }
 
-  /** Is an entry shown (view toggles + hidden types)? */
+  /**
+   * Hide these objects (the story preview: their `when` / `unless` do not allow them); they are
+   * not drawn and not picked.
+   * @param {Iterable<string>} ids
+   */
+  setHiddenIds(ids) {
+    this.hiddenIds = new Set(ids);
+    this._applyVisibility();
+  }
+
+  /** Is an entry shown (view toggles + hidden types + the story preview)? */
   _shown(e) {
-    if (this.hiddenTypes.has(e.type)) return false;
+    if (this.hiddenTypes.has(e.type) || this.hiddenIds.has(e.id)) return false;
     return ACTOR_TYPES.has(e.type) ? this.showObjects : this.showMarkers;
   }
 
@@ -813,7 +932,7 @@ export class ActorPreview {
       for (const s of e.sprites) s.visible = shown;
       for (const o of e.over) o.visible = shown && (!actor || this.showMarkers);
       if (e.label) e.label.visible = shown;
-      if (e.particle) e.particle.enabled = !this.hiddenTypes.has(e.type);
+      if (e.particle) e.particle.enabled = !this.hiddenTypes.has(e.type) && !this.hiddenIds.has(e.id);
     }
     if (this.spawn) {
       this.spawn.sprite.visible = this.showMarkers;
@@ -864,13 +983,13 @@ export class ActorPreview {
     return best;
   }
 
-  /** Region whose border passes within `tol` of the ground point (x, z), or null. */
+  /** Region, exit or story event whose border passes within `tol` of the ground point (x, z), or null. */
   pickRegionEdge(x, z, tol = 0.3) {
     if (!this.showMarkers) return null;
     let best = null;
     let bd = tol;
     for (const e of this.entries.values()) {
-      if (e.type !== 'region' || !this._shown(e)) continue;
+      if ((e.type !== 'region' && e.type !== 'exit' && e.type !== 'event') || !this._shown(e)) continue;
       const o = e.obj;
       const inside = x >= o.minX - tol && x <= o.maxX + tol && z >= o.minZ - tol && z <= o.maxZ + tol;
       if (!inside) continue;

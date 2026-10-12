@@ -1,5 +1,5 @@
 /**
- * PropSprites.js — small billboard sprites & animated FX sprites (HD-2D pixel art).
+ * PropSprites.js — small billboard sprites & animated FX sprites (2.5D pixel art).
  *
  * Every sprite is painted procedurally into a PixelCanvas with the shared PALETTE ramps (so the
  * plants match the world textures), seeded for determinism. Animated kinds lay their frames out
@@ -776,7 +776,10 @@ const BUILDERS = {
  * wide. The result is also a valid one-row SpriteSheet (`frameWidth`, `frameHeight`, `columns`,
  * `rows: 1`, `animations` with a looping `idle` for animated kinds), so Sprite3D accepts it directly.
  * @param {string} kind one of PROP_SPRITE_KINDS
- * @param {{seed?:number|string}} [opts] seed varies the procedural layout (plants, puffs); same seed → same pixels
+ * @param {{seed?:number|string}} [opts] seed varies the procedural layout of the grasses, flowers,
+ *   bush, fern, reeds, campfire, torch_flame and smoke_puff (same seed → same pixels); the other
+ *   kinds (mushroom, rock_small, candle_flame, speech_bubble, exclamation, sparkle, leaf, petal,
+ *   ember, dust, bokeh_soft) draw the same pixels whatever the seed
  * @returns {{texture: THREE.Texture, canvas: HTMLCanvasElement, width: number, height: number,
  *   pixelsPerUnit: number, anchor: [number, number], frames?: number, fps?: number,
  *   frameWidth: number, frameHeight: number, sheetWidth: number, columns: number, rows: number,

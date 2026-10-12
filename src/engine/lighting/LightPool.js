@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { lerp } from '../utils/math.js';
+import { ownColor } from '../utils/own.js';
 
 /** @import { PointLightHandle, LightingSystem } from './LightingSystem.js' */
 
@@ -85,7 +86,8 @@ export class LightPool {
    *     units away stayed dark while torches 9–10 units away were lit)
    *   - hysteresis (2): score bonus of a descriptor that is already lit
    *   - nightDayIntensity (0.05): `dayIntensity` of nightOnly descriptors without their own (the
-   *     demo's weather raises it under an overcast sky)
+   *     demo's weather raises it under an overcast sky). Pooled mode reads it live; a static
+   *     pool's lights take it once, when they are created (see the field)
    *   - dayPenalty (10): score penalty × (1 − current brightness factor): a lantern that is dark by
    *     day yields its light to the torches and campfires that burn
    *   - fixed (false): create exactly `size` lights whatever the descriptor count (the spare ones
@@ -105,7 +107,13 @@ export class LightPool {
     this.priorityWeight = opts.priorityWeight ?? 1.5;
     this.hysteresis = opts.hysteresis ?? 2;
     this.dayPenalty = opts.dayPenalty ?? 10;
-    /** dayIntensity of nightOnly descriptors that don't define one (live: applied on reassignment and every update). */
+    /**
+     * dayIntensity of nightOnly descriptors that don't define one. Pooled mode: live — applied
+     * when a light moves to a descriptor, to every lit light on each update and in the ranking.
+     * Static mode (≤ `size` descriptors): read only when the lights are created (`update` returns
+     * early), so a later change does not reach them — set their handles' `dayIntensity` instead,
+     * as `WeatherLook.applyLampDayGlow` does (KNOWN_ISSUES LIT-11).
+     */
     this.nightDayIntensity = opts.nightDayIntensity ?? 0.05;
     /** True when there are more descriptors than lights (dynamic assignment). */
     this.pooled = this.descriptors.length > this.size;
@@ -129,6 +137,14 @@ export class LightPool {
     this._seeds = new Map();
     /** Each light's creation-order flicker seed (a static light's seed, see setDescriptors). */
     this._baseSeeds = [];
+    /**
+     * Descriptors switched off by `setHidden` (a lamp the story took away): no light draws them —
+     * the descriptor set, and with it every other light's assignment, stays as it is.
+     * @type {Set<LightDescriptor>}
+     */
+    this._hidden = new Set();
+    /** Static mode: a light is fading in or out for `setHidden` (update steps it). */
+    this._staticFading = false;
 
     if (this.fixed) {
       for (let k = 0; k < this.size; k++) this.handles.push(this._addParked());
@@ -185,6 +201,37 @@ export class LightPool {
   }
 
   /**
+   * Switch a descriptor's light off (or on again) without changing the descriptor set — a lamp the
+   * story takes away or brings back while the player watches. Static mode: the light that draws it
+   * fades (`fadeTime`); pooled mode: the descriptor ranks last, so its light fades to another lamp.
+   * No light is created or removed (the point-light count, and every lit program, stays).
+   * @param {LightDescriptor} desc
+   * @param {boolean} hidden
+   * @param {{ instant?: boolean }} [opts] instant: no fade (a level being built)
+   */
+  setHidden(desc, hidden, { instant = false } = {}) {
+    if (!desc || hidden === this._hidden.has(desc)) return;
+    if (hidden) this._hidden.add(desc);
+    else this._hidden.delete(desc);
+    if (this.pooled) {
+      this._timer = 0;
+      if (instant) this._snapNext = true;
+      return;
+    }
+    const h = this.handles.find((x) => x.desc === desc);
+    if (!h) return;
+    if (instant) {
+      h.fade = hidden ? 0 : 1;
+      if (hidden) h.light.intensity = 0;
+    } else this._staticFading = true;
+  }
+
+  /** Is a descriptor switched off by `setHidden`? @param {LightDescriptor} desc */
+  isHidden(desc) {
+    return this._hidden.has(desc);
+  }
+
+  /**
    * Replace the descriptor set without creating or removing a light (the level editor calls it
    * after every edit). The mode follows the new set: static (descriptor k owns light k, exactly
    * the parameters a new static pool would give it; spare lights parked) while it fits the
@@ -195,7 +242,9 @@ export class LightPool {
    * still in the set keeps its light (a rebuilt one — same `tag`, same index among that tag's
    * descriptors — takes over its predecessor's light), and every light re-reads its descriptor
    * (a moved or recoloured lamp follows at once). A pool created without `fixed` switches to
-   * pooled mode as soon as the set outgrows the lights it has.
+   * pooled mode as soon as the set outgrows the lights it has. A descriptor `setHidden` switched
+   * off stays off while it is in the set (static mode: dark at once, or still fading out if it
+   * keeps its light without `snap`); one that leaves the set is forgotten (`isHidden` → false).
    * @param {LightDescriptor[]} descriptors light descriptors (see the class notes), most
    *   important first
    * @param {{ snap?: boolean }} [opts] snap: jump to the new ranking without fades (a level load)
@@ -207,6 +256,12 @@ export class LightPool {
     this.descriptors = next;
     if (!same) this._scored = next.map((d) => ({ d, s: 0 }));
     if (snap) this._snapNext = true;
+    // `setHidden` marks only descriptors of the set (a campaign's shared pool would otherwise keep
+    // the hidden lamps of every level it visited)
+    if (!same && this._hidden.size) {
+      const inSet = new Set(next);
+      for (const d of this._hidden) if (!inSet.has(d)) this._hidden.delete(d);
+    }
     const n = this.handles.length;
     const L = this.lighting;
     if (next.length <= n) {
@@ -221,7 +276,11 @@ export class LightPool {
           this._park(h);
           continue;
         }
-        h.fade = 1;
+        // a lamp `setHidden` switched off stays off (one fading out keeps fading)
+        const hidden = this._hidden.has(d);
+        if (!hidden) h.fade = 1;
+        else if (snap || h.desc !== d) h.fade = 0;
+        else this._staticFading = true;
         L.retargetPointLight(h, this._params(d, d.seed ?? this._baseSeeds[k]));
         h.tag = d.tag;
         h.desc = d;
@@ -329,6 +388,7 @@ export class LightPool {
       // (nothing to snap in static mode: a set that later outgrows the lights — setDescriptors —
       // crossfades from the static assignment)
       this._snapNext = false;
+      if (this._staticFading) this._fadeStatic(dt);
       return;
     }
     const nd = this.nightDayIntensity;
@@ -364,6 +424,20 @@ export class LightPool {
       // smoothstep: no visible kink at either end of the fade
       s.handle.fade = s.fade * s.fade * (3 - 2 * s.fade);
     }
+  }
+
+  /** Static mode: step the fades of lights `setHidden` switched (they stop at 0 / 1). */
+  _fadeStatic(dt) {
+    const step = this.fadeTime > 0 ? dt / this.fadeTime : 1;
+    let moving = false;
+    for (const h of this.handles) {
+      if (!h.desc) continue;
+      const target = this._hidden.has(h.desc) ? 0 : 1;
+      if (h.fade === target) continue;
+      h.fade = target > h.fade ? Math.min(1, h.fade + step) : Math.max(0, h.fade - step);
+      if (h.fade !== target) moving = true;
+    }
+    this._staticFading = moving;
   }
 
   dispose() {
@@ -505,6 +579,7 @@ export class LightPool {
         this._sphere.radius = (d.distance ?? 8) + this.margin;
         if (!frustum.intersectsSphere(this._sphere)) { e.s = Infinity; continue; }
       }
+      if (this._hidden.size && this._hidden.has(d)) { e.s = Infinity; continue; }
       const nightOnly = d.nightOnly ?? true;
       const bright = nightOnly ? lerp(d.dayIntensity ?? this.nightDayIntensity, 1, night) : 1;
       e.s = (focus ? Math.hypot(p.x - fx, (p.y - fy) * 0.5, p.z - fz) : 0)
@@ -565,14 +640,16 @@ const PARK = new THREE.Vector3(0, -500, 0);
  * not copied) whose present-but-invalid numbers are sanitised — a NaN intensity from a hand-edited
  * `light` object would poison every lit pixel (and the bloom): `intensity` clamped to 0–200
  * (not a number → 8), `distance` 0.5–100 (→ 8), `flicker` 0–1 (→ 0.2). Absent numbers stay
- * absent (the lighting defaults apply); `nightOnly` defaults to true, `priority` to 3.
+ * absent (the lighting defaults apply); `nightOnly` defaults to true, `priority` to 3. A `color`
+ * named "constructor" or "__proto__" (which three.js would turn black, KNOWN_ISSUES LVL-19) is
+ * dropped with a warning (`ownColor`): the light takes the default colour (#ffb46b).
  * @param {LightDescriptor} d raw descriptor (BuiltObject.lights)
  * @returns {LightDescriptor}
  */
 export function sanitizeLightDescriptor(d) {
   return {
     position: d.position,
-    color: d.color,
+    color: ownColor(d.color, THREE.Color.NAMES),
     intensity: num(d.intensity, 8, 0, 200),
     distance: num(d.distance, 8, 0.5, 100),
     flicker: num(d.flicker, 0.2, 0, 1),

@@ -3,12 +3,12 @@
  * check-docs-links.mjs — dependency-free link checker for the documentation.
  *
  * Checks every relative link, image and in-page anchor in
- *   docs/**\/*.md, docs/**\/*.html, README.md, CLAUDE.md
+ *   docs/**\/*.md, docs/**\/*.html, and all Markdown files at the repository root
  * (plus any extra files or folders given on the command line):
  *
  *  - the target file or folder exists, with the exact letter case (Windows would
- *    forgive a wrong case, GitHub and Linux hosts do not);
- *  - a `#anchor` into a Markdown file matches a heading (GitHub-style slugs,
+ *    forgive a wrong case, GitLab and Linux hosts do not);
+ *  - a `#anchor` into a Markdown file matches a heading (GitLab/GitHub-style slugs,
  *    including the -1, -2 … suffixes of repeated headings) or an explicit
  *    `<a id|name="…">` / `id="…"`;
  *  - a `#anchor` into an HTML file matches an `id` or `name` attribute;
@@ -68,9 +68,8 @@ function walk(dir, out) {
 
 const inputs = new Set();
 for (const f of walk(path.join(ROOT, 'docs'), [])) inputs.add(f);
-for (const f of ['README.md', 'CLAUDE.md']) {
-  const p = path.join(ROOT, f);
-  if (fs.existsSync(p)) inputs.add(p);
+for (const entry of fs.readdirSync(ROOT, { withFileTypes: true })) {
+  if (entry.isFile() && /\.md$/i.test(entry.name)) inputs.add(path.join(ROOT, entry.name));
 }
 for (const e of extra) {
   const p = path.resolve(ROOT, e);
@@ -314,7 +313,7 @@ for (const file of files) {
     if (EXTERNAL.test(raw)) { external++; continue; }
     checked++;
     const report = (reason) => problems.push({ file: rel(file), line, target: raw, kind, reason });
-    if (raw.startsWith('/')) { report('site-absolute path (breaks on file:// and GitHub); use a relative link'); continue; }
+    if (raw.startsWith('/')) { report('site-absolute path (breaks on file:// and repository hosts); use a relative link'); continue; }
 
     const hashAt = raw.indexOf('#');
     let pathPart = hashAt >= 0 ? raw.slice(0, hashAt) : raw;

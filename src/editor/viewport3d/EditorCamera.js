@@ -6,7 +6,7 @@ import { clamp, damp, DEG2RAD } from '../../engine/utils/math.js';
 export const EDIT_VIEW = Object.freeze({ fov: 30, pitch: 50, minPitch: 6, maxPitch: 88, minDistance: 2.5, maxDistance: 320 });
 
 /**
- * HD-2D gameplay framing (matches src/demo/config.js CAMERA): narrow lens, 32° pitch, ~30 units
+ * diorama gameplay framing (matches src/game/config.js CAMERA): narrow lens, 32° pitch, ~30 units
  * away, Q/E yaw only.
  */
 export const GAME_VIEW = Object.freeze({ fov: 28, pitch: 32, distance: 30, minDistance: 18, maxDistance: 42 });
@@ -30,7 +30,7 @@ const _fwd = new THREE.Vector3();
  * EditorCamera — smooth orbit camera for the level editor's 3D viewport.
  *
  *  - 'edit' mode: free orbit around a focus point (yaw / pitch / distance), damped; pitch limits.
- *  - 'game' mode: the HD-2D gameplay framing (fov 28, pitch 32°, distance ~30) looking at the
+ *  - 'game' mode: the diorama gameplay framing (fov 28, pitch 32°, distance ~30) looking at the
  *    current focus; only yaw (Q/E, right-drag) and a limited zoom.
  *
  * Camera position = focus + (sin(yaw)·cos(pitch), sin(pitch), cos(yaw)·cos(pitch)) · distance —
@@ -41,7 +41,7 @@ const _fwd = new THREE.Vector3();
 export class EditorCamera {
   /**
    * @param {THREE.PerspectiveCamera} camera
-   * @param {{ game?: Partial<GameView> }} [opts] game: overrides of GAME_VIEW (e.g. from the demo
+   * @param {{ game?: Partial<GameView> }} [opts] game: overrides of GAME_VIEW (e.g. from the game
    *   config)
    */
   constructor(camera, { game = {} } = {}) {

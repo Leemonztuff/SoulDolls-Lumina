@@ -1,6 +1,6 @@
-# Visual design — the Lumina HD-2D look
+# Visual design — the Luminati 2.5D pixel-art look
 
-This document explains **what makes Lumina look like an HD-2D game** and where every part of that
+This document explains **what gives Luminati its 2.5D pixel-art look** (with Square Enix's HD-2D games as the reference) and where every part of that
 look is set: pixel density and palette, how textures and sprites are painted, the diorama camera,
 the depth-of-field / bloom / grade values the demo actually uses, the 24-hour lighting palette,
 weather, particles, god rays, water, and the UI's visual language. Every number below was read
@@ -9,7 +9,7 @@ from the code; when you change one, change it in the file named next to it (and 
 | | |
 | --- | --- |
 | **Audience** | Artists and designers tuning the look; engineers and AI agents who need to know which constant produces which effect before touching it. |
-| **Source of truth** | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §1 (the target), [`src/demo/config.js`](../../src/demo/config.js), `Game._tunePost` in [`src/demo/Game.js`](../../src/demo/Game.js), [`src/demo/Weather.js`](../../src/demo/Weather.js), [`src/demo/AtmosphereFog.js`](../../src/demo/AtmosphereFog.js), [`src/engine/pixel/Palette.js`](../../src/engine/pixel/Palette.js), [`src/engine/pixel/PixelCanvas.js`](../../src/engine/pixel/PixelCanvas.js), [`src/engine/pixel/Textures.js`](../../src/engine/pixel/Textures.js), [`src/engine/pixel/CharacterSprites.js`](../../src/engine/pixel/CharacterSprites.js), [`src/engine/render/PostFX.js`](../../src/engine/render/PostFX.js), [`src/engine/lighting/LightingSystem.js`](../../src/engine/lighting/LightingSystem.js), [`src/engine/fx/Particles.js`](../../src/engine/fx/Particles.js), [`src/engine/fx/GodRays.js`](../../src/engine/fx/GodRays.js), [`src/engine/ui/ui.css`](../../src/engine/ui/ui.css) |
+| **Source of truth** | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) §1 (the target), [`src/game/config.js`](../../src/game/config.js), `Game._tunePost` in [`src/game/Game.js`](../../src/game/Game.js), [`src/game/Weather.js`](../../src/game/Weather.js), [`src/game/AtmosphereFog.js`](../../src/game/AtmosphereFog.js), [`src/engine/pixel/Palette.js`](../../src/engine/pixel/Palette.js), [`src/engine/pixel/PixelCanvas.js`](../../src/engine/pixel/PixelCanvas.js), [`src/engine/pixel/Textures.js`](../../src/engine/pixel/Textures.js), [`src/engine/pixel/CharacterSprites.js`](../../src/engine/pixel/CharacterSprites.js), [`src/engine/render/PostFX.js`](../../src/engine/render/PostFX.js), [`src/engine/lighting/LightingSystem.js`](../../src/engine/lighting/LightingSystem.js), [`src/engine/fx/Particles.js`](../../src/engine/fx/Particles.js), [`src/engine/fx/GodRays.js`](../../src/engine/fx/GodRays.js), [`src/engine/ui/ui.css`](../../src/engine/ui/ui.css) |
 | **Related docs** | [Render pipeline](../architecture/RENDER_PIPELINE.md) · module references [pixel](../architecture/modules/pixel.md), [sprite](../architecture/modules/sprite.md), [render](../architecture/modules/render.md), [lighting](../architecture/modules/lighting.md), [fx](../architecture/modules/fx.md), [world](../architecture/modules/world.md), [ui](../architecture/modules/ui.md) · [Level design guide](LEVEL_DESIGN_GUIDE.md) · [Performance](../architecture/PERFORMANCE.md) · [Features](../features/FEATURES.md) |
 
 ![Emberfall at golden hour: tilt-shift blur on the foreground flowers and the far roofs, warm sun, cool shadows, god rays, the area banner and HUD](../assets/screenshots/emberfall-golden-hour.jpg)
@@ -26,12 +26,12 @@ produces it and to the section of this page that holds its tuning.
 | # | Ingredient (ARCHITECTURE §1) | Produced by | Tuning |
 | --- | --- | --- | --- |
 | 1 | Pixel art everywhere at one density, normal-mapped | `TextureLibrary`, `CharacterSprites`, `PropSprites`, `PixelCanvas` (`src/engine/pixel/`) | [§2](#2-pixel-density-and-scale) – [§4](#4-textures) |
-| 2 | Diorama camera: narrow FOV, looking down, far away | `CameraRig` (`src/engine/core/CameraRig.js`) + `CAMERA` in `src/demo/config.js` | [§6](#6-the-diorama-camera) |
+| 2 | Diorama camera: narrow FOV, looking down, far away | `CameraRig` (`src/engine/core/CameraRig.js`) + `CAMERA` in `src/game/config.js` | [§6](#6-the-diorama-camera) |
 | 3 | Strong depth of field / tilt-shift with bokeh | `PostFX` DOF (`src/engine/render/PostFX.js`, `shaders/DofShaders.js`) | [§7](#7-post-processing-dof-bloom-grade) |
 | 4 | Rich lighting: warm sun, cool fill, flickering lanterns, day/night | `LightingSystem`, `LightPool`, `Sky` (`src/engine/lighting/`) | [§8](#8-the-24-hour-lighting-palette) |
 | 5 | Bloom + colour grade + vignette + grain + CA | `PostFX` bloom and grade passes | [§7](#7-post-processing-dof-bloom-grade) |
 | 6 | Atmosphere: motes, god rays, fireflies, leaves, smoke, water sparkle, wind, fog | `Particles`, `GodRays`, `Water`, wind uniforms, `installFogStart` | [§9](#9-weather), [§10](#10-particles-god-rays-and-water) |
-| 7 | Ornate UI: gold-bordered dialog, serif type, banners | `src/engine/ui/*` + `ui.css` | [§11](#11-ui-visual-language) |
+| 7 | Pixel-art UI after mockup G: gilded frames, pixel type, three languages | `src/engine/ui/*` (`art/`, `layout/`) | [§11](#11-ui-visual-language) |
 
 ```mermaid
 flowchart LR
@@ -179,7 +179,7 @@ Design principles (from the file header and the texture auditor's notes):
   2.5 fps, `walk_<dir>` 4 frames (contact, passing, contact, passing) at 8 fps, `run_<dir>` the same
   frames at 13 fps. The demo plays idle "breathing" at 0.5–0.62 × speed, different per villager
   (`IDLE_SPEED` in `config.js`), so a crowd never breathes in lockstep. Walk speed 3.2 u/s, run
-  5.6 u/s (`src/demo/Player.js`).
+  5.6 u/s (`src/game/Player.js`).
 - **14 presets** (`CHARACTER_PRESETS`): traveler, swordsman, merchant, cleric, scholar, dancer,
   hunter, villager, farmer, elder, child, guard, innkeeper, bard. A `seed` on a preset adds a subtle
   deterministic colour variation for crowds; creatures are `cat`, `dog`, `chicken`, `bird`.
@@ -189,17 +189,17 @@ sprites are cylindrical billboards that all share `globalUniforms.uCameraYaw`. T
 is bent toward "up" and toward the camera, with wrap diffuse, so a sprite with the low sun behind it
 never goes black. The demo pushes this a little further for every character and critter:
 
-| `CHARACTER_SPRITE_OPTS` (`src/demo/config.js`) | Value | Engine default | Effect |
+| `CHARACTER_SPRITE_OPTS` (`src/game/config.js`) | Value | Engine default | Effect |
 | --- | --- | --- | --- |
 | `normalUp` | 0.6 | 0.55 | Shading normal leans to world-up: a low sun still grazes the figure. |
 | `wrap` | 0.6 | 0.6 | Wrap diffuse `(N·L + w) / (1 + w)`. |
 | `roundness` | 0.55 | 0.8 | Horizontal curvature so a lantern rims one side. |
-| `emissive` / `emissiveIntensity` | `#ffe9d2` / 0.06 | — | Warm bounce fill (multiplied by the sprite's own texels). The 0.06 is only the starting value: `Game.init` registers every character / critter material with `registerEmissive(material, SPRITE_FILL)`, which rewrites `emissiveIntensity` every frame. |
+| `emissive` / `emissiveIntensity` | `#ffe9d2` / 0.06 | — | Warm bounce fill (multiplied by the sprite's own texels). The 0.06 never reaches the game: `Game._buildLevel` (and the editor preview) registers every character / critter / enemy material with `registerEmissive(material, SPRITE_FILL)`, which sets `emissiveIntensity` at once and every frame; only unregistered sprites (the `combat_fx` / `enemy_ai` sandboxes) keep 0.06. |
 | `SPRITE_FILL` | day 0.05, night 0.03 | — | The fill intensity actually used, `lerp(day, night, nightFactor)`: it fades at night, where lanterns take over. |
 
 These values were lowered in the Emberfall art review: stacked with the sun they had blown faces
 and white hair out to flat orange blobs at golden hour and noon (see
-[history/DECISIONS.md](../history/DECISIONS.md)). Known trade-off: fully zoomed in (distance 18) at
+[Architecture overview](../architecture/OVERVIEW.md)). Known trade-off: fully zoomed in (distance 18) at
 golden hour sprites still read slightly hot.
 
 **Shadows and readability:**
@@ -208,7 +208,7 @@ golden hour sprites still read slightly hot.
   soft blob contact shadow under the feet (`BlobBatch` draws all blobs in one instanced call on big
   levels).
 - When a roof, the well or a tree crown hides the player, a **pale lilac x-ray silhouette** shows
-  through (`src/demo/Player.js`): it writes depth (so the DOF keeps it sharp instead of blurring it
+  through (`src/game/Player.js`): it writes depth (so the DOF keeps it sharp instead of blurring it
   with the roof), draws last (`renderOrder` 60), is pulled 1.3 units toward the camera so grass at
   the feet doesn't reveal it, and dims at night (`setSilhouetteLevel(lerp(1, 0.5, nightFactor))`).
 
@@ -219,7 +219,7 @@ golden hour sprites still read slightly hot.
 The engine's `CameraRig` defaults are the contract values (fov 28°, pitch 32°, distance 24 within
 14–36). The game pulls the camera further back so the village reads as a miniature:
 
-| `CAMERA` (`src/demo/config.js`) | Value | Notes |
+| `CAMERA` (`src/game/config.js`) | Value | Notes |
 | --- | --- | --- |
 | `fov` | 28° | Narrow lens — little perspective distortion, strong "model" feel. |
 | `pitch` | 32° | Looking down; per level `environment.camera.pitch` (clamped 10–80). |
@@ -294,11 +294,12 @@ Behaviour the numbers don't show:
 
 ### Aerial perspective (fog start)
 
-`installFogStart(camera.distance − 7)` ([`src/demo/AtmosphereFog.js`](../../src/demo/AtmosphereFog.js))
-patches three.js' `fog_vertex` chunk so fog only begins **23 units from the camera** (at the default
-distance of 30): the diorama around the player stays crisp and saturated while everything past it
-melts into the horizon colour. It must run before the first material compiles; particles include the
-same chunk. The final fog density is
+`installFogStart()` ([`src/game/AtmosphereFog.js`](../../src/game/AtmosphereFog.js))
+patches three.js' `fog_vertex` chunk so fog only begins at the uniform `uFogStart` — the level's
+camera distance − 7, **23 units from the camera** at the default distance of 30 (each level of a
+campaign sets its own): the diorama around the player stays crisp and saturated while everything
+past it melts into the horizon colour. It must run before the first material compiles; particles
+include the same chunk. The final fog density is
 
 `keyframe fog × tuning.fogMul (2.0) × weather fog × zoomFog × environment.fogScale`
 
@@ -320,7 +321,7 @@ sky (top / horizon / bottom), the directional light (sun, or moon when `moon` = 
 fill, `FogExp2` density and colour, tone-mapping exposure, the night factor `uNight`, shadow
 strength, sky glow and cloud cover.
 
-The game applies `KEYFRAME_OVERRIDES` from `src/demo/config.js` (matched by name — both `night`
+The game applies `KEYFRAME_OVERRIDES` from `src/game/config.js` (matched by name — both `night`
 keyframes get the night override). **Bold** = demo override.
 
 | Hour | Name | Sky horizon | Sun colour | Sun I | Hemi I | Fog | Exposure | Night |
@@ -344,8 +345,8 @@ golden hour gets a cooler ground bounce and sky fill (`hemiGround #7a6058`, `hem
 long shadows stay lifted and slightly teal instead of muddy red-brown.
 
 **Why these overrides:** the Emberfall art review measured nights as near-black away from the
-lanterns and the old "Dusk" preset darker than night. Octopath nights are blue, not black; the
-overrides raised the night fill and the dusk trough (see [DECISIONS](../history/DECISIONS.md)).
+lanterns and the old "Dusk" preset darker than night. The nights of Square Enix's HD-2D games are blue, not black; the
+overrides raised the night fill and the dusk trough (see [Architecture overview](../architecture/OVERVIEW.md)).
 
 **Sun and moon paths** (`SUN_PATH`, `MOON_PATH` in `config.js`):
 
@@ -378,7 +379,7 @@ Willowmere 16.8).
 
 ### Point lights and glowing windows
 
-- **At most twelve real point lights** (`MAX_POINT_LIGHTS` in `src/demo/World.js`), all created
+- **At most twelve real point lights** (`MAX_POINT_LIGHTS` in `src/game/World.js`), all created
   before the first frame (changing the light count would recompile every shader). A level with
   ≤ 12 light sources gets exactly one permanent light each (Willowmere has 6, Emberfall 12); a level
   with more gets 12 lights that `LightPool` hands to the lanterns around the camera, crossfading
@@ -425,7 +426,7 @@ frame) on top of the time-of-day palette and the debug "tuning" base values:
 - **Rainy villages glow**: by day, night-only lamps burn at `lerp(0.05, 0.45, overcast)` of their
   intensity and windows / lantern glass at `lerp(baseDay, 0.4 × night level, overcast)` — about
   30 % of their night brightness in rain (25 % in snow).
-- **Snow settles**: `snowCover` (`src/demo/SnowCover.js`) whitens up-facing terrain, grass tips and
+- **Snow settles**: `snowCover` (`src/game/SnowCover.js`) whitens up-facing terrain, grass tips and
   roofs, building up over ~15 s of snowfall and melting in ~8 s.
 - Rain (2600 streaks) and snow (2400 flakes) are camera-following emitters in a 44 × 16 × 44 /
   44 × 15 × 44 box, created at load with intensity 0 so their shaders are compiled before play.
@@ -463,7 +464,7 @@ camera, with height, fog, at night and with a high sun. The game creates them wi
 drives their intensity with two gaussians — strongest around **17.3 h** and a smaller peak around
 **7.0 h**, never below 35 % — times the weather's `rays` factor (`Weather.update`). Levels place
 them with `environment.godRayAreas` (3 shafts per area unless `count` says otherwise, at most 12);
-without the field, `World._autoGodRayArea` puts one area over the walkable ground with one shaft per
+without the field, `LevelLook.autoGodRayArea` puts one area over the walkable ground with one shaft per
 ~90 square units of it (1–6); `environment.godRays: false` switches them off.
 
 **Water** ([`Water.js`](../../src/engine/world/Water.js)): flow-mapped, pixel-quantised ripples,
@@ -482,42 +483,53 @@ multiplies water brightness by 0.66 and glints by 0.55.
 
 ## 11. UI visual language
 
-The in-game UI is a DOM overlay ([`src/engine/ui/`](../../src/engine/ui/)) styled by
-[`ui.css`](../../src/engine/ui/ui.css) — "deep navy → black translucent panels, thin warm-gold double
-borders with small diamond ornaments, serif typography, cream text with a faint dark shadow, and slow,
-elegant easing".
+The in-game UI is a DOM overlay ([`src/engine/ui/`](../../src/engine/ui/)) drawn in the
+**Gilded Today** pixel-art style. [PIXEL_UI.md](../specs/PIXEL_UI.md) and the implementation
+define the layout, palette, typography and component recipes: navy glass and warm gold, with
+frames, gem studs, scroll corners, cartouches, crowns, bars, keycaps, reticles and the logo
+painted as pixel art. The UI supports English, Japanese and Simplified Chinese
+([I18N.md](../specs/I18N.md)).
 
-| Token (`.lu-root`) | Value | Use |
-| --- | --- | --- |
-| `--lu-gold` | `#c9a45c` | Borders, ornaments, name plates |
-| `--lu-gold-hi` / `--lu-gold-pale` / `--lu-gold-lo` | `#e8cf8a` / `#f4e3b3` / `#8c6a32` | Ornament highlights and shading |
-| `--lu-cream` | `#f3ead7` | Body text |
-| `--lu-ink` | `#07080f` | Deepest background |
-| `--lu-panel-top` / `--lu-panel-mid` / `--lu-panel-bot` | `rgba(26,34,66,.86)` / `rgba(12,16,34,.9)` / `rgba(4,5,12,.93)` | Panel gradient (top → bottom) |
-| (`.lu-dialog__text .lu-hl`) | `#f3cf7a` | `{word}` highlights in dialog text |
-| `--lu-serif` | Crimson Pro | Dialog and body text |
-| `--lu-display` | Cinzel | Titles, banners, name plates, HUD place names |
-| `--lu-pixel` | Pixelify Sans | Small numerics and key caps |
+- **One art pixel per UI.** Everything is placed in art pixels of G's 640 × 360 frame and shown at
+  a whole number of device pixels each (`--px`: 2 up to 1919 px wide, 3 at 1920 × 1080, 4 at
+  2560 × 1440; half-size type at `--fpx` = ⌈px / 2⌉). Small screens keep px 2: the corner groups
+  shrink only below 1024 × 600 and the big windows reflow instead of scaling. Motion moves in whole
+  art pixels with `steps()`.
+- **Colour.** G's palette, verbatim (`art/palette.js` `PALETTE`, CSS `--g-<token>`): the navy glass,
+  the golds `g1`–`g5`, the cream text tones, the gem ramps (gold, sapphire, amber, ruby, ember,
+  dusk), the bars' ramps. `{word}` highlights are gold.
+- **Type.** Ten roles (`head`, `name`, `body`, `line`, `small`, `val`, `num`, `big`, `numL`,
+  `tiny`) in pixel faces — Jersey 15, Jersey 10 and Tiny5 — with DotGothic16 and Noto Sans JP in
+  Japanese and Noto Sans SC in Chinese, Latin inside CJK lines set in size-matched Jersey aliases;
+  arrows and ♪ are pixel glyphs too. Latin terms (HP, MP, Lv, G, key names, numbers) stay Latin in
+  every language. The fonts load from Google Fonts first, else from the copies built into `dist/`.
+- **The frame family.** A's L / M / S / XS windows (lattice, beading, trios and studs, gold corner
+  gems), the scroll corners, the cartouche name plates, the crown, stepped alpha bands for plates
+  and toasts, a stepped dim veil behind the full-screen windows.
 
-Fonts are bundled from `@fontsource` packages (imported in `src/engine/ui/UI.js`) — no CDN. Sizes use
-`clamp()` against the viewport width (dialog body ≈ 23 px at 1600 px wide), so the UI reads from
-1280 to 2560 px.
-
-- **Dialog**: bottom-centre, about two thirds of the viewport wide, gold double border with diamond
-  corner ornaments, speaker name plate on the top-left edge, typewriter text (the game sets 55
-  characters/s; punctuation adds short pauses), a bobbing ▼ "next" indicator, choices with a 0.25 s
-  input guard (`choiceGuard`) so mashing can't pick one by accident. `{word}` renders gold.
-- **Area banner**: Cinzel title between ornamental lines with a serif subtitle, fading in and out —
-  shown on entering a level and on first entering a region with a `banner`.
-- **HUD**: clock with sun / moon icon and phase name, place-name plate (region name + subtitle),
-  toasts, a controls legend (hidden below 540 px window height), a gold-framed minimap (north up,
-  34 units across, hidden below 560 px; `environment.minimap: false` turns it off) and the
-  full-screen world map (N / Tab).
-- **Title screen**: level title in Cinzel over the live, drifting 3D scene.
+- **Dialog**: bottom-left (clear of the skill bar), 496 art px wide, the speaker's portrait from
+  the real character sheet in a gilt frame, the name cartouche on the top rim (with an optional
+  title), typewriter text (the game sets 55 characters/s; punctuation adds short pauses; Japanese
+  and Chinese type character by character), a question line under the speech, a bobbing ▼ "next"
+  mark, and choices in a small window above the right end with a 0.25 s input guard
+  (`choiceGuard`). `{word}` renders gold.
+- **Area banner**: drawn as G's level-up card — a stepped shade, gold hairlines with a gem, the
+  title in capitals, the subtitle — shown on entering a level and on first entering a region with
+  a `banner`.
+- **HUD**: the place plate (region name + subtitle) top-left, an XS clock window with the phase
+  icon and name top-right, toasts on the title's plate band (clear of the corner panels and the
+  banner, `{Key}` drawn as keycaps), a controls legend of keycap rows (hidden below 540 px window
+  height), the minimap — G's M window, north up, about 34 units across, hidden below 560 px;
+  `environment.minimap: false` turns it off — and the world map (N / Tab), an L window like the
+  tactics panel.
+- **Title screen**: the gilded logo (A's Roman capitals; the translated name drawn from the
+  language's face in Japanese and Chinese, the English wordmark under it) under the compass star,
+  over the live, drifting 3D scene with rising pixel embers, the menu or level chooser, and the
+  language row (EN · 日本語 · 中文).
 
 | Dialog | Area banner | World map |
 | --- | --- | --- |
-| ![A dialog box in Emberfall: gold border, name plate, serif text](../assets/screenshots/emberfall-dialogue.jpg) | ![The Windmill Hill arrival banner](../assets/screenshots/emberfall-area-banner.jpg) | ![Starfall Vale's world map with region names and legend](../assets/screenshots/starfall-world-map.jpg) |
+| ![The pixel-UI dialog window in Emberfall: Elder Maren's portrait, the name cartouche, gold keyword](../assets/screenshots/emberfall-dialogue.jpg) | ![The Windmill Hill arrival banner](../assets/screenshots/emberfall-area-banner.jpg) | ![Starfall Vale's world map with region names and legend](../assets/screenshots/starfall-world-map.jpg) |
 
 The **level editor** deliberately uses a different language — a dense dark tool UI in `system-ui`
 (`src/editor/editor.css`) with navy / gold accents and Cinzel only for the logo, the level name
@@ -529,17 +541,17 @@ and the About dialog ([EDITOR.md](../architecture/EDITOR.md)).
 
 | I want to… | Change | File |
 | --- | --- | --- |
-| Make the whole game warmer / cooler, more or less saturated | `grade.temperature`, `grade.saturation` in `_tunePost` (weather adds offsets) | `src/demo/Game.js` |
-| Widen / narrow the sharp band | `dof.focusRange`, `tiltWidth`, `tiltShift` | `src/demo/Game.js` |
-| Make more things bloom | lower `bloom.threshold` (below 1 sunlit sprites start to glow) | `src/demo/Game.js` |
-| Brighten nights or dusk | `KEYFRAME_OVERRIDES` (`hemiI`, `exp`, `sunI`) | `src/demo/config.js` |
-| Move the golden-hour sun | `SUN_PATH.refAzimuth` / `lat` / `dec` | `src/demo/config.js` |
-| Change how far the camera sits | `CAMERA`, or per level `environment.camera` | `src/demo/config.js`, level JSON |
+| Make the whole game warmer / cooler, more or less saturated | `grade.temperature`, `grade.saturation` in `_tunePost` (weather adds offsets) | `src/game/Game.js` |
+| Widen / narrow the sharp band | `dof.focusRange`, `tiltWidth`, `tiltShift` | `src/game/Game.js` |
+| Make more things bloom | lower `bloom.threshold` (below 1 sunlit sprites start to glow) | `src/game/Game.js` |
+| Brighten nights or dusk | `KEYFRAME_OVERRIDES` (`hemiI`, `exp`, `sunI`) | `src/game/config.js` |
+| Move the golden-hour sun | `SUN_PATH.refAzimuth` / `lat` / `dec` | `src/game/config.js` |
+| Change how far the camera sits | `CAMERA`, or per level `environment.camera` | `src/game/config.js`, level JSON |
 | Thin the haze on one level | `environment.fogScale` | level JSON ([LEVEL_FORMAT](../specs/LEVEL_FORMAT.md)) |
 | Calm a lake's sparkle | `water.glint` (and `reflect` / `neutral`) | level JSON |
-| Change character shading | `CHARACTER_SPRITE_OPTS`, `SPRITE_FILL` | `src/demo/config.js` |
+| Change character shading | `CHARACTER_SPRITE_OPTS`, `SPRITE_FILL` | `src/game/config.js` |
 | Add a colour | a new ramp in `PALETTE`, shades via `shadeColor` | `src/engine/pixel/Palette.js` |
-| Try values live | the debug panel (` or F1): Time & Weather, Post FX, Lighting, Camera, Atmosphere, Render | `src/demo/DebugControls.js` |
+| Try values live | the debug panel (` or F1): Time & Weather, Post FX, Lighting, Camera, Atmosphere, Render | `src/game/DebugControls.js` |
 
 Small levels (≤ 64 tiles) must keep looking exactly as before any engine change — compare against
 the baseline screenshots as described in [TESTING_AND_VERIFICATION](../development/TESTING_AND_VERIFICATION.md).

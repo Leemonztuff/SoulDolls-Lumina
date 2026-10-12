@@ -4,6 +4,7 @@ import { TileMap } from '../world/TileMap.js';
 import { Water, createWaterfall, waterfallDir } from '../world/Water.js';
 import { OBJECT_TYPES } from './ObjectCatalog.js';
 import { toTileMapInput } from './LevelFormat.js';
+import { runSteps } from '../utils/steps.js';
 
 /**
  * @import { Level, LevelObject, LevelObjectOf, ObjectTypeDef, Rect,
@@ -13,7 +14,7 @@ import { toTileMapInput } from './LevelFormat.js';
  */
 
 /**
- * Builds the 3D content of a Lumina level: the terrain (TileMap + Water) and every prop-kind
+ * Builds the 3D content of a Luminati level: the terrain (TileMap + Water) and every prop-kind
  * object (houses, trees, lights, fences, bridges, waterfalls …) through the PropFactory.
  *
  * Shared by the game (which then merges static meshes and wires lights / particles) and the level
@@ -56,8 +57,11 @@ import { toTileMapInput } from './LevelFormat.js';
  * @typedef {Pick<TileMap, 'getHeight'|'getWaterSurface'|'tileAt'>} GroundSampler
  */
 
+/** Prop types already reported as having no `build` case (one warning each). */
+const unbuilt = new Set();
+
 /** Point-light priority by object type (lower = kept first when over the light budget). */
-export const LIGHT_PRIORITY = { campfire: 0, wallTorch: 1, light: 1, lamppost: 2, house: 3 };
+export const LIGHT_PRIORITY = { campfire: 0, hearth: 0, wallTorch: 1, light: 1, lamppost: 2, house: 3 };
 
 export class LevelObjectBuilder {
   /** @param {{ textures: TextureLibrary, seed?: number, factory?: PropFactory }} opts */
@@ -110,7 +114,18 @@ export class LevelObjectBuilder {
       case 'rock':
       case 'haystack':
       case 'chest':
-      case 'waystone': {
+      case 'waystone':
+      // interior furniture (props/Furniture.js)
+      case 'bed':
+      case 'table':
+      case 'chair':
+      case 'shelf':
+      case 'hearth':
+      case 'counter':
+      case 'rug':
+      case 'staircase':
+      case 'wardrobe':
+      case 'sacks': {
         if (obj.type === 'house' && !opts.upperWall) delete opts.upperWall;
         // (each type calls its own method with its own opts — a correlation TS cannot follow)
         res = /** @type {(x: number, y: number, z: number, opts: object) => PropResult} */ (f[obj.type])(obj.x, h(obj.x, obj.z), obj.z, opts);
@@ -130,6 +145,13 @@ export class LevelObjectBuilder {
         const gx = obj.x + Math.sin(rotation) * 0.6;
         const gz = obj.z + Math.cos(rotation) * 0.6;
         res = f.wallTorch(obj.x, h(gx, gz) + (obj.dy ?? 2.1), obj.z, opts);
+        break;
+      }
+      case 'wallWindow': {
+        // on the wall face: the floor height sampled just in front of it (local +Z, into the room)
+        const gx = obj.x + Math.sin(rotation) * 0.6;
+        const gz = obj.z + Math.cos(rotation) * 0.6;
+        res = f.wallWindow(obj.x, h(gx, gz), obj.z, opts);
         break;
       }
       case 'light': {
@@ -183,7 +205,12 @@ export class LevelObjectBuilder {
         break;
       }
       default:
-        // (only non-prop types get here: a prop type without a case fails the cast — PROP-10)
+        // (only non-prop types get here: a prop type without a case fails the cast — PROP-10 —,
+        // and is reported at run time too)
+        if (LevelObjectBuilder.isBuildable(obj.type) && !unbuilt.has(obj.type)) {
+          unbuilt.add(obj.type);
+          console.warn(`[Luminati] no build case for the prop type "${obj.type}": its objects build nothing`);
+        }
         return /** @type {NullForNonProp<typeof obj.type>} */ (null);
     }
 
@@ -277,8 +304,21 @@ export function buildWaterfall(tileMap, obj) {
  *   in the water, then calls `water.refresh()` before the first render (saves a full bake)
  * @returns {{ tileMap: TileMap, water: Water|null, object: THREE.Group, dispose: () => void }}
  */
-export function buildLevelTerrain(level, { textures, chunkSize = 32, tileMapOptions = {}, deferShore = false }) {
-  const tileMap = new TileMap(toTileMapInput(level), { textures, chunkSize, ...tileMapOptions });
+export function buildLevelTerrain(level, opts) {
+  return runSteps(buildLevelTerrainSteps(level, opts));
+}
+
+/**
+ * {@link buildLevelTerrain} as a step generator (src/engine/utils/steps.js): a step per tile, per
+ * tile's fringes and per terrain mesh (`TileMap.buildSteps`), then the water. Run to its end it
+ * returns exactly what buildLevelTerrain returns.
+ * @param {Level} level
+ * @param {Parameters<typeof buildLevelTerrain>[1]} opts
+ * @returns {Generator<undefined, ReturnType<typeof buildLevelTerrain>>}
+ */
+export function* buildLevelTerrainSteps(level, { textures, chunkSize = 32, tileMapOptions = {}, deferShore = false }) {
+  const tileMap = new TileMap(toTileMapInput(level), { textures, chunkSize, ...tileMapOptions, deferBuild: true });
+  yield* tileMap.buildSteps();
   const group = new THREE.Group();
   group.name = `terrain:${level.name}`;
   group.add(tileMap.object);

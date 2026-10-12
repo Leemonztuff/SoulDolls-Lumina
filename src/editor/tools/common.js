@@ -185,11 +185,23 @@ export const heightAt = (level, i, j, fallback = 0) => getHeightLevel(level, i, 
  * @param {LevelObject} o level object
  */
 export function shownOnMap(view, o) {
-  const def = OBJECT_TYPES[o.type];
-  if (!def) return false;
+  const toggle = viewToggleOf(o);
+  if (!toggle) return false;
   if (view.hiddenTypes?.length && view.hiddenTypes.includes(o.type)) return false;
-  if (def.kind === 'marker' || o.type === 'critters' || o.type === 'enemy') return view.showMarkers !== false;
-  return view.showObjects !== false;
+  return view[toggle] !== false;
+}
+
+/**
+ * The View menu toggle a level object follows on the 2D map: *Show markers* (`showMarkers`) for
+ * markers, critter and enemy groups, *Show objects* (`showObjects`) for everything else; null for
+ * an unknown type.
+ * @param {LevelObject|null|undefined} o
+ * @returns {'showMarkers'|'showObjects'|null}
+ */
+export function viewToggleOf(o) {
+  const def = ownValue(OBJECT_TYPES, o?.type);
+  if (!def) return null;
+  return def.kind === 'marker' || o.type === 'critters' || o.type === 'enemy' ? 'showMarkers' : 'showObjects';
 }
 
 /** Delete the selected objects (the spawn marker cannot be deleted). */
@@ -232,10 +244,11 @@ const CARD_CYCLE = ['S', 'E', 'N', 'W'];
  * turn as a group about their common centre (snapped to 0.5 so grid-aligned layouts stay on the
  * grid). Regions and particle areas stay axis-aligned (their extents swap on quarter turns);
  * waterfalls, NPCs and the player start face one of four directions, so they turn in 90° steps
- * (a single one also turns a quarter for a 15° step, otherwise R would do nothing). An enemy
- * group's relative boss `arena`, `gate`, scatter `area` and `spotOffsets` turn with it in the
- * same 90° steps (the arena stays axis-aligned, like the game's); a group turned by another angle
- * keeps them as they were (a notice says so).
+ * (a single one also turns a quarter for a 15° step, otherwise R would do nothing). The relative
+ * fields of NPCs (`talkOffset`, chase `area`), critter groups (yard `area`, `spotOffsets`) and
+ * enemy groups (boss `arena`, `gate`, scatter `area`, `spotOffsets`) turn with their object in
+ * the same 90° steps (rects stay axis-aligned, like the game's); an object of a group turned by
+ * another angle keeps them as they were (a notice says so).
  */
 export function rotateSelection(state, delta) {
   if (!state.selection.length || !delta) return false;
@@ -258,7 +271,7 @@ export function rotateSelection(state, delta) {
   /** A point carried along with the group (unchanged for a single object). */
   const orbit = (x, z) => (pivot ? turn(x, z, pivot.x, pivot.z) : [x, z]);
 
-  /** Enemy groups whose relative fields could not follow a turn that is not a quarter. */
+  /** Objects whose relative fields could not follow a turn that is not a quarter. */
   const kept = [];
   state.begin('Rotate');
   for (const id of state.selection) {
@@ -296,34 +309,49 @@ export function rotateSelection(state, delta) {
       } else if (o.type === 'npc') {
         const k = FACING_CYCLE.indexOf(o.facing ?? 'down');
         if (facingTurns) o.facing = FACING_CYCLE[mod(k + facingTurns, 4)];
+        if (!turnRelativeFields(o, facingTurns) && hasRelativeFields(o)) kept.push(o.id);
       } else if (o.type === 'emitter') {
         if (oddQuarter && Array.isArray(o.size)) o.size = [o.size[2], o.size[1], o.size[0]];
-      } else if (o.type === 'enemy') {
-        if (!turnEnemyFields(o, facingTurns) && hasEnemyFields(o)) kept.push(o.id);
+      } else if (o.type === 'enemy' || o.type === 'critters') {
+        if (!turnRelativeFields(o, facingTurns) && hasRelativeFields(o)) kept.push(o.id);
       } else if (def.rotatable || o.rotation != null) {
         o.rotation = normalizeAngle((o.rotation ?? 0) + delta);
       }
     }, 'Rotate');
   }
   state.commit();
-  if (kept.length) state.notify(`Enemy arenas, gates and spots turn only in 90° steps (Ctrl+R): not turned on ${kept.length === 1 ? kept[0] : `${kept.length} groups`}`);
+  if (kept.length) state.notify(`Relative areas, spots, gates and talk points turn only in 90° steps (Ctrl+R): not turned on ${kept.length === 1 ? kept[0] : `${kept.length} objects`}`);
   return true;
 }
 
 const isPt = (p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
 const isRect = (r) => !!r && typeof r === 'object' && ['minX', 'maxX', 'minZ', 'maxZ'].every((k) => Number.isFinite(r[k]));
 
-/** Does an enemy group carry relative fields that turn with it (arena, gate, area, spotOffsets)? */
-function hasEnemyFields(o) {
-  return isRect(o.arena) || isRect(o.area) || (Array.isArray(o.gate) && o.gate.length >= 4) || (Array.isArray(o.spotOffsets) && o.spotOffsets.some(isPt));
+/**
+ * The fields of a type stored relative to the object's x / z, which turn with it (the legacy
+ * absolute `talkPoint` / `bounds` / `spots` only follow its position, `shiftLegacyFields`).
+ * @type {Record<string, readonly string[]>}
+ */
+const RELATIVE_FIELDS = {
+  npc: ['talkOffset', 'area'],
+  critters: ['area', 'spotOffsets'],
+  enemy: ['arena', 'gate', 'area', 'spotOffsets'],
+};
+const isGate = (g) => Array.isArray(g) && g.length >= 4 && g.slice(0, 4).every(Number.isFinite);
+
+/** Does an NPC, critter or enemy group carry relative fields that turn with it (RELATIVE_FIELDS)? */
+function hasRelativeFields(o) {
+  return (ownValue(RELATIVE_FIELDS, o.type) ?? []).some((k) => (k === 'spotOffsets' ? Array.isArray(o[k]) && o[k].some(isPt)
+    : k === 'gate' ? isGate(o[k]) : k === 'talkOffset' ? isPt(o[k]) : isRect(o[k])));
 }
 
 /**
- * Turn an enemy group's relative fields about the group's point by `q` quarter turns (the
- * rotateSelection sense): the boss `arena` and the scatter `area` (rects, extents swap), the
- * `gate` ends and the `spotOffsets`. Returns false when `q` is 0 (nothing turned).
+ * Turn an object's relative fields (RELATIVE_FIELDS) about its point by `q` quarter turns (the
+ * rotateSelection sense): rects — an enemy group's boss `arena`, the scatter / yard / chase
+ * `area` — stay axis-aligned (extents swap), points — `talkOffset`, the `spotOffsets`, the
+ * `gate` ends — turn exactly. Returns false when `q` is 0 (nothing turned).
  */
-function turnEnemyFields(o, q) {
+function turnRelativeFields(o, q) {
   const n = mod(q, 4);
   if (!n) return false;
   // x' = x·cos + z·sin, z' = −x·sin + z·cos for 90°·n, exactly
@@ -333,12 +361,13 @@ function turnEnemyFields(o, q) {
     const [bx, bz] = rot(r.maxX, r.maxZ);
     return { ...r, minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: Math.min(az, bz), maxZ: Math.max(az, bz) };
   };
-  if (isRect(o.arena)) o.arena = turnRect(o.arena);
-  if (isRect(o.area)) o.area = turnRect(o.area);
-  if (Array.isArray(o.gate) && o.gate.length >= 4 && o.gate.slice(0, 4).every(Number.isFinite)) {
-    o.gate = [...rot(o.gate[0], o.gate[1]), ...rot(o.gate[2], o.gate[3]), ...o.gate.slice(4)];
+  for (const k of ownValue(RELATIVE_FIELDS, o.type) ?? []) {
+    const v = o[k];
+    if (k === 'spotOffsets') { if (Array.isArray(v)) o[k] = v.map((p) => (isPt(p) ? [...rot(p[0], p[1]), ...p.slice(2)] : p)); }
+    else if (k === 'gate') { if (isGate(v)) o[k] = [...rot(v[0], v[1]), ...rot(v[2], v[3]), ...v.slice(4)]; }
+    else if (k === 'talkOffset') { if (isPt(v)) o[k] = [...rot(v[0], v[1]), ...v.slice(2)]; }
+    else if (isRect(v)) o[k] = turnRect(v);
   }
-  if (Array.isArray(o.spotOffsets)) o.spotOffsets = o.spotOffsets.map((p) => (isPt(p) ? [...rot(p[0], p[1]), ...p.slice(2)] : p));
   return true;
 }
 

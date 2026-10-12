@@ -110,7 +110,7 @@ export function applyWind(material, { foliage = false, wrap = 0.45, billboard = 
         .replace('#include <lights_lambert_pars_fragment>', `#define FOLIAGE_WRAP ${wrap.toFixed(3)}\n${FOLIAGE_LAMBERT}`);
     }
   };
-  const key = `lumina-wind-${foliage ? `foliage-${wrap.toFixed(3)}` : 'solid'}${billboard ? '-bb' : ''}`;
+  const key = `luminati-wind-${foliage ? `foliage-${wrap.toFixed(3)}` : 'solid'}${billboard ? '-bb' : ''}`;
   material.customProgramCacheKey = () => key;
   material.userData.wind = true;
   if (billboard) material.userData.billboard = true;
@@ -128,6 +128,6 @@ export function createWindDepthMaterial({ billboard = false } = {}) {
   const m = new THREE.MeshDepthMaterial();
   const defines = billboard ? '#define FOLIAGE_BILLBOARD\n#define FOLIAGE_SHADOW_PASS\n' : '';
   m.onBeforeCompile = (shader) => bindWindUniforms(shader, defines);
-  m.customProgramCacheKey = () => `lumina-wind-depth${billboard ? '-bb' : ''}`;
+  m.customProgramCacheKey = () => `luminati-wind-depth${billboard ? '-bb' : ''}`;
   return m;
 }

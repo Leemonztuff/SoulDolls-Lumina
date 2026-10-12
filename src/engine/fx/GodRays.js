@@ -5,7 +5,7 @@ import { RENDER_ORDER } from '../constants.js';
 
 /**
  * GodRays — soft, additive, slowly animated light shafts (the diagonal beams of light that
- * fall through Octopath forests and town squares).
+ * fall through the forests and town squares of Square Enix's HD-2D games).
  *
  * Each shaft is ONE quad that is billboarded around its own axis (it always turns its broad side
  * to the camera, so it never collapses into a visible hard plane). The shader gives it:
@@ -249,6 +249,7 @@ export class GodRays {
       fogDensity: sh.fog.fogDensity,
       fogNear: sh.fog.fogNear,
       fogFar: sh.fog.fogFar,
+      uFogStart: globalUniforms.uFogStart,
       uUseSun: { value: direction ? 0 : 1 },
       uAxis: { value: direction ? new THREE.Vector3().copy(direction).normalize() : new THREE.Vector3(0, -1, 0) },
       uLength: { value: length },

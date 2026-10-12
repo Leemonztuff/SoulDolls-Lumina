@@ -5,7 +5,7 @@ import { ownValue } from '../../utils/own.js';
 /** @import { PropFactory, PropResult } from '../Props.js' */
 
 /**
- * Procedural HD-2D house.
+ * Procedural 2.5D pixel-art house.
  *
  * Internal frame: ridge along local X, footprint centred on the origin, ground at y = 0.
  * `gableFront` rotates the internal frame by -90° so the gable faces the front (+Z).
@@ -327,7 +327,8 @@ export function buildHouse(f, x, y, z, opts = {}) {
   if (anchors.smoke) emitters.push({ preset: 'smoke', position: toW(anchors.smoke), rate: 3 });
 
   const res = f.result(group, {
-    colliders: gf ? [f.boxCollider(group, -hd - pm, hd + pm, -hw - pm, hw + pm)] : [f.boxCollider(group, -hw - pm, hw + pm, -hd - pm, hd + pm)],
+    // (strips following the walls when turned by other than a quarter turn, KNOWN_ISSUES PROP-15)
+    colliders: gf ? f.boxColliders(group, -hd - pm, hd + pm, -hw - pm, hw + pm) : f.boxColliders(group, -hw - pm, hw + pm, -hd - pm, hd + pm),
     lights,
     emissives,
     emitters,

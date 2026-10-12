@@ -80,9 +80,10 @@
  *                                        or selection change made on release is skipped (Rectangle,
  *                                        Place's region / dragged line, Select's box and click-
  *                                        narrowing, Player start's selecting the marker it moved).
- *                                        True for a pointercancel, a lost pointer capture, hiding
- *                                        the view; 2D also a window blur; 3D also a lost release,
- *                                        a tool switch, disposing the view
+ *                                        True for a pointercancel, a lost pointer capture,
+ *                                        hiding the view, a lost release (a mouse move without the
+ *                                        button, or the same pointer pressed again); 2D also a window
+ *                                        blur; 3D also a tool switch, disposing the view
  * @property {number} [buttons]           (3D only) the DOM `buttons` bitmask
  * @property {boolean} [onTerrain]        (3D only) the ray hit the map (false: fallback plane / sky)
  * @property {'top'|'side'|'plane'|'none'} [face]   (3D only) what the ray hit (a tile top, a cliff

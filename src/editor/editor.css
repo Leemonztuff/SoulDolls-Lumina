@@ -1,5 +1,5 @@
 /* =============================================================================================
-   Lumina Level Editor — dark editor UI with Lumina navy / gold accents
+   Luminati Level Editor — dark editor UI with Luminati navy / gold accents
    ============================================================================================= */
 
 :root {
@@ -479,6 +479,25 @@ p.le-hint.le-pad:first-child { padding-top: 12px; }
 .le-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .le-pair .le-field { grid-template-columns: auto minmax(0, 1fr); }
 .le-readout { display: block; font: 500 11.5px var(--le-mono); color: var(--le-dim); margin: 2px 0 4px; text-align: right; }
+/* a translatable field's text keys, read-only (src/editor/ui/keyView.js) */
+.le-text-keys { margin: -3px 0 7px; font: 500 10.5px/1.4 var(--le-mono); color: var(--le-dim); min-width: 0; }
+.le-text-keys[hidden], .le-text-key-list[hidden] { display: none; }
+.le-text-key-list { display: grid; gap: 1px; margin-top: 2px; }
+.le-text-key { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 20px; padding: 0 0 0 2px; border-radius: 4px; }
+.le-text-key-at { color: var(--le-dim); white-space: nowrap; }
+.le-text-key-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; color: var(--le-text2); letter-spacing: .02em; user-select: all; }
+.le-text-key.is-missing .le-text-key-id { color: var(--le-warn); user-select: none; }
+.le-text-key.is-hit { background: var(--le-gold-a); box-shadow: inset 0 0 0 1px var(--le-gold-b); }
+.le-text-key.is-hit .le-text-key-id { color: var(--le-gold2); }
+.le-text-key-copy { width: 22px; height: 20px; }
+.le-text-key-copy .le-icon { width: 13px; height: 13px; }
+.le-text-keys-toggle { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 4px 0 0; border: 0; border-radius: 4px; background: none; color: var(--le-dim); font: inherit; cursor: pointer; }
+.le-text-keys-toggle:hover { color: var(--le-text); }
+.le-text-keys-toggle .le-icon { width: 13px; height: 13px; transition: transform .15s; }
+.le-text-keys-toggle.is-open .le-icon { transform: rotate(90deg); }
+.le-text-keys-missing { color: var(--le-warn); }
+.le-text-keys.is-form { margin: 4px 0 0; }
+.le-find-key-msg.is-error { color: var(--le-warn); }
 
 .le-input {
   width: 100%;
@@ -765,6 +784,10 @@ p.le-hint.le-pad:first-child { padding-top: 12px; }
 .le-row-item:hover { background: var(--le-bg3); color: var(--le-text); }
 .le-row-item.is-selected { background: var(--le-gold-a); color: var(--le-gold2); border-left-color: var(--le-gold); }
 .le-row-item.is-hidden { opacity: .45; }
+/* the keyboard's active item while the list has the focus (Outliner: aria-activedescendant) */
+.le-outliner-list:focus-visible:has(.is-active) { outline: none; }
+.le-outliner-list:focus-visible .le-row-item.is-active,
+.le-outliner-list:focus-visible .le-group.is-active { box-shadow: inset 0 0 0 2px var(--le-gold-b); }
 .le-row-indent { width: 1px; height: 100%; justify-self: center; background: var(--le-line2); }
 .le-row-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .le-row-sub { margin-left: 6px; color: var(--le-dim); font: 500 10.5px var(--le-mono); }
@@ -891,6 +914,17 @@ p.le-hint.le-pad:first-child { padding-top: 12px; }
 .le-inline .le-select-wrap { flex: 1; min-width: 180px; }
 .le-times { color: var(--le-dim); font-size: 12px; }
 .le-settings-body { min-height: 330px; }
+/* Level settings › Environment: a room (environment.interior) — the room-look offer, and the fields
+   the game leaves out inside dimmed with a note */
+.le-room-offer { display: grid; gap: 8px; justify-items: start; margin: 8px 0 2px; line-height: 1.45; }
+.le-room-offer[hidden], .le-form-row[hidden], .le-colorctl[hidden] { display: none; }
+.le-inline .le-colorctl { width: 140px; }
+.le-room-note { display: none; color: var(--le-gold2); }
+.le-form-row.is-room-ignored .le-form-label,
+.le-form-row.is-room-ignored .le-form-control > :not(.le-room-note) { opacity: .5; }
+.le-form-row.is-room-ignored .le-room-note { display: block; }
+.le-form-row.is-room-ignored .le-form-hint:not(.le-room-note) { display: none; }
+.le-new-kind { margin-bottom: 18px; }
 .le-tabs { display: flex; width: 100%; margin-bottom: 16px; }
 .le-tabs .le-seg-btn { flex: 1; height: 30px; }
 
@@ -1041,3 +1075,60 @@ p.le-hint.le-pad:first-child { padding-top: 12px; }
 .le-link-btn { border: 0; padding: 0; background: none; color: var(--le-gold2); font: inherit; text-decoration: underline; cursor: pointer; }
 .le-link-btn:hover { color: var(--le-text); }
 .le-weather-hint[hidden] { display: none; }
+
+/* story: script fields, condition fields, the pop-out script editor, the story preview */
+.le-field-meta.is-warn { color: var(--le-warn); }
+.le-field-extras { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.le-field-extras .le-mini-btn { width: 20px; height: 20px; }
+.le-field.is-script .le-textarea { min-height: 140px; font-size: 12px; line-height: 1.5; tab-size: 2; }
+.le-field-issue { margin-top: 4px; font-size: 11.5px; line-height: 1.35; color: var(--le-warn); white-space: pre-line; overflow-wrap: anywhere; user-select: text; }
+.le-script-errors { display: grid; gap: 2px; margin-top: 5px; }
+.le-script-errors[hidden], .le-field-issue[hidden], .le-story-issues[hidden], .le-status-story[hidden], .le-status-sep[hidden] { display: none; }
+.le-script-error {
+  display: block; width: 100%; padding: 3px 7px; text-align: left; cursor: pointer;
+  border: 1px solid rgba(241, 182, 109, .28); border-radius: 5px; background: rgba(241, 182, 109, .07);
+  color: var(--le-text2); font-size: 11.5px; line-height: 1.35; overflow-wrap: anywhere;
+}
+.le-script-error:hover { border-color: rgba(241, 182, 109, .6); background: rgba(241, 182, 109, .13); color: var(--le-text); }
+.le-script-error-line { font: 600 11px var(--le-mono); color: var(--le-warn); }
+.le-script-more { padding: 1px 2px; font-size: 11px; color: var(--le-dim); }
+
+.le-dialog.is-script-dialog .le-dialog-body { padding: 14px 16px; }
+.le-script-pop { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; height: min(66vh, 720px); }
+.le-script-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.le-script-edit { flex: 1; display: flex; min-height: 0; overflow: hidden; border: 1px solid var(--le-line2); border-radius: 7px; background: #0b1020; }
+.le-script-edit:focus-within { border-color: var(--le-gold); box-shadow: 0 0 0 3px rgba(201, 164, 92, .16); }
+.le-script-gutter {
+  flex: none; width: 48px; overflow: hidden; padding: 8px 9px 8px 0; text-align: right;
+  font: 12.5px/19px var(--le-mono); color: #4d5774; background: rgba(0, 0, 0, .22); border-right: 1px solid var(--le-line); user-select: none;
+}
+.le-script-gutter > .is-error { color: var(--le-warn); font-weight: 700; }
+.le-input.le-script-text {
+  flex: 1; min-width: 0; height: 100%; padding: 8px 10px; resize: none; border: 0; border-radius: 0;
+  font: 12.5px/19px var(--le-mono); white-space: pre; overflow: auto; tab-size: 2; background: transparent; box-shadow: none;
+}
+.le-input.le-script-text:focus { background: transparent; box-shadow: none; }
+.le-script-status { font: 500 11px var(--le-mono); color: var(--le-dim); }
+.le-script-status.is-warn { color: var(--le-warn); }
+.le-script-main .le-script-errors { max-height: 132px; overflow: auto; margin-top: 0; }
+.le-script-ref { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding-left: 14px; border-left: 1px solid var(--le-line); }
+.le-script-ref-title { font-size: 10.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--le-gold2); }
+.le-script-ref-title .le-dim { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.le-script-kinds { display: grid; gap: 3px; margin-bottom: 6px; }
+.le-script-kind { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; font-size: 11.5px; line-height: 1.35; color: var(--le-dim); }
+.le-script-kind code { font: 11.5px var(--le-mono); color: var(--le-text2); }
+.le-script-filter { flex: none; }
+.le-script-cmds { flex: 1; display: grid; align-content: start; gap: 1px; min-height: 0; }
+.le-script-cmd { display: block; width: 100%; padding: 5px 7px; text-align: left; cursor: pointer; border: 1px solid transparent; border-radius: 5px; background: none; }
+.le-script-cmd:hover { border-color: var(--le-line2); background: var(--le-bg3); }
+.le-script-cmd-sig { font: 11.5px var(--le-mono); color: var(--le-text2); overflow-wrap: anywhere; }
+.le-script-cmd-sig b { font-weight: 650; color: var(--le-gold2); }
+.le-script-cmd-help { margin-top: 1px; font-size: 11px; line-height: 1.35; color: var(--le-dim); }
+.le-script-cmd-help code { font: 10.5px var(--le-mono); color: var(--le-text2); }
+@media (max-width: 900px) { .le-script-pop { grid-template-columns: minmax(0, 1fr); height: auto; } .le-script-edit { height: 46vh; } .le-script-ref { display: none; } }
+
+/* the story preview applies as you type: its dialog sits at the side over undimmed views */
+.le-overlay:has(> .le-dialog.is-story-preview) { place-items: center end; padding-right: max(16px, calc(var(--le-right-w) + 24px)); background: rgba(4, 6, 14, .16); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.le-story-toggle { margin: 2px 0 10px; }
+.le-input.le-story-values { min-height: 150px; font-size: 12.5px; }
+.le-status-story { font-weight: 600; color: var(--le-gold2); }

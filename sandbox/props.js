@@ -8,12 +8,16 @@
  * window.__props: { renderer, scene, camera, factory, textures, results, setNight(bool),
  *                   frame(name | {x, z, dist, yaw, pitch}), info(), check() }
  * Query: ?night=1  ?view=house|trees|market|bridge|windmill|campfire|overview  ?mode=gallery  ?merge=1
+ * ?mode=interior: three furnished rooms (a home, an inn, a mill — props/Furniture.js) and a gallery of
+ * every furniture option; views `interior`, `roomHome`, `roomInn`, `roomMill`, `gBeds`, `gRow2`,
+ * `gRow2b`, `gRow3`, `gHearth`, `gTables`
  * (the gallery's back row holds the combat props: chests closed / open, waystones idle / attuned —
  * frame them with `__props.frame('gCombat')` or `'gChests'`)
  */
 import * as THREE from 'three';
 import { TextureLibrary } from '../src/engine/pixel/Textures.js';
-import { PropFactory } from '../src/engine/world/Props.js';
+import { PropFactory, boxUnion } from '../src/engine/world/Props.js';
+import { interiorFootprint, objectBounds } from '../src/engine/level/ObjectCatalog.js';
 import { MeshBuilder } from '../src/engine/world/props/MeshBuilder.js';
 import { globalUniforms } from '../src/engine/render/GlobalUniforms.js';
 import { DEG2RAD, lerp, clamp, valueNoise2 } from '../src/engine/utils/math.js';
@@ -22,6 +26,7 @@ import { DEG2RAD, lerp, clamp, valueNoise2 } from '../src/engine/utils/math.js';
  * @import { PropResult } from '../src/engine/world/Props.js'
  * @import { SceneNode, SceneMaterial, SolidMesh } from '../src/engine/render/types.js'
  * @import { HouseOptions } from '../src/engine/world/props/House.js'
+ * @import { LevelObject } from '../src/engine/level/types.js'
  */
 
 const params = new URLSearchParams(location.search);
@@ -230,7 +235,119 @@ function buildGallery() {
   add('gWaystone', factory.waystone(-2.5, 0, 20.5));
   add('gWaystoneOn', factory.waystone(1.5, 0, 20.5)).controls.setAttuned(true);
 }
+/**
+ * A room shell like a tile level's: a floor, walls 3 high on the north / west / east and a low south
+ * wall (the camera looks north into it), x0…x0 + W by z0…z0 + D.
+ * @param {MeshBuilder} g
+ */
+function roomShell(g, x0, z0, W, D, { floor = 'wood_deck', wall = 'plaster', wallH = 3 } = {}) {
+  const cx = x0 + W / 2;
+  const cz = z0 + D / 2;
+  const top = { py: { mat: 'stone_wall', color: [0.55, 0.5, 0.48] } };
+  g.box(floor, [W, 0.2, D], { at: [cx, -0.1, cz], faces: { ny: false, pz: false, nz: false, px: false, nx: false } });
+  g.box(wall, [W + 2, wallH, 1], { at: [cx, wallH / 2 - 0.2, z0 - 0.5], faces: { ...top, ny: false, nz: false }, off: [x0, 0] });
+  for (const sx of [-1, 1]) g.box(wall, [1, wallH, D], { at: [sx < 0 ? x0 - 0.5 : x0 + W + 0.5, wallH / 2 - 0.2, cz], faces: { ...top, ny: false }, off: [z0, 0] });
+  g.box('stone_wall', [W + 2, 0.7, 1], { at: [cx, 0.15, z0 + D + 0.5], faces: { ny: false } });
+}
+
+/**
+ * The furniture built in ?mode=interior, by sandbox name: what `furnitureCheck` compares with the
+ * catalog's footprints.
+ * @type {Map<string, { type: FurnitureType, x: number, z: number, opts: Record<string, any> }>}
+ */
+const furniture = new Map();
+/** @typedef {'bed'|'table'|'chair'|'shelf'|'hearth'|'counter'|'rug'|'staircase'|'wardrobe'|'wallWindow'|'sacks'} FurnitureType */
+/**
+ * Build a furniture piece on the floor (y 0) and record it.
+ * @param {string} name @param {FurnitureType} type @param {number} x @param {number} z
+ * @param {Record<string, any>} [opts]
+ */
+function fur(name, type, x, z, opts = {}) {
+  furniture.set(name, { type, x, z, opts });
+  const make = /** @type {(x: number, y: number, z: number, o: object) => PropResult} */ (factory[type].bind(factory));
+  return add(name, make(x, 0, z, opts));
+}
+
+/** Furnished rooms (a home, an inn, a mill) and a gallery of every furniture option (?mode=interior). */
+function buildInterior() {
+  const g = new MeshBuilder(textures, { ao: (x, y) => 0.7 + 0.3 * clamp(y / 1.5, 0, 1) });
+  roomShell(g, -21, -5, 12, 9, { wall: 'plaster' });
+  roomShell(g, -6, -5, 12, 9, { wall: 'timber_frame' });
+  roomShell(g, 9, -5, 12, 9, { floor: 'stone_tiles', wall: 'stone_wall' });
+  g.box('wood_deck', [46, 0.2, 16], { at: [0, -0.1, 15], faces: { ny: false } });
+  g.box('plaster', [10, 3, 0.6], { at: [11, 1.3, 15.2], faces: { ny: false } }); // a wall for the window variants
+  scene.add(g.build('rooms').group);
+  const H = Math.PI / 2;
+  // ---- a home: double bed, wardrobe and drawers on the north wall, a hearth on the west wall,
+  // a round table on a rug, a bookshelf on the east wall, a window with flowers
+  fur('hWindow', 'wallWindow', -14.5, -5, { panes: 2, flowers: true });
+  fur('hBed', 'bed', -19.2, -3.9, { width: 1.9, blanket: 'blue', seed: 2 });
+  fur('hDrawers', 'wardrobe', -17, -4.75, { kind: 'drawers', width: 1.0, seed: 1 });
+  fur('hWardrobe', 'wardrobe', -11.2, -4.7, { width: 1.4 });
+  fur('hHearth', 'hearth', -20.5, 0.6, { rotation: H, pot: true, height: 2.8 });
+  fur('hRug', 'rug', -14.5, 0.3, { rotation: H, width: 2.5, length: 3.5 });
+  fur('hTable', 'table', -14.5, 0.3, { shape: 'round', width: 1.2, seed: 3 });
+  fur('hChair1', 'chair', -15.65, 0.3, { rotation: H });
+  fur('hChair2', 'chair', -13.35, 0.3, { rotation: -H });
+  fur('hStool', 'chair', -14.5, 1.45, { style: 'stool' });
+  fur('hShelf', 'shelf', -9.25, -1.5, { rotation: -H, width: 1.6 });
+  // ---- an inn: a bar with a pantry shelf behind it, a stair up on the north wall, a hearth on the
+  // east wall, tables with chairs and stools, a warm window on the west wall
+  fur('iCounter', 'counter', -2.6, -2.6, { width: 3.2 });
+  fur('iPantry', 'shelf', -2.6, -4.75, { kind: 'pantry', width: 2.4 });
+  add('iBarrel', factory.barrel(-5.3, 0, -4.4));
+  fur('iStairs', 'staircase', 3.5, -4.4, { steps: 7, height: 2.8 });
+  fur('iHearth', 'hearth', 5.5, 0.4, { rotation: -H, width: 2.0 });
+  fur('iWindow', 'wallWindow', -6, 0.5, { rotation: H, glow: 'warm', curtains: 'linen' });
+  fur('iTable1', 'table', -2.4, 1.5, { cloth: true, candle: true, seed: 4 });
+  fur('iChair1', 'chair', -2.8, 0.7, { seed: 1 });
+  fur('iChair2', 'chair', -2.0, 2.3, { rotation: Math.PI });
+  fur('iTable2', 'table', 2.2, 1.6, { shape: 'round', width: 1.3, seed: 6 });
+  for (let k = 0; k < 3; k++) {
+    const a = k * 2.1 + 0.4;
+    fur(`iStool${k}`, 'chair', 2.2 + Math.cos(a) * 1.0, 1.6 + Math.sin(a) * 1.0, { style: 'stool', seed: k });
+  }
+  fur('iRug', 'rug', 0.2, -0.6, { rotation: H, width: 1.4, length: 4, color: 'green' });
+  // ---- a mill: sacks, a shop counter, a stairwell down, crates and hay, a pantry shelf
+  fur('mSacks4', 'sacks', 11, -4.4, { count: 4 });
+  fur('mSacks2', 'sacks', 12.9, -4.5, { count: 2, rotation: 0.3, seed: 2 });
+  fur('mSacks3', 'sacks', 19.5, 2.6, { count: 3, rotation: H, seed: 3 });
+  fur('mCounter', 'counter', 15, -1.4, { style: 'shop', width: 2.6 });
+  fur('mDown', 'staircase', 18.6, -3.6, { dir: 'down', steps: 5 });
+  fur('mWindow', 'wallWindow', 15, -5, { curtains: 'none' });
+  add('mCrates', factory.crateStack(20, 0, -4.3, { rotation: 0, count: 2 }));
+  add('mHay', factory.haystack(10.8, 0, 2.6, { size: 0.75 }));
+  fur('mShelf', 'shelf', 9.25, -0.5, { rotation: H, kind: 'pantry', width: 2.0, height: 1.7 });
+  fur('mStool', 'chair', 14.2, 0.6, { style: 'stool' });
+  // ---- gallery (open floor, z 8–21): every option
+  ['red', 'blue', 'green', 'ochre', 'plum'].forEach((c, i) => fur(`gBed_${c}`, 'bed', -20 + i * 3, 9.8, { blanket: c, width: i % 2 ? 1.9 : 1.2, seed: i }));
+  ['red', 'blue', 'green'].forEach((c, i) => fur(`gRug_${c}`, 'rug', -3 + i * 2.8, 9.8, { color: c, width: 2.2, length: 3 }));
+  fur('gTableRect', 'table', 6.5, 9.4, { cloth: true, candle: true });
+  fur('gTableRound', 'table', 9.5, 9.4, { shape: 'round', cloth: true, width: 1.4 });
+  fur('gTableBare', 'table', 12.5, 9.4, { items: false, width: 1.4, depth: 0.8 });
+  fur('gChair', 'chair', 15, 9.2);
+  fur('gChairTurned', 'chair', 16, 9.2, { rotation: 0.8 });
+  fur('gStool', 'chair', 17, 9.2, { style: 'stool' });
+  fur('gShelfBooks', 'shelf', -19, 14, { width: 2.4, height: 2.6 });
+  fur('gShelfPantry', 'shelf', -16, 14, { kind: 'pantry', width: 1.6 });
+  fur('gShelfSmall', 'shelf', -13.8, 14, { width: 1.0, height: 1.2 });
+  fur('gWardrobe', 'wardrobe', -11.5, 14, { width: 1.6 });
+  fur('gDrawers', 'wardrobe', -9.2, 14, { kind: 'drawers' });
+  fur('gCounterBar', 'counter', -5.6, 14, { width: 3 });
+  fur('gCounterShop', 'counter', -1.6, 14, { style: 'shop', width: 2.2 });
+  fur('gHearthCold', 'hearth', 2.2, 14, { lit: false, width: 1.8, height: 2.2 });
+  fur('gHearthWide', 'hearth', 5.6, 14, { width: 3.2, height: 3.2, pot: true });
+  fur('gWin1', 'wallWindow', 8, 15.5, { glow: 'daylight' });
+  fur('gWin2', 'wallWindow', 10.5, 15.5, { panes: 2, glow: 'warm', curtains: 'linen', flowers: true });
+  fur('gWin3', 'wallWindow', 14, 15.5, { panes: 3, curtains: 'none', beam: false });
+  fur('gStairsUp', 'staircase', -18, 19, { steps: 6, height: 2.2 });
+  fur('gStairsFlip', 'staircase', -13, 19, { flip: true, width: 1.0, rail: false });
+  fur('gStairsDown', 'staircase', -8.5, 19, { dir: 'down', width: 1.4 });
+  [1, 2, 3, 4].forEach((n, i) => fur(`gSacks${n}`, 'sacks', -4.5 + i * 2.2, 19, { count: n, seed: n }));
+}
+
 if (MODE === 'gallery') buildGallery();
+else if (MODE === 'interior') buildInterior();
 else buildLot();
 // ?merge=1 → batch every static prop mesh into one mesh per material (PropFactory.mergeStatic)
 const merged = params.get('merge') === '1' ? factory.mergeStatic(results) : null;
@@ -375,7 +492,7 @@ function applyLighting() {
 const sunDir = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------------------------
-// camera framing (HD-2D: fov 28, pitch ~32°)
+// camera framing (diorama: fov 28, pitch ~32°)
 // ---------------------------------------------------------------------------------------------
 const VIEWS = {
   overview: { x: -0.5, z: -0.5, y: 0, dist: 47, yaw: 0, pitch: 34 },
@@ -403,8 +520,20 @@ const VIEWS = {
   small: { x: 3.8, z: -2.0, y: 0.6, dist: 12, yaw: 0.5, pitch: 30 },
   rocks: { x: 1.8, z: 6.9, y: 0.5, dist: 9, yaw: -0.2, pitch: 30 },
   farm: { x: 15.0, z: 7.0, y: 1.0, dist: 15, yaw: -0.2, pitch: 32 },
+  // ?mode=interior: the three rooms at the room camera (distance 20, pitch 38) and the gallery rows
+  interior: { x: 0, z: -0.5, y: 0.5, dist: 50, yaw: 0, pitch: 38 },
+  roomHome: { x: -15, z: -0.3, y: 0.6, dist: 20, yaw: 0, pitch: 38 },
+  roomInn: { x: 0, z: -0.3, y: 0.6, dist: 20, yaw: 0, pitch: 38 },
+  roomMill: { x: 15, z: -0.3, y: 0.6, dist: 20, yaw: 0, pitch: 38 },
+  gBeds: { x: -11, z: 9.8, y: 0.5, dist: 24, yaw: 0, pitch: 38 },
+  gRow2: { x: -9, z: 14, y: 0.8, dist: 22, yaw: 0, pitch: 34 },
+  gRow2b: { x: 5, z: 13.5, y: 1, dist: 20, yaw: 0, pitch: 34 },
+  gRow3: { x: -9, z: 19, y: 0.7, dist: 20, yaw: 0, pitch: 38 },
+  gHearth: { x: 4, z: 14.2, y: 1.2, dist: 11, yaw: 0, pitch: 30 },
+  gStairs: { x: -11, z: 19, y: 0.8, dist: 12, yaw: 0, pitch: 38 },
+  gTables: { x: 11, z: 9.3, y: 0.6, dist: 12, yaw: 0, pitch: 38 },
 };
-let view = { ...VIEWS[params.get('view') || 'overview'] };
+let view = { ...VIEWS[params.get('view') || (MODE === 'interior' ? 'interior' : 'overview')] };
 const target = new THREE.Vector3();
 function applyCamera() {
   const p = view.pitch * DEG2RAD;
@@ -499,6 +628,9 @@ function drawCallsPer(name) {
  *   return to its baseline (`{ before, during, after, merged, ok }`)
  * @property {() => { ok: boolean, problems: string[], walkRects: number }} check  every result's
  *   object, colliders, lights, emitters and shadow flags
+ * @property {() => { ok: boolean, pieces: number, worst: number, problems: string[] }} furnitureCheck
+ *   ?mode=interior: every furniture piece's colliders against the catalog's footprint
+ *   (`interiorFootprint` through `objectBounds`, within 0.02)
  */
 window.__props = {
   renderer, scene, camera, factory, textures, results, sun, hemi, globalUniforms,
@@ -541,6 +673,30 @@ window.__props = {
     renderer.render(scene, camera);
     const after = { ...renderer.info.memory };
     return { before, during, after, merged: mh.meshes.length, ok: after.geometries === before.geometries && after.textures === before.textures };
+  },
+  furnitureCheck() {
+    // every built piece's colliders against the catalog footprint (objectBounds / interiorFootprint)
+    const problems = [];
+    let worst = 0;
+    for (const [name, f] of furniture) {
+      const r = results.find((x) => x.name === name);
+      const obj = /** @type {LevelObject} */ (/** @type {unknown} */ ({ id: name, type: f.type, x: f.x, z: f.z, rotation: f.opts.rotation ?? 0, opts: f.opts }));
+      const fp = interiorFootprint(obj);
+      if (!fp) { problems.push(`${name}: no footprint`); continue; }
+      if (!fp.solid) { if (r.colliders.length) problems.push(`${name}: colliders on a non-solid piece`); continue; }
+      let b = boxUnion(r.colliders);
+      for (const c of r.colliders) {
+        if (c.type !== 'circle') continue;
+        const cb = { minX: c.x - c.r, maxX: c.x + c.r, minZ: c.z - c.r, maxZ: c.z + c.r };
+        b = b ? { minX: Math.min(b.minX, cb.minX), maxX: Math.max(b.maxX, cb.maxX), minZ: Math.min(b.minZ, cb.minZ), maxZ: Math.max(b.maxZ, cb.maxZ) } : cb;
+      }
+      if (!b) { problems.push(`${name}: no collider`); continue; }
+      const ob = objectBounds(obj);
+      const d = Math.max(Math.abs(b.minX - ob.minX), Math.abs(b.maxX - ob.maxX), Math.abs(b.minZ - ob.minZ), Math.abs(b.maxZ - ob.maxZ));
+      worst = Math.max(worst, d);
+      if (d > 0.02) problems.push(`${name}: colliders ${JSON.stringify(b)} vs footprint ${JSON.stringify(ob)}`);
+    }
+    return { ok: problems.length === 0, pieces: furniture.size, worst: Math.round(worst * 1e4) / 1e4, problems };
   },
   check() {
     const problems = [];

@@ -1,8 +1,8 @@
 /**
  * Terrain & water sandbox — exercises TileMap, Water and createWaterfall standalone with raw
- * three.js (HD-2D camera: fov 28, pitch 32°, distance ~24).
+ * three.js (diorama camera: fov 28, pitch 32°, distance ~24).
  *
- * URL params: ?view=overview|hd2d|cliffs|waterfall|edge|pond|terrace|fringe|lip
+ * URL params: ?view=overview|diorama|cliffs|waterfall|edge|pond|terrace|fringe|lip
  *   &time=day|golden|night
  * window.__terrain exposes { THREE, renderer, scene, camera, map, tileMap, water, fall, lib,
  *   setView(name), setTime(name), setCamera({focus, yaw, pitch, distance}), runTests(), stats() }.
@@ -224,7 +224,7 @@ const TIMES = {
   night: { dir: [0.45, 0.72, 0.35], sun: '#7294ff', sunI: 0.85, sky: '#2a48b4', ground: '#101430', hemiI: 1.12,
     fog: '#1c2b5c', density: 0.011, exp: 1.3, night: 1, top: '#050a1f', horizon: '#1b2a5c' },
 };
-const state = { time: 'day', focus: new THREE.Vector3(14, 0.8, 10), yaw: 0, pitch: 32, distance: 24, view: 'hd2d' };
+const state = { time: 'day', focus: new THREE.Vector3(14, 0.8, 10), yaw: 0, pitch: 32, distance: 24, view: 'diorama' };
 
 /** @param {string} name  a `TIMES` key ('day' when unknown) */
 function setTime(name) {
@@ -264,7 +264,7 @@ function setTime(name) {
 /** @type {Record<string, Required<CameraPose>>} yaw / pitch in degrees */
 const VIEWS = {
   overview: { focus: [14, 0.6, 10], distance: 44, yaw: 0, pitch: 34 },
-  hd2d: { focus: [13, 0.9, 10.5], distance: 24, yaw: 0, pitch: 32 },
+  diorama: { focus: [13, 0.9, 10.5], distance: 24, yaw: 0, pitch: 32 },
   cliffs: { focus: [12.2, 1.1, 7.2], distance: 12, yaw: -12, pitch: 30 },
   waterfall: { focus: [6.2, 0.9, 9], distance: 12.5, yaw: 8, pitch: 30 },
   edge: { focus: [9, 0.2, 15.5], distance: 19, yaw: 32, pitch: 26 },
@@ -275,7 +275,7 @@ const VIEWS = {
 };
 
 /**
- * Move the HD-2D camera; a missing member keeps its current value.
+ * Move the diorama camera; a missing member keeps its current value.
  * @param {CameraPose} [pose]  focus point, yaw / pitch in degrees, distance
  */
 function setCamera({ focus, yaw, pitch, distance } = {}) {
@@ -295,9 +295,9 @@ function setCamera({ focus, yaw, pitch, distance } = {}) {
   globalUniforms.uCameraPosition.value.copy(camera.position);
 }
 
-/** @param {string} name  a `VIEWS` key ('hd2d' when unknown) */
+/** @param {string} name  a `VIEWS` key ('diorama' when unknown) */
 function setView(name) {
-  const v = VIEWS[name] ?? VIEWS.hd2d;
+  const v = VIEWS[name] ?? VIEWS.diorama;
   state.view = name;
   setCamera(v);
 }
@@ -478,7 +478,7 @@ function stats() {
 
 tileMap.addWalkSurface(BRIDGE);
 setTime(params.get('time') ?? 'day');
-setView(params.get('view') ?? 'hd2d');
+setView(params.get('view') ?? 'diorama');
 
 const hud = document.getElementById('hud');
 let last = performance.now();

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import * as GROUND from '../../demo/GroundDetail.js';
-import { addSnowCover } from '../../demo/SnowCover.js';
+import * as GROUND from '../../game/GroundDetail.js';
+import { addSnowCover } from '../../game/SnowCover.js';
+import { boxUnion } from '../../engine/world/Props.js';
+import { groundDetailArgs, foliageMaxInstances } from '../../game/LevelLook.js';
 
 /**
  * @import { Level } from '../../engine/level/types.js'
@@ -10,11 +12,11 @@ import { addSnowCover } from '../../demo/SnowCover.js';
 
 /**
  * FoliagePreview — the game's ground foliage (grass tufts, flower beds, reeds, bushes from
- * src/demo/GroundDetail.js) scattered over the level exactly as the game does it: kept clear of
+ * src/game/GroundDetail.js) scattered over the level exactly as the game does it: kept clear of
  * prop colliders and house doors, ferns around tree roots, short grass where villagers stand, and
  * the level's `environment.foliage` flower / shrub areas.
  *
- * Part of the full HD-2D preview (state.view.atmosphere): tall grass would hide tile edges while
+ * Part of the full diorama preview (state.view.atmosphere): tall grass would hide tile edges while
  * editing. Rebuilt (debounced) once edits pause; the old field stays until the new one is ready.
  */
 export class FoliagePreview {
@@ -67,8 +69,9 @@ export class FoliagePreview {
       const cs = e.built.colliders ?? [];
       for (const c of cs) colliders.push(c);
       if (e.obj.type === 'house') {
-        const box = cs.find((c) => c.type === 'box');
-        if (box) houses.push({ minX: box.minX, maxX: box.maxX, minZ: box.minZ, maxZ: box.maxZ, door: e.built.interact?.position?.clone() ?? null });
+        // (its box colliders together, as the game's World: one box, or a turned house's strips)
+        const box = boxUnion(cs);
+        if (box) houses.push({ ...box, door: e.built.interact?.position?.clone() ?? null });
       }
     }
     const isFree = (x, z) => {
@@ -81,19 +84,15 @@ export class FoliagePreview {
       }
       return true;
     };
-    const inMap = (x, z) => x >= 0 && z >= 0 && x <= level.width && z <= level.depth;
-    const foliage = level.environment?.foliage ?? {};
     let detail = null;
     try {
+      // (the game's arguments — LevelLook: ferns, clearings, seed, sanitised areas, field size)
       detail = GROUND.buildGroundDetail({
         tileMap,
         isFree,
         houses,
-        trees: level.objects.filter((o) => o.type === 'tree' && inMap(o.x, o.z)).map((o) => ({ x: o.x, z: o.z, r: 0.3 })),
-        clearings: level.objects.filter((o) => o.type === 'npc').map((o) => ({ x: o.x, z: o.z, r: (o.wander ?? 1.2) + 0.8 })),
-        seed: foliage.seed ?? 2024,
-        flowerAreas: foliage.flowerAreas ?? [],
-        shrubAreas: foliage.shrubAreas ?? [],
+        ...groundDetailArgs(level),
+        maxInstances: foliageMaxInstances(level),
       });
     } catch (err) {
       console.warn('[Viewport3D] foliage preview unavailable:', err);

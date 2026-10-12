@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lumina Architecture Diagrams</title>
-<meta name="description" content="Hand-drawn architecture figures of the Lumina HD-2D engine: module dependencies, the frame loop, the render pipeline, the level build pipeline, the editor data flow and the point-light pool." />
+<title>Luminati Architecture Diagrams</title>
+<meta name="description" content="Hand-drawn architecture figures of the Luminati 2.5D pixel-art engine: module dependencies, the frame loop, the render pipeline, the level build pipeline, the editor data flow and the point-light pool." />
 <style>
   :root {
     --bg: #f4efe3;
@@ -153,10 +153,10 @@
 <div class="page">
 
 <header class="top">
-  <div class="kicker">Lumina · HD-2D engine · architecture</div>
+  <div class="kicker">Luminati · 2.5D pixel-art engine · architecture</div>
   <h1>Architecture Diagrams</h1>
   <div class="ornament"><i></i></div>
-  <p class="lede">Six hand-drawn figures of how Lumina is put together: who imports whom, what one frame
+  <p class="lede">Six hand-drawn figures of how Luminati is put together: who imports whom, what one frame
     runs, how a frame is rendered, how a level file becomes a diorama, how the editor keeps its views
     in sync, and how at most 12 point lights serve the 95 light sources of a big level. The prose versions (with every number
     checked against the code) are in <a href="OVERVIEW.md">OVERVIEW.md</a>,
@@ -191,7 +191,7 @@
         <text class="g" x="40" y="20">APPLICATIONS &amp; TOOLS</text>
         <rect class="ng" x="40" y="30" width="210" height="60" rx="8"/>
         <text class="t mid" x="145" y="55">Game</text>
-        <text class="s mid" x="145" y="74">src/main.js · src/demo/</text>
+        <text class="s mid" x="145" y="74">src/main.js · src/game/</text>
         <rect class="ng" x="330" y="30" width="210" height="60" rx="8"/>
         <text class="t mid" x="435" y="55">Level editor</text>
         <text class="s mid" x="435" y="74">src/editor/</text>
@@ -202,7 +202,7 @@
         <text class="t mid" x="855" y="55">Node tools</text>
         <text class="s mid" x="855" y="74">tools/*.mjs</text>
 
-        <!-- editor reuses five demo modules -->
+        <!-- editor reuses five game modules -->
         <path class="ar dash" d="M330 62 L254 62" marker-end="url(#m1)"/>
         <text class="s mid" x="292" y="54">reuses</text>
 
@@ -210,7 +210,7 @@
         <path class="ar warn" d="M80 148 L80 94" marker-end="url(#m1w)"/>
         <path d="M73 114 L87 128 M87 114 L73 128" stroke="var(--warn)" stroke-width="2"/>
         <text class="w" x="94" y="117">never imports</text>
-        <text class="w" x="94" y="131">demo / editor</text>
+        <text class="w" x="94" y="131">game / editor</text>
 
         <!-- apps → engine -->
         <path class="ar" d="M220 90 L250 187" marker-end="url(#m1)"/>
@@ -288,10 +288,9 @@
     </div>
     <figcaption>
       <p>The one rule that matters: <strong>nothing under <code>src/engine/</code> imports the game or the editor</strong> (red, crossed).
-        The editor deliberately reuses five game modules — <code>src/demo/config.js</code> (camera, sun path, palette overrides, sprite look),
+        The editor deliberately reuses five game modules — <code>src/game/config.js</code> (camera, sun path, palette overrides, sprite look),
         <code>Scenery.js</code>, <code>GroundDetail.js</code>, <code>WeatherLook.js</code> (the weather look) and <code>SnowCover.js</code> — so its preview matches the game. The Node tools import only DOM-free level modules
-        (<code>LevelFormat</code>, <code>ObjectCatalog</code>, <code>utils/math</code>; the one-off <code>convert-emberfall.mjs</code> also
-        <code>world/props/SmallProps.js</code>). Inside the engine the only import between modules that bypasses the foundation is
+        (<code>LevelFormat</code>, <code>ObjectCatalog</code>, <code>utils/math</code>). Inside the engine the only import between modules that bypasses the foundation is
         <code>level → world</code> (the object builder, solid arrow); the dashed <code>world</code> / <code>fx → pixel</code> arrows reach only
         pixel's foundation files <code>PixelCanvas</code> and <code>Palette</code> — a <code>TextureLibrary</code> is passed in, never imported.</p>
       <p class="meta">Details: <a href="OVERVIEW.md#2-layering-and-dependency-rules">OVERVIEW §2</a> ·
@@ -391,9 +390,9 @@
         projectiles, hits — in sub-steps of at most 1/60 s) before <code>player.update</code>, <code>combat.afterPlayer</code> (separation, pickups,
         lock-on, HUD) after it, and <code>combat.applyLook</code> after <code>weather.update</code>. Its hit-stop and slow motion are combat-local:
         <code>time.timeScale</code> in step 1 is never touched, so shake, particles and <code>uTime</code> keep running
-        (<a href="../contracts/COMBAT.md#42-frame-order-gameupdate-srcdemogamejs">COMBAT.md §4.2</a>).</p>
+        (<a href="../contracts/COMBAT.md#42-frame-order-gameupdate-srcgamegamejs">COMBAT.md §4.2</a>).</p>
       <p class="meta">Details: <a href="OVERVIEW.md#4-the-frame-loop">OVERVIEW §4</a> · <a href="OVERVIEW.md#5-shared-global-uniforms">§5 uniforms</a> ·
-        Source: <code>src/engine/core/Engine.js</code> (<code>_frame</code>), <code>src/demo/Game.js</code> (<code>init</code>, <code>update</code>)</p>
+        Source: <code>src/engine/core/Engine.js</code> (<code>_frame</code>), <code>src/game/Game.js</code> (<code>init</code>, <code>update</code>)</p>
     </figcaption>
   </figure>
 </section>
@@ -525,7 +524,7 @@
         <text class="s" x="32" y="68">fetch levels/&lt;name&gt;.json</text>
         <rect class="n" x="20" y="90" width="200" height="48" rx="8"/>
         <text class="c" x="32" y="110">?level=local:&lt;slot&gt;</text>
-        <text class="s" x="32" y="128">localStorage lumina.level.&lt;slot&gt;</text>
+        <text class="s" x="32" y="128">localStorage luminati.level.&lt;slot&gt;</text>
         <rect class="n" x="20" y="150" width="200" height="48" rx="8"/>
         <text class="c" x="32" y="170">(no query)</text>
         <text class="s" x="32" y="188">levels/emberfall.json</text>
@@ -649,7 +648,7 @@
         <strong>lights become descriptors, not lights</strong>: the <code>LightPool</code> creates one light per descriptor up to 12, and with
         more it decides which descriptors the 12 shared lights draw.</p>
       <p class="meta">Details: <a href="OVERVIEW.md#6-the-level-pipeline">OVERVIEW §6</a> · <a href="../specs/LEVEL_FORMAT.md">LEVEL_FORMAT</a> ·
-        Source: <code>src/main.js</code>, <code>src/engine/level/</code>, <code>src/demo/World.js</code></p>
+        Source: <code>src/main.js</code>, <code>src/engine/level/</code>, <code>src/game/World.js</code></p>
     </figcaption>
   </figure>
 </section>
@@ -754,13 +753,13 @@
         <text class="c" x="32" y="443">PUT /api/levels/&lt;name&gt;</text>
         <rect class="n" x="260" y="404" width="220" height="50" rx="8"/>
         <text class="t" x="272" y="425">Browser storage</text>
-        <text class="c" x="272" y="443">lumina.level.&lt;slot&gt;</text>
+        <text class="c" x="272" y="443">luminati.level.&lt;slot&gt;</text>
         <rect class="n" x="500" y="404" width="220" height="50" rx="8"/>
         <text class="t" x="512" y="425">File</text>
         <text class="s" x="512" y="443">download .json · open / drag &amp; drop</text>
         <rect class="ng" x="740" y="404" width="240" height="50" rx="8"/>
         <text class="t" x="752" y="425">Play-test (F5)</text>
-        <text class="c" x="752" y="443">local:__playtest__ → index.html</text>
+        <text class="c" x="752" y="443">local:__playtest__ → game.html</text>
       </svg>
     </div>
     <figcaption>
@@ -907,7 +906,7 @@
         from flickering between two owners. A teleport calls <code>snap()</code>: re-rank at once, no fades.</p>
       <p class="meta">Details: <a href="PERFORMANCE.md#35-lightpool">PERFORMANCE §3.5</a> ·
         <a href="RENDER_PIPELINE.md#63-point-lights-the-pool-and-emissives">RENDER_PIPELINE §6.3</a> ·
-        Source: <code>src/engine/lighting/LightPool.js</code>, <code>src/demo/World.js</code> (<code>_wireLights</code>),
+        Source: <code>src/engine/lighting/LightPool.js</code>, <code>src/game/World.js</code> (<code>_wireLights</code>),
         <code>src/engine/level/ObjectBuilder.js</code> (<code>LIGHT_PRIORITY</code>)</p>
     </figcaption>
   </figure>
@@ -915,7 +914,7 @@
 
 <footer class="bottom">
   <div class="ornament"><i></i></div>
-  <p>Part of the Lumina documentation · <a href="../README.md">docs index</a> · <a href="OVERVIEW.md">architecture overview</a> ·
+  <p>Part of the Luminati documentation · <a href="../README.md">docs index</a> · <a href="OVERVIEW.md">architecture overview</a> ·
     <a href="../index.html">docs home</a></p>
 </footer>
 

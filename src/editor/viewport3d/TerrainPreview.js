@@ -5,7 +5,7 @@ import { toTileMapInput } from '../../engine/level/LevelFormat.js';
 import { Water } from '../../engine/world/Water.js';
 import { BATCH_LAYER } from './ObjectPreview.js';
 import { buildShadowCasters, isProxyCaster } from '../../engine/world/ShadowCasters.js';
-import { addGroundSnowCover } from '../../demo/SnowCover.js';
+import { addGroundSnowCover } from '../../game/SnowCover.js';
 
 /**
  * @import { TileMap } from '../../engine/world/TileMap.js'

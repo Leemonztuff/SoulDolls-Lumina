@@ -1,25 +1,34 @@
 /**
- * EditorApp — the Lumina level editor application (docs/contracts/LEVEL_EDITOR.md §6-§8): layout, menus,
+ * EditorApp — the Luminati level editor application (docs/contracts/LEVEL_EDITOR.md §6-§8): layout, menus,
  * panels, the 2D map and 3D preview views, keyboard shortcuts, clipboard, dialogs, saving /
  * loading (project folder, browser storage, files, drag & drop), autosave and play-testing.
  *
- * Exposes `window.__editor = { app, state, tools, view3d, view2d, textures, ready3d }` for scripted
- * tests (`EditorHooks`, above the class).
+ * Exposes `window.__editor = { app, state, tools, view3d, view2d, textures, ready3d, seedTextKeys }`
+ * for scripted tests (`EditorHooks`, above the class).
  */
 import { TextureLibrary } from '../engine/pixel/Textures.js';
-import { createEmptyLevel, validateLevel, parseLevel, tileDef, getHeightLevel } from '../engine/level/LevelFormat.js';
+import {
+  createEmptyLevel, validateLevel, parseLevel, tileDef, getHeightLevel, LEVEL_FORMAT,
+} from '../engine/level/LevelFormat.js';
 import { OBJECT_TYPES, ENEMY_INFO, enemyStartPoints, levelHasCombat } from '../engine/level/ObjectCatalog.js';
 import {
   enemyKind, bossArena, strayArena, gateEdgeGap, GATE_EDGE_TOLERANCE, dataColliders, levelStartTest, bossExtraCount,
 } from './enemyGroups.js';
 import {
   PLAYTEST_SLOT, hasProjectApi, saveProjectLevel, loadProjectLevel, saveLocalLevel, loadLocalLevel,
-  listLocalLevels, listProjectLevels, downloadLevel, readLevelFile, openLevelFileDialog, slugify,
+  listLocalLevels, listProjectLevels, downloadLevel, readLevelFile, openLevelFileDialog, slugify, projectLevelPath,
+  levelsApi,
 } from '../engine/level/LevelStorage.js';
+import { levelExits, inExit, travelIssues } from '../engine/level/Travel.js';
+import { storyIssues, formatStoryIssue } from '../engine/level/StoryChecks.js';
+import { campaignStoryContext, storyCheckContext, onStoryContext, otherFileTexts } from './story.js';
+import { mayHide, shownOnly, hiddenOnly, leftOutMessage, revealPatch } from './visibility.js';
+import { createRoomLevel, isRoom } from './rooms.js';
 import { EditorState } from './EditorState.js';
 import { TOOLS, getTool } from './tools/index.js';
+import { notifyPlaced } from './tools/PlaceTool.js';
 import {
-  deleteSelection, duplicateSelection, rotateSelection, copySelection, pasteObjects, boundsOfIds,
+  deleteSelection, duplicateSelection, rotateSelection, nudgeSelection, copySelection, pasteObjects, boundsOfIds, tidy,
 } from './tools/common.js';
 import { Map2DView } from './map2d/Map2DView.js';
 import { h, icon, isTypingTarget } from './ui/dom.js';
@@ -35,7 +44,7 @@ import { dialogOpen, confirmDialog, alertDialog } from './ui/Dialog.js';
 import { showContextMenu, closeContextMenu } from './ui/ContextMenu.js';
 import {
   newLevelDialog, openLevelDialog, saveAsDialog, levelSettingsDialog, resizeDialog, shortcutsDialog,
-  restoreDialog, problemsDialog, aboutDialog, friendlyProblem,
+  restoreDialog, problemsDialog, aboutDialog, friendlyProblem, storyPreviewDialog, findTextKeyDialog,
 } from './ui/dialogs.js';
 import {
   writeAutosave, readAutosaveMeta, loadAutosave, clearAutosave, discardAutosave, listRecovered, loadRecovered,
@@ -43,6 +52,8 @@ import {
 } from './autosave.js';
 import { ICONS, LOGO_SVG } from './icons.js';
 import { ownValue } from '../engine/utils/own.js';
+import { textKeyWarnings, textMapOf, parseKeyInput, findTextKey } from './textKeys.js';
+import { levelTexts } from '../engine/i18n/TextKeys.js';
 
 /**
  * @import { Level, LevelObjectOf } from '../engine/level/types.js'
@@ -50,9 +61,12 @@ import { ownValue } from '../engine/utils/own.js';
  * @import * as Viewport3DModule from './viewport3d/Viewport3D.js'
  * @import { FileRef } from './EditorState.js'
  * @import { MenuCommand } from './ui/MenuBar.js'
+ * @import { TextRow } from './textKeys.js'
  */
 
-const PREFS_KEY = 'lumina.editor.prefs';
+const PREFS_KEY = 'luminati.editor.prefs';
+/** `format` of the objects the editor copies to the system clipboard. */
+export const CLIPBOARD_FORMAT = 'luminati-objects';
 const AUTOSAVE_MS = 20000;
 /** The lazy 3D view module (a Vite glob: path → loader). */
 const viewport3dModules = /** @type {Record<string, () => Promise<typeof Viewport3DModule>>} */ (import.meta.glob('./viewport3d/Viewport3D.js'));
@@ -64,9 +78,41 @@ const DEFAULT_NAMES = new Set(['Untitled', 'New Level', '']);
 
 /** A stored file ref ({ kind, name }) made safe. */
 function normalizeRef(ref) {
-  return ref && typeof ref === 'object' && ['new', 'local', 'project', 'file'].includes(ref.kind)
-    ? { kind: ref.kind, name: String(ref.name ?? '') } : { kind: 'new', name: '' };
+  if (!(ref && typeof ref === 'object' && ['new', 'local', 'project', 'file'].includes(ref.kind))) return { kind: 'new', name: '' };
+  const out = { kind: ref.kind, name: String(ref.name ?? '') };
+  // a campaign's level (docs/specs/CAMPAIGN_FORMAT.md)
+  if (ref.kind === 'project' && typeof ref.campaign === 'string' && ref.campaign) out.campaign = slugify(ref.campaign);
+  return out;
 }
+
+/**
+ * The project file of a file ref, as the editor names it (`public/levels/<name>.json`, or
+ * `public/campaigns/<campaign>/levels/<name>.json`).
+ * @param {FileRef} ref a `project` ref
+ */
+export function projectFile(ref) {
+  return `public/${projectLevelPath(ref.name, { campaign: ref.campaign })}`;
+}
+
+/**
+ * A file as copy-on-write and *Find by text key…* name it: `public/levels/<name>.json` (or a
+ * campaign's), `browser slot “<name>”`, a file's name; '' for a new document.
+ * @param {FileRef} ref
+ * @returns {string}
+ */
+function fileLabel(ref) {
+  if (ref.kind === 'project') return projectFile(ref);
+  if (ref.kind === 'local') return `browser slot “${ref.name}”`;
+  return ref.kind === 'file' ? ref.name : '';
+}
+
+/**
+ * A project file ref (`campaign`: a campaign's level).
+ * @param {string} name
+ * @param {string} [campaign]
+ * @returns {FileRef}
+ */
+const projectRef = (name, campaign = '') => (campaign ? { kind: 'project', name: slugify(name), campaign: slugify(campaign) } : { kind: 'project', name: slugify(name) });
 
 /**
  * `window.__editor` (docs/specs/AUTOMATION_API.md §6), set by the EditorApp constructor for
@@ -82,6 +128,9 @@ function normalizeRef(ref) {
  *   or when it could not start
  * @property {Promise<void>} ready3d  (getter) resolves after `app.ready` and the 3D view's first
  *   full build
+ * @property {(prefix?: string|null) => void} seedTextKeys  makes the keys the editor gives new
+ *   texts deterministic (`TextKeys.seededMint(prefix)`: the same edits, the same keys) for scripted
+ *   checks; null / no prefix: random again (`EditorState#seedTextKeys`, docs/specs/I18N.md §4.10)
  */
 
 export class EditorApp {
@@ -95,6 +144,10 @@ export class EditorApp {
     /** The shared texture library (2D swatches, 2D map, 3D view). */
     this.textures = textures ?? new TextureLibrary({ seed: 1337, anisotropy: 4 });
     this.state = new EditorState(level ?? createEmptyLevel({ name: 'Untitled' }));
+    // a hidden object is never selected (src/editor/visibility.js, KNOWN_ISSUES STORY-06)
+    this.state.selectionFilter = (ids) => shownOnly(this.state, ids);
+    // copy-on-write of text keys: the texts the campaign's other files hold (./story.js)
+    this.state.otherTexts = () => otherFileTexts(this.state);
     this.tools = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
     /** @type {Map2DView|null} */
     this.view2d = null;
@@ -105,6 +158,11 @@ export class EditorApp {
     this._changeCount = 0;
     this._autosavedAt = 0;
     this._lastTool = getTool(this.state.toolId);
+    /** While true, `_dropHiddenFromSelection` keeps its message in `_heldDropMsg` (a save shows it). */
+    this._holdDropMsg = false;
+    this._heldDropMsg = '';
+    /** The read of the file a *Save As* left (`_rememberCopiedFrom`; scripted checks await it). */
+    this._copiedRead = Promise.resolve();
 
     this._loadPrefs();
     this.commands = this._buildCommands();
@@ -123,6 +181,7 @@ export class EditorApp {
       get view3d() { return self.view3d; },
       /** Resolves once the first level is loaded and the 3D preview's first full build is done. */
       get ready3d() { return Promise.resolve(self.ready).then(() => self.view3d?.ready); },
+      seedTextKeys: (prefix) => this.state.seedTextKeys(prefix),
     };
     this.ready = this.start();
   }
@@ -155,8 +214,10 @@ export class EditorApp {
       // (an autosave of another session is never overwritten unresolved: this session's first
       // autosave moves it to the recovered copies — see autosave.js)
       if (open) {
-        const ok = await this.openProject(open, { confirm: false });
-        if (ok) await this._offerRestore({ kind: 'project', name: slugify(open) });
+        // `?open=<name>` (public/levels) or `?open=<campaign>/<name>` (a campaign's level)
+        const [campaign, name] = open.includes('/') ? open.split('/', 2) : ['', open];
+        const ok = await this.openProject(name, { confirm: false, campaign });
+        if (ok) await this._offerRestore(projectRef(name, campaign));
         return;
       }
       if (local) {
@@ -164,7 +225,8 @@ export class EditorApp {
         if (ok) await this._offerRestore({ kind: 'local', name: local });
         return;
       }
-      if (q.has('new')) { this._startBlank(); return; }
+      // (`?new=room`: a new room, as File › New › Room makes it)
+      if (q.has('new')) { this._startBlank(q.get('new') === 'room' ? 'room' : 'level'); return; }
       if (await this._offerRestore(null)) return;
       this._startBlank();
     } catch (e) {
@@ -174,8 +236,9 @@ export class EditorApp {
     }
   }
 
-  _startBlank() {
-    this.state.replaceLevel(createEmptyLevel({ name: DEFAULT_NAME }), { kind: 'new', name: '' });
+  /** @param {'level'|'room'} [kind] */
+  _startBlank(kind = 'level') {
+    this.state.replaceLevel(kind === 'room' ? createRoomLevel({ name: DEFAULT_NAME }) : createEmptyLevel({ name: DEFAULT_NAME }), { kind: 'new', name: '' });
     this._updateDoc();
   }
 
@@ -187,7 +250,7 @@ export class EditorApp {
     const meta = readAutosaveMeta();
     if (!meta || meta.sid === SESSION_ID || meta.exported) return false;
     const ref = normalizeRef(meta.fileRef);
-    if (only && !(ref.kind === only.kind && ref.name === only.name)) return false;
+    if (only && !(ref.kind === only.kind && ref.name === only.name && (ref.campaign ?? '') === (only.campaign ?? ''))) return false;
     const older = listRecovered().filter((e) => !e.exported).length;
     const restore = await restoreDialog(meta, { older, reopened: !!only });
     if (restore === true) {
@@ -249,11 +312,15 @@ export class EditorApp {
       if (this.view3d) { try { this.view3d.dispose?.(); } catch { /* already broken */ } this.view3d = null; }
       this.view3d = new mod.Viewport3D(slot, this.state, { textures: this.textures });
       this.view3d.setActive?.(this.state.view.layout !== '2d');
-      // the 2D map's enemy start dots use the 3D view's start test (every prop's and villager's
-      // collider; its level-data form while the view is hidden), and follow it when it changes
-      // (lazy: while a build of the document is due, the 2D map's own data test until it lands)
+      // the 2D map's enemy and critter start dots use the 3D view's start tests (every prop's and
+      // villager's collider; their level-data form while the view is hidden), and follow them when
+      // they change (lazy: while a build of the document is due, the 2D map's own data test until
+      // it lands)
       const v3 = this.view3d;
-      if (this.view2d) this.view2d.startTestSource = (flier) => (this.view3d === v3 ? v3.enemyStartTest?.(flier, { lazy: true }) ?? null : null);
+      if (this.view2d) {
+        this.view2d.startTestSource = (flier) => (this.view3d === v3 ? v3.enemyStartTest?.(flier, { lazy: true }) ?? null : null);
+        this.view2d.critterTestSource = () => (this.view3d === v3 ? v3.critterStartTest?.({ lazy: true }) ?? null : null);
+      }
       v3.onPlacementChange = () => { if (this.view3d === v3) this.view2d?.placementChanged(); };
       Promise.resolve(this.view3d.ready).then(() => {
         this.vp3d.classList.add('is-ready');
@@ -288,7 +355,7 @@ export class EditorApp {
 
     // ---- menu bar
     this.menubarEl = h('header', { class: 'le-menubar' });
-    const brand = h('div', { class: 'le-brand', title: 'Lumina Level Editor' }, h('span', { class: 'le-brand-logo', html: LOGO_SVG }), h('span', { class: 'le-brand-name' }, 'Lumina'), h('span', { class: 'le-brand-sub' }, 'Level Editor'));
+    const brand = h('div', { class: 'le-brand', title: 'Luminati Level Editor' }, h('span', { class: 'le-brand-logo', html: LOGO_SVG }), h('span', { class: 'le-brand-name' }, 'Luminati'), h('span', { class: 'le-brand-sub' }, 'Level Editor'));
     this.menubarEl.appendChild(brand);
     this.menubar = new MenuBar(this.menubarEl, { menus: this._menus(), commands: this.commands, run: (id) => this.run(id) });
 
@@ -356,6 +423,7 @@ export class EditorApp {
     const right = h('div', { class: 'le-right' });
     const actions = {
       focus: (ids) => this.focusIds(ids),
+      reveal: (ids) => this.reveal(ids),
       duplicate: () => this.run('edit.duplicate'),
       remove: () => this.run('edit.delete'),
       rotate: (deg) => rotateSelection(st, deg * DEG),
@@ -580,16 +648,34 @@ export class EditorApp {
       this._applyLayout();
       this._syncTimeUI();
       if (!this._splitDragging) this._savePrefs();
+      this._dropHiddenFromSelection();
+    });
+    // the campaign's story files arrived (or were read again): what the story preview hides may differ
+    this._offStoryContext = onStoryContext((campaign) => {
+      if (campaign === this._campaign()) this._storyInputsChanged();
+    });
+    // undo / redo / a cancelled stroke left hidden objects out of the selection they restored
+    st.on('selectionFiltered', (ids) => {
+      const msg = leftOutMessage(st, ids, ['left the selection', 'left the selection']);
+      if (msg) st.notify(msg);
     });
     st.on('dirty', () => this._updateDoc());
     st.on('history', () => this._updateHistory());
     st.on('change', (info) => {
       this._changeCount++;
+      // an edit of a condition (or the weather, a pasted or restored object) may hide a selected
+      // object: it leaves the selection once the edit is done
+      if ((info.objects || info.meta) && info.source !== 'load') this._queueHiddenDrop();
       if (info.meta || info.source === 'load') { this._updateDoc(); this._followLevelTime(); }
       if (info.source === 'load') {
         // a new document: drop half-finished tool gestures (a pending fence start point…)
         const tool = getTool(st.toolId);
         try { tool.deactivate?.(st); tool.activate?.(st); } catch (e) { console.warn('[editor] tool reset:', e); }
+        // a campaign's level: its story and level files, read again (Check for problems and the
+        // condition hints check names and done: keys against them; another level of the campaign
+        // may have been saved since they were read)
+        const campaign = this._campaign();
+        if (campaign) campaignStoryContext(campaign, { refresh: true });
       }
     });
     this._updateHistory();
@@ -613,12 +699,12 @@ export class EditorApp {
     this.dirtyDot.classList.toggle('is-warn', st.dirty && !!this._autosaveFailed);
     this.dirtyDot.title = st.dirty && this._autosaveFailed ? 'Unsaved changes — autosave failed (browser storage full): save your level' : 'Unsaved changes';
     this.root.classList.toggle('is-dirty', st.dirty);
-    const where = ref.kind === 'project' ? `public/levels/${ref.name}.json`
+    const where = ref.kind === 'project' ? projectFile(ref)
       : ref.kind === 'local' ? `browser · ${ref.name}`
         : ref.kind === 'file' ? `file · ${ref.name}` : 'not saved yet';
     this.docWhere.textContent = where;
     this.docWhere.className = `le-doc-where is-${ref.kind}`;
-    document.title = `${st.dirty ? '● ' : ''}${name} — Lumina Level Editor`;
+    document.title = `${st.dirty ? '● ' : ''}${name} — Luminati Level Editor`;
   }
 
   // -------------------------------------------------------------------------------------------
@@ -718,16 +804,24 @@ export class EditorApp {
     let handled = false;
     try { handled = !!tool.keyDown?.(e, st); } catch (err) { console.warn('[editor] tool key:', err); }
     if (handled) { e.preventDefault(); return; }
-    if (cmd) { e.preventDefault(); this.run(cmd); return; }
-    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (cmd) {
+      // only a command that runs claims its key: a disabled one leaves it to the other listeners
+      // (F with nothing selected: the 3D view's focus on the hovered point); a Ctrl combo stays
+      // blocked either way (Ctrl+D would bookmark the page, Ctrl+R reload it)
+      if (this.canRun(cmd)) { e.preventDefault(); this.run(cmd); } else if (e.ctrlKey || e.metaKey) e.preventDefault();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) return;
+    if (!e.altKey) {
       const t = TOOLS.find((x) => x.shortcut.toLowerCase() === e.key.toLowerCase());
       if (t) { e.preventDefault(); st.setTool(t.id); return; }
-      const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-      if (arrows[e.key] && st.selection.length) {
-        e.preventDefault();
-        const s = e.shiftKey ? 2 : 0.5;
-        st.moveObjects(st.selection, arrows[e.key][0] * s, arrows[e.key][1] * s, 'Nudge');
-      }
+    }
+    // arrows nudge the selection with any tool, like the select tool's (0.5, Shift 2, Alt 0.1)
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[e.key] && st.selection.length) {
+      e.preventDefault();
+      const step = e.shiftKey ? 2 : e.altKey ? 0.1 : 0.5;
+      nudgeSelection(st, tidy(arrows[e.key][0] * step), tidy(arrows[e.key][1] * step));
     }
   }
 
@@ -737,7 +831,7 @@ export class EditorApp {
     if (!objs.length) return;
     e.preventDefault();
     this.clipboard = objs;
-    try { e.clipboardData.setData('text/plain', JSON.stringify({ format: 'lumina-objects', objects: objs }, null, 1)); } catch { /* internal clipboard only */ }
+    try { e.clipboardData.setData('text/plain', JSON.stringify({ format: CLIPBOARD_FORMAT, objects: objs }, null, 1)); } catch { /* internal clipboard only */ }
     if (cut) deleteSelection(this.state);
     this.state.notify(`${cut ? 'Cut' : 'Copied'} ${objs.length} object${objs.length === 1 ? '' : 's'}`);
   }
@@ -749,8 +843,8 @@ export class EditorApp {
       const text = e.clipboardData?.getData('text/plain') ?? '';
       if (text.trim().startsWith('{')) {
         const data = JSON.parse(text);
-        if (data?.format === 'lumina-objects' && Array.isArray(data.objects)) objs = data.objects;
-        else if (data?.format === 'lumina-level') {
+        if (data?.format === CLIPBOARD_FORMAT && Array.isArray(data.objects)) objs = data.objects;
+        else if (data?.format === LEVEL_FORMAT) {
           e.preventDefault();
           // a whole level replaces the document: ask about unsaved changes first; the pasted
           // level is not saved anywhere, so it stays marked unsaved
@@ -770,7 +864,16 @@ export class EditorApp {
     if (!objs?.length) { this.state.notify('The clipboard is empty'); return; }
     const hv = this.state.hover;
     const added = pasteObjects(this.state, objs, hv ? { x: hv.x, z: hv.z } : null);
-    this.state.notify(`Pasted ${added.length} object${added.length === 1 ? '' : 's'}`);
+    this.state.notify(this._pastedMessage(added));
+  }
+
+  /**
+   * "Pasted 3 objects", and the pasted objects the views hide (they are not selected).
+   * @param {{ id: string }[]} added
+   */
+  _pastedMessage(added) {
+    const left = hiddenOnly(this.state, added.map((o) => o.id));
+    return `Pasted ${added.length} object${added.length === 1 ? '' : 's'}${left.length ? ` · ${leftOutMessage(this.state, left, ['is not selected', 'are not selected'])}` : ''}`;
   }
 
   // -------------------------------------------------------------------------------------------
@@ -785,7 +888,7 @@ export class EditorApp {
     const toggleView = (k) => () => st.setView({ [k]: !(v()[k] !== false) });
     /** @type {Record<string, MenuCommand>} */
     const c = {
-      'file.new': { label: 'New level…', shortcut: 'Ctrl+N', icon: ICONS.newFile, run: () => this.newLevel() },
+      'file.new': { label: 'New level…', shortcut: 'Ctrl+N', aliases: ['Alt+N'], icon: ICONS.newFile, run: () => this.newLevel() },
       'file.open': { label: 'Open…', shortcut: 'Ctrl+O', icon: ICONS.open, run: () => this.openDialog() },
       'file.openFile': { label: 'Open file from disk…', icon: ICONS.file, run: () => this.openFromDisk() },
       'file.save': { label: 'Save', shortcut: 'Ctrl+S', icon: ICONS.save, run: () => this.save() },
@@ -793,76 +896,155 @@ export class EditorApp {
       'file.export': { label: 'Download .json', shortcut: 'Ctrl+E', icon: ICONS.download, run: () => this.exportFile(), hint: 'Download a copy of the level as a file' },
       'file.playtest': { label: 'Play-test', shortcut: 'F5', icon: ICONS.play, run: () => this.playtest() },
 
-      'edit.undo': { label: () => (st.canUndo ? `Undo ${st.undoLabel}` : 'Undo'), shortcut: 'Ctrl+Z', icon: ICONS.undo, enabled: () => st.canUndo, run: () => st.undo() },
-      'edit.redo': { label: () => (st.canRedo ? `Redo ${st.redoLabel}` : 'Redo'), shortcut: 'Ctrl+Y', icon: ICONS.redo, enabled: () => st.canRedo, run: () => st.redo() },
+      'edit.undo': { label: () => (st.canUndo ? `Undo ${st.undoLabel}` : 'Undo'), keyLabel: 'Undo', shortcut: 'Ctrl+Z', icon: ICONS.undo, enabled: () => st.canUndo, run: () => st.undo() },
+      'edit.redo': { label: () => (st.canRedo ? `Redo ${st.redoLabel}` : 'Redo'), keyLabel: 'Redo', shortcut: 'Ctrl+Y', icon: ICONS.redo, enabled: () => st.canRedo, run: () => st.redo() },
       'edit.redo2': { label: 'Redo', shortcut: 'Ctrl+Shift+Z', run: () => st.redo(), enabled: () => st.canRedo },
-      'edit.cut': { label: 'Cut', shortcut: 'Ctrl+X', icon: ICONS.cut, enabled: hasObjSel, run: () => { this.clipboard = copySelection(st); this._writeSystemClipboard(this.clipboard); deleteSelection(st); } },
-      'edit.copy': { label: 'Copy', shortcut: 'Ctrl+C', icon: ICONS.copy, enabled: hasObjSel, run: () => { this.clipboard = copySelection(st); this._writeSystemClipboard(this.clipboard); st.notify(`Copied ${this.clipboard.length} object${this.clipboard.length === 1 ? '' : 's'}`); } },
-      'edit.paste': { label: 'Paste', shortcut: 'Ctrl+V', icon: ICONS.paste, enabled: () => this.clipboard.length > 0, run: () => this.paste() },
+      'edit.cut': { label: 'Cut', keyLabel: 'Cut objects', shortcut: 'Ctrl+X', icon: ICONS.cut, enabled: hasObjSel, run: () => { this.clipboard = copySelection(st); this._writeSystemClipboard(this.clipboard); deleteSelection(st); } },
+      'edit.copy': { label: 'Copy', keyLabel: 'Copy objects', shortcut: 'Ctrl+C', icon: ICONS.copy, enabled: hasObjSel, run: () => { this.clipboard = copySelection(st); this._writeSystemClipboard(this.clipboard); st.notify(`Copied ${this.clipboard.length} object${this.clipboard.length === 1 ? '' : 's'}`); } },
+      'edit.paste': { label: 'Paste', keyLabel: 'Paste (at the pointer)', shortcut: 'Ctrl+V', icon: ICONS.paste, enabled: () => this.clipboard.length > 0, run: () => this.paste() },
       'edit.duplicate': { label: 'Duplicate', shortcut: 'Ctrl+D', icon: ICONS.duplicate, enabled: hasObjSel, run: () => duplicateSelection(st) },
-      'edit.delete': { label: 'Delete', shortcut: 'Delete', icon: ICONS.trash, enabled: hasObjSel, run: () => deleteSelection(st) },
+      'edit.delete': { label: 'Delete', keyLabel: 'Delete selection', shortcut: 'Delete', aliases: ['Backspace'], icon: ICONS.trash, enabled: hasObjSel, run: () => deleteSelection(st) },
       'edit.rotateCcw': { label: 'Rotate +90°', shortcut: 'Ctrl+R', icon: ICONS.rotateCcw, enabled: hasSel, run: () => rotateSelection(st, 90 * DEG) },
       'edit.rotateCw': { label: 'Rotate −90°', shortcut: 'Ctrl+Shift+R', icon: ICONS.rotate, enabled: hasSel, run: () => rotateSelection(st, -90 * DEG) },
       'edit.selectAll': { label: 'Select all objects', shortcut: 'Ctrl+A', icon: ICONS.selectAll, run: () => this.selectAll() },
-      'edit.deselect': { label: 'Deselect', shortcut: 'Escape', enabled: hasSel, run: () => st.clearSelection() },
+      'edit.deselect': { label: 'Deselect', keyLabel: 'Deselect / cancel', shortcut: 'Escape', enabled: hasSel, run: () => st.clearSelection() },
+      'edit.findTextKey': {
+        label: 'Find by text key…', icon: ICONS.search, run: () => findTextKeyDialog(this),
+        hint: 'Select the text that holds a text key (a GUID from a translation table or a review note, or a script line’s #line: tag)',
+      },
 
-      'view.split': { label: '3D + 2D map', shortcut: '1', icon: ICONS.layoutSplit, checked: () => v().layout === 'split', run: () => st.setView({ layout: 'split' }) },
-      'view.3d': { label: '3D only', shortcut: '2', icon: ICONS.layout3d, checked: () => v().layout === '3d', run: () => st.setView({ layout: '3d' }) },
-      'view.2d': { label: '2D map only', shortcut: '3', icon: ICONS.layout2d, checked: () => v().layout === '2d', run: () => st.setView({ layout: '2d' }) },
+      'view.split': { label: '3D + 2D map', keyLabel: 'Layout: 3D + 2D map', shortcut: '1', icon: ICONS.layoutSplit, checked: () => v().layout === 'split', run: () => st.setView({ layout: 'split' }) },
+      'view.3d': { label: '3D only', keyLabel: 'Layout: 3D only', shortcut: '2', icon: ICONS.layout3d, checked: () => v().layout === '3d', run: () => st.setView({ layout: '3d' }) },
+      'view.2d': { label: '2D map only', keyLabel: 'Layout: 2D map only', shortcut: '3', icon: ICONS.layout2d, checked: () => v().layout === '2d', run: () => st.setView({ layout: '2d' }) },
       'view.frameSelection': { label: 'Frame selection', shortcut: 'F', icon: ICONS.focus, enabled: hasSel, run: () => this.focusIds(st.selection) },
       'view.frameLevel': { label: 'Frame level', shortcut: 'Home', icon: ICONS.frame, run: () => { this.view2d?.frameLevel(); this.view3d?.frameLevel?.(); } },
-      'view.grid': { label: 'Grid', shortcut: 'Ctrl+G', checked: () => v().grid !== false, run: toggleView('grid') },
+      'view.grid': { label: 'Grid', keyLabel: 'Toggle grid', shortcut: 'Ctrl+G', checked: () => v().grid !== false, run: toggleView('grid') },
       'view.textured2d': { label: 'Textured 2D map', checked: () => v().textured2d !== false, run: toggleView('textured2d') },
       'view.objects': { label: 'Show objects', checked: () => v().showObjects !== false, run: toggleView('showObjects') },
       'view.markers': { label: 'Show markers (areas, regions, start)', checked: () => v().showMarkers !== false, run: toggleView('showMarkers') },
       'view.showAll': { label: 'Show all hidden types', enabled: () => (v().hiddenTypes?.length ?? 0) > 0, run: () => st.setView({ hiddenTypes: [] }) },
       'view.gameCamera': { label: '3D: gameplay camera', checked: () => v().cameraMode === 'game', run: () => st.setView({ cameraMode: v().cameraMode === 'game' ? 'edit' : 'game' }) },
-      'view.postfx': { label: '3D: HD-2D post effects', checked: () => !!v().postfx, run: () => st.setView({ postfx: !v().postfx }) },
+      'view.postfx': { label: '3D: diorama post effects', checked: () => !!v().postfx, run: () => st.setView({ postfx: !v().postfx }) },
       'view.atmosphere': { label: '3D: particles & god rays', checked: () => !!v().atmosphere, run: () => st.setView({ atmosphere: !v().atmosphere }) },
+      'view.storyPreview': { label: 'Story preview…', icon: ICONS.eye, checked: () => !!v().storyPreview, run: () => storyPreviewDialog(this), hint: 'Hide the objects whose story conditions (when / unless) do not hold for chosen story values' },
       'view.brushBigger': { label: 'Bigger brush', shortcut: ']', run: () => this._brush(1) },
       'view.brushSmaller': { label: 'Smaller brush', shortcut: '[', run: () => this._brush(-1) },
 
       'level.settings': { label: 'Level settings…', icon: ICONS.settings, run: () => levelSettingsDialog(this) },
       'level.resize': { label: 'Resize level…', icon: ICONS.resize, run: () => resizeDialog(this) },
       'level.validate': { label: 'Check for problems', icon: ICONS.validate, run: () => this.validate() },
+      'level.assignTextKeys': {
+        label: 'Assign text keys', icon: ICONS.tag, run: () => this.assignTextKeys(),
+        hint: 'Give every text that has no text key one (translations name a text by its key) — one undo step',
+      },
       'level.playtest': { label: 'Play-test', shortcut: 'F5', icon: ICONS.play, run: () => this.playtest() },
-      'level.openInGame': { label: 'Open saved level in the game', icon: ICONS.external, enabled: () => st.fileRef.kind === 'project', run: () => window.open(`index.html?level=${encodeURIComponent(st.fileRef.name)}`, '_blank') },
+      'level.openInGame': {
+        label: 'Open saved level in the game', icon: ICONS.external, enabled: () => st.fileRef.kind === 'project',
+        run: () => {
+          const ref = st.fileRef;
+          window.open(ref.campaign ? `game.html?campaign=${encodeURIComponent(ref.campaign)}&level=${encodeURIComponent(ref.name)}` : `game.html?level=${encodeURIComponent(ref.name)}`, '_blank');
+        },
+      },
 
-      'help.shortcuts': { label: 'Keyboard shortcuts', shortcut: '?', icon: ICONS.keyboard, run: () => shortcutsDialog(this._shortcutGroups()) },
-      'help.game': { label: 'Open the Emberfall demo', icon: ICONS.external, run: () => window.open('index.html', '_blank') },
+      'help.shortcuts': { label: 'Keyboard shortcuts', keyLabel: 'This list', shortcut: '?', icon: ICONS.keyboard, run: () => shortcutsDialog(this._shortcutGroups()) },
+      'help.game': { label: 'Open the Emberfall demo', icon: ICONS.external, run: () => window.open('game.html', '_blank') },
+      'help.launcher': { label: 'All campaigns and levels', icon: ICONS.external, run: () => window.open('index.html', '_blank') },
       'help.about': { label: 'About the level editor', icon: ICONS.help, run: () => aboutDialog() },
     };
+    // normalised combo → command id: each command's `shortcut` and `aliases` (Alt+N: Chrome
+    // reserves Ctrl+N in normal tabs); '?' typed with Shift arrives as Shift+? (comboOf)
     this.shortcutIndex = new Map();
-    for (const [id, cmd] of Object.entries(c)) if (cmd.shortcut) this.shortcutIndex.set(normalizeCombo(cmd.shortcut), id);
+    for (const [id, cmd] of Object.entries(c)) for (const k of [cmd.shortcut, ...(cmd.aliases ?? [])]) if (k) this.shortcutIndex.set(normalizeCombo(k), id);
     this.shortcutIndex.set('Shift+?', 'help.shortcuts');
-    this.shortcutIndex.set('Alt+N', 'file.new'); // Chrome reserves Ctrl+N in normal tabs
-    this.shortcutIndex.set('Backspace', 'edit.delete');
-    this.shortcutIndex.set('Ctrl+Shift+Z', 'edit.redo2');
     return c;
   }
 
   _menus() {
     return [
       { id: 'file', label: 'File', items: ['file.new', 'file.open', 'file.openFile', '-', 'file.save', 'file.saveAs', 'file.export', '-', 'file.playtest'] },
-      { id: 'edit', label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.cut', 'edit.copy', 'edit.paste', 'edit.duplicate', 'edit.delete', '-', 'edit.rotateCcw', 'edit.rotateCw', '-', 'edit.selectAll', 'edit.deselect'] },
-      { id: 'view', label: 'View', items: [{ header: 'Layout' }, 'view.split', 'view.3d', 'view.2d', '-', 'view.frameSelection', 'view.frameLevel', '-', { header: 'Show' }, 'view.grid', 'view.textured2d', 'view.objects', 'view.markers', 'view.showAll', '-', { header: '3D preview' }, 'view.gameCamera', 'view.postfx', 'view.atmosphere'] },
-      { id: 'level', label: 'Level', items: ['level.settings', 'level.resize', '-', 'level.validate', 'level.playtest', 'level.openInGame'] },
-      { id: 'help', label: 'Help', items: ['help.shortcuts', 'help.game', '-', 'help.about'] },
+      { id: 'edit', label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.cut', 'edit.copy', 'edit.paste', 'edit.duplicate', 'edit.delete', '-', 'edit.rotateCcw', 'edit.rotateCw', '-', 'edit.selectAll', 'edit.deselect', '-', 'edit.findTextKey'] },
+      { id: 'view', label: 'View', items: [{ header: 'Layout' }, 'view.split', 'view.3d', 'view.2d', '-', 'view.frameSelection', 'view.frameLevel', '-', { header: 'Show' }, 'view.grid', 'view.textured2d', 'view.objects', 'view.markers', 'view.showAll', 'view.storyPreview', '-', { header: '3D preview' }, 'view.gameCamera', 'view.postfx', 'view.atmosphere'] },
+      { id: 'level', label: 'Level', items: ['level.settings', 'level.resize', '-', 'level.validate', 'level.assignTextKeys', 'level.playtest', 'level.openInGame'] },
+      { id: 'help', label: 'Help', items: ['help.shortcuts', 'help.game', 'help.launcher', '-', 'help.about'] },
     ];
   }
 
-  /** @returns {{ title: string, items: [string, string][] }[]} */
+  /**
+   * The keyboard-shortcut dialog: one group per menu (by command id prefix: `file.*` → File …)
+   * with a row for every command that has a `shortcut` — generated from the registry, so a new
+   * command shortcut is listed by itself — plus the hand-written keys the registry does not hold:
+   * the tool keys (`TOOLS`), the tools' own keys and gestures and the view controls.
+   * @returns {{ title: string, items: [string, string][] }[]}
+   */
   _shortcutGroups() {
-    return [
-      { title: 'File', items: [['Ctrl+N / Alt+N', 'New level'], ['Ctrl+O', 'Open'], ['Ctrl+S', 'Save'], ['Ctrl+Shift+S', 'Save as'], ['Ctrl+E', 'Download .json'], ['F5', 'Play-test']] },
-      { title: 'Tools', items: TOOLS.map((t) => [t.shortcut, t.label]) },
-      { title: 'Edit', items: [['Ctrl+Z', 'Undo'], ['Ctrl+Y / Ctrl+Shift+Z', 'Redo'], ['Ctrl+C', 'Copy objects'], ['Ctrl+X', 'Cut objects'], ['Ctrl+V', 'Paste (at the pointer)'], ['Ctrl+D', 'Duplicate'], ['Delete', 'Delete selection'], ['Ctrl+A', 'Select all objects'], ['Escape', 'Deselect / cancel']] },
-      { title: 'Selection & placing', items: [['R / Shift+R', 'Rotate ±15°'], ['Ctrl+R / Ctrl+Shift+R', 'Rotate ±90°'], ['Arrows', 'Nudge 0.5 (Shift: 2)'], ['Alt', 'Place / move without snapping'], ['Shift+click', 'Add to selection'], ['Ctrl+click', 'Toggle selection']] },
-      { title: 'Terrain', items: [['[ / ]', 'Brush size'], ['Alt+click', 'Pick tile / level'], ['Shift+click', 'Straight line (paint)'], ['Shift', 'Invert raise / lower']] },
-      { title: 'View', items: [['1 / 2 / 3', 'Layout: split / 3D / 2D'], ['F', 'Frame selection'], ['Home', 'Frame level'], ['Ctrl+G', 'Toggle grid'], ['?', 'This list']] },
+    const reg = this._commandShortcutGroups();
+    const groups = [];
+    /** Append the generated group of a menu (once; skipped when it lists nothing). */
+    const take = (id) => {
+      const g = reg.get(id);
+      reg.delete(id);
+      if (g?.items.length) groups.push(g);
+    };
+    take('file');
+    groups.push({ title: 'Tools', items: TOOLS.map((t) => [t.shortcut, t.label]) });
+    take('edit');
+    groups.push(
+      { title: 'Selection & placing', items: [['R / Shift+R', 'Rotate ±15°'], ['Arrows', 'Nudge 0.5 (Shift: 2, Alt: 0.1)'], ['Alt', 'Place / move without snapping'], ['Shift+click', 'Add to selection'], ['Ctrl+click', 'Toggle selection']] },
+      { title: 'Terrain', items: [['Alt+click', 'Pick tile / level'], ['Shift+click', 'Straight line (paint)'], ['Shift', 'Invert raise / lower']] },
+    );
+    take('view');
+    groups.push(
       { title: '2D map', items: [['Wheel', 'Zoom to the cursor'], ['Right-drag / Middle-drag', 'Pan'], ['Space+drag', 'Pan'], ['Double-click', 'Focus an object']] },
-      { title: '3D view', items: [['Right-drag', 'Orbit'], ['Middle-drag / Shift+right-drag', 'Pan'], ['Space+drag', 'Pan'], ['Wheel', 'Zoom to the cursor'], ['F / Double-click', 'Focus'], ['Right button + W A S D', 'Fly'], ['Right button + Q / E', 'Turn'], ['Q / E', 'Rotate (game camera)']] },
-    ];
+      { title: '3D view', items: [['Right-drag', 'Orbit'], ['Middle-drag / Shift+right-drag', 'Pan'], ['Space+drag', 'Pan'], ['Wheel', 'Zoom to the cursor'], ['F / Double-click', 'Focus (F with nothing selected: the point under the pointer)'], ['Right button + W A S D', 'Fly'], ['Right button + Q / E', 'Turn'], ['Q / E', 'Rotate (game camera)']] },
+      { title: 'Script fields', items: [['Tab / Shift+Tab', 'Indent / outdent (at a line\'s start, or selected lines)'], ['Tab / Shift+Tab', 'Next / previous field (after a line\'s text)'], ['Enter', 'New line, same indentation'], ['Ctrl+Enter', 'Done (the script editor: Apply)'], ['Escape', 'Put the field back as it was (the script editor: close)']] },
+    );
+    for (const id of [...reg.keys()]) take(id);
+    return groups;
+  }
+
+  /**
+   * The command registry's shortcuts by menu: a group per command id prefix (titled like its
+   * menu, in menu order, then any other prefix), a row `[keys, label]` per command with a
+   * `shortcut` — keys `shortcut / alias / …`, label `keyLabel` or the menu label without its
+   * "…". Commands of one group with the same label share a row (Redo: Ctrl+Y / Ctrl+Shift+Z); a
+   * row already listed in an earlier group is not repeated (F5 Play-test: File, not Level).
+   * @returns {Map<string, { title: string, items: [string, string][] }>}
+   */
+  _commandShortcutGroups() {
+    const menus = this._menus();
+    /** @type {Map<string, { title: string, items: [string, string][] }>} */
+    const out = new Map(menus.map((m) => [m.id, { title: m.label, items: [] }]));
+    /** @type {Map<string, [string, string]>} group + label → its row */
+    const rows = new Map();
+    const listed = new Set();
+    // menu order first, then the commands no menu lists (edit.redo2, the brush keys …)
+    const order = new Set([...menus.flatMap((m) => m.items.filter(isCommandId)), ...Object.keys(this.commands)]);
+    for (const id of order) {
+      const c = this.commands[id];
+      if (!c?.shortcut) continue;
+      const prefix = id.split('.')[0];
+      if (!out.has(prefix)) out.set(prefix, { title: prefix[0].toUpperCase() + prefix.slice(1), items: [] });
+      const label = (c.keyLabel ?? (typeof c.label === 'function' ? c.label() : c.label)).replace(/…$/, '');
+      const keys = [c.shortcut, ...(c.aliases ?? [])];
+      const same = rows.get(`${prefix}\u0000${label}`);
+      if (same) {
+        same[0] = [...new Set([...same[0].split(' / '), ...keys])].join(' / ');
+        continue;
+      }
+      /** @type {[string, string]} */
+      const row = [keys.join(' / '), label];
+      if (listed.has(`${row[0]}\u0000${label}`)) continue;
+      listed.add(`${row[0]}\u0000${label}`);
+      rows.set(`${prefix}\u0000${label}`, row);
+      out.get(prefix).items.push(row);
+    }
+    return out;
+  }
+
+  /** Does the command exist and is it enabled now (`run` would run it)? */
+  canRun(id) {
+    const c = this.commands[id];
+    return !!c && (!c.enabled || !!c.enabled());
   }
 
   /** Run a command by id. */
@@ -891,14 +1073,67 @@ export class EditorApp {
   }
 
   _writeSystemClipboard(objs) {
-    try { navigator.clipboard?.writeText(JSON.stringify({ format: 'lumina-objects', objects: objs }, null, 1)).catch(() => {}); } catch { /* ignore */ }
+    try { navigator.clipboard?.writeText(JSON.stringify({ format: CLIPBOARD_FORMAT, objects: objs }, null, 1)).catch(() => {}); } catch { /* ignore */ }
   }
 
   selectAll() {
     const st = this.state;
-    const hidden = new Set(st.view.hiddenTypes ?? []);
-    st.select(st.level.objects.filter((o) => !hidden.has(o.type)).map((o) => o.id));
-    st.notify(`${st.selection.length} objects selected`);
+    const all = st.level.objects.map((o) => o.id);
+    // (only what the 2D map shows, as a box does: not the types hidden with the outliner's eyes,
+    // not what View › Show objects / Show markers switched off hide, nor what the story preview hides)
+    const left = hiddenOnly(st, all);
+    st.select(shownOnly(st, all));
+    st.notify(`${st.selection.length} objects selected${left.length ? ` · ${leftOutMessage(st, left)}` : ''}`);
+  }
+
+  /**
+   * After a change of what the views hide (a view change; an edit of a condition, undo / redo, a
+   * paste, a save elsewhere): the selected objects the views no longer show — a type hidden with
+   * the outliner's eye, *Show objects* / *Show markers* off, or what the story preview hides —
+   * leave the selection (Delete, the arrow keys and the inspector would act on objects nobody
+   * sees), and the status bar says why. A hidden object is never selected
+   * (src/editor/visibility.js).
+   */
+  _dropHiddenFromSelection() {
+    const st = this.state;
+    if (!st.selection.length || !mayHide(st)) return;
+    const msg = leftOutMessage(st, hiddenOnly(st, st.selection), ['left the selection', 'left the selection']);
+    if (!st.refreshSelection().length || !msg) return;
+    // (a save under another name shows it with its own message: _fileRefChanged)
+    if (this._holdDropMsg) this._heldDropMsg = msg;
+    else st.notify(msg);
+  }
+
+  /**
+   * `_dropHiddenFromSelection` once the running edit is done (a microtask: an inspector edit
+   * commits its transaction first, so its panel is not rebuilt under the field being typed in).
+   */
+  _queueHiddenDrop() {
+    if (this._dropQueued || !mayHide(this.state)) return;
+    this._dropQueued = true;
+    queueMicrotask(() => {
+      this._dropQueued = false;
+      this._dropHiddenFromSelection();
+    });
+  }
+
+  /**
+   * Show hidden objects again and select them (a double-click on a dimmed outliner row, or F on
+   * it): the story preview goes off when it hides one, their types are shown again, *Show objects*
+   * / *Show markers* on (`revealPatch`); the views then frame them.
+   * @param {string[]} ids
+   */
+  reveal(ids) {
+    const st = this.state;
+    const patch = revealPatch(st, ids);
+    if (patch) st.setView(patch);
+    st.select(ids);
+    const what = [
+      patch?.storyPreview === false ? 'story preview off' : '', patch?.hiddenTypes ? 'type shown again' : '',
+      patch?.showObjects ? 'Show objects on' : '', patch?.showMarkers ? 'Show markers on' : '',
+    ].filter(Boolean).join(', ');
+    if (what) st.notify(`${what.charAt(0).toUpperCase()}${what.slice(1)} — ${ids.length === 1 ? ids[0] : `${ids.length} objects`} selected`);
+    this.focusIds(st.selection);
   }
 
   /** Centre both views on the given ids (objects and/or 'spawn'). */
@@ -939,9 +1174,18 @@ export class EditorApp {
       }
     } else {
       items.push({ header: `Tile ${ev.i}, ${ev.j}` });
-      items.push({ label: 'Paste here', icon: ICONS.paste, shortcut: 'Ctrl+V', disabled: !this.clipboard.length, run: () => { const added = pasteObjects(st, this.clipboard, { x: ev.x, z: ev.z }); st.notify(`Pasted ${added.length} objects`); } });
+      items.push({ label: 'Paste here', icon: ICONS.paste, shortcut: 'Ctrl+V', disabled: !this.clipboard.length, run: () => { const added = pasteObjects(st, this.clipboard, { x: ev.x, z: ev.z }); st.notify(this._pastedMessage(added)); } });
       items.push({ label: 'Place player start here', icon: ICONS.spawn, disabled: !st.inBounds(ev.i, ev.j), run: () => st.setSpawn(ev.i + 0.5, ev.j + 0.5) });
-      items.push({ label: `Place ${OBJECT_TYPES[st.toolOptions.objectType]?.label ?? 'object'} here`, icon: ICONS.place, disabled: OBJECT_TYPES[st.toolOptions.objectType]?.placement !== 'point', run: () => st.addObject(st.toolOptions.objectType, Math.round(ev.x * 2) / 2, Math.round(ev.z * 2) / 2) });
+      const def = ownValue(OBJECT_TYPES, st.toolOptions.objectType);
+      items.push({
+        label: `Place ${def?.label ?? 'object'} here`, icon: ICONS.place, disabled: def?.placement !== 'point',
+        // (an object the views hide — its type's eye, Show objects / markers off — is placed, not
+        // selected, and the Place tool's message says why)
+        run: () => {
+          const obj = st.addObject(st.toolOptions.objectType, Math.round(ev.x * 2) / 2, Math.round(ev.z * 2) / 2);
+          notifyPlaced(st, `Placed ${def.label} (${obj.id})`, obj.id);
+        },
+      });
       items.push('-');
       items.push({ label: 'Frame level', icon: ICONS.frame, shortcut: 'Home', run: () => this.run('view.frameLevel') });
     }
@@ -975,16 +1219,17 @@ export class EditorApp {
     if (!(await this.confirmDiscard('start a new level'))) return;
     const opts = await newLevelDialog(this);
     if (!opts) return;
-    this._replaceDoc(createEmptyLevel(opts), { kind: 'new', name: '' });
+    const room = opts.kind === 'room';
+    this._replaceDoc(room ? createRoomLevel(opts) : createEmptyLevel(opts), { kind: 'new', name: '' });
     this.state.setTool('paint');
-    this.state.notify(`New level “${opts.name}” (${opts.width} × ${opts.depth})`);
+    this.state.notify(`New ${room ? 'room' : 'level'} “${opts.name}” (${opts.width} × ${opts.depth})`);
   }
 
   async openDialog() {
     if (!(await this.confirmDiscard('open another level'))) return;
     const choice = await openLevelDialog(this);
     if (!choice) return;
-    if (choice.kind === 'project') await this.openProject(choice.name, { confirm: false });
+    if (choice.kind === 'project') await this.openProject(choice.name, { confirm: false, campaign: choice.campaign ?? '' });
     else if (choice.kind === 'local') await this.openLocal(choice.name, { confirm: false });
     else if (choice.kind === 'recovered') await this.openRecovered(choice.name, { confirm: false });
     else await this.openFromDisk({ confirm: false });
@@ -993,9 +1238,15 @@ export class EditorApp {
   // Every open reads and checks the level FIRST and only then asks about unsaved changes, so a
   // missing or broken file never costs the current work (`confirm: false` = already asked).
 
-  async openProject(name, { confirm = true } = {}) {
-    const slug = slugify(name);
-    return this._openParsed(() => loadProjectLevel(slug), { kind: 'project', name: slug }, `public/levels/${slug}.json`, { confirm });
+  /**
+   * Open a project level: `public/levels/<name>.json`, or with `campaign` that campaign's
+   * `levels/<name>.json`.
+   * @param {string} name
+   * @param {{ confirm?: boolean, campaign?: string }} [opts]
+   */
+  async openProject(name, { confirm = true, campaign = '' } = {}) {
+    const ref = projectRef(name, campaign);
+    return this._openParsed(() => loadProjectLevel(ref.name, { campaign: ref.campaign }), ref, projectFile(ref), { confirm });
   }
 
   openLocal(slot, { confirm = true } = {}) {
@@ -1047,7 +1298,7 @@ export class EditorApp {
   async save() {
     const ref = this.state.fileRef;
     if (ref.kind === 'project') {
-      if (this.projectApi) return this._saveTo('project', ref.name);
+      if (this.projectApi) return this._saveTo('project', ref.name, { campaign: ref.campaign });
       this.state.notify('The project folder is unavailable (dev server not running) — choose another destination');
       return this.saveAs();
     }
@@ -1062,23 +1313,29 @@ export class EditorApp {
     // a level still called "Untitled": the Save As dialog asked for its display name too
     if (r.levelName && r.levelName !== this.state.level.name) this.state.setLevelProps({ name: r.levelName }, 'Name level');
     const ref = this.state.fileRef;
-    const same = ref.kind === r.dest && ref.name === r.name;
+    const campaign = r.dest === 'project' ? r.campaign ?? '' : '';
+    const same = ref.kind === r.dest && ref.name === r.name && (ref.campaign ?? '') === campaign;
     if (!same) {
       let exists = false;
       try {
-        if (r.dest === 'project') exists = (await listProjectLevels()).some((l) => l.name === r.name);
+        if (r.dest === 'project') exists = (await listProjectLevels({ campaign })).some((l) => l.name === r.name);
         else if (r.dest === 'local') exists = listLocalLevels().some((l) => l.slot === r.name);
       } catch { exists = false; }
       if (exists) {
-        const where = r.dest === 'project' ? `public/levels/${r.name}.json` : `browser slot “${r.name}”`;
+        const where = r.dest === 'project' ? projectFile(projectRef(r.name, campaign)) : `browser slot “${r.name}”`;
         const ok = await confirmDialog({ title: 'Replace existing level?', message: `${where} already exists. Replace it with this level?`, danger: true, buttons: [{ label: 'Cancel', value: false }, { label: 'Replace', value: true, danger: true }] });
         if (!ok) return false;
       }
     }
-    return this._saveTo(r.dest, r.name);
+    return this._saveTo(r.dest, r.name, { campaign });
   }
 
-  async _saveTo(dest, name) {
+  /**
+   * @param {'project'|'local'|'download'} dest
+   * @param {string} name
+   * @param {{ campaign?: string }} [opts] campaign: a project save into that campaign's levels/
+   */
+  async _saveTo(dest, name, { campaign = '' } = {}) {
     const st = this.state;
     const nf = this._newerFile;
     if (nf && ((dest === 'project' && nf.kind === 'project') || (dest === 'local' && nf.kind === 'local')) && slugify(name) === slugify(nf.name)) {
@@ -1093,15 +1350,18 @@ export class EditorApp {
     // the revision being saved: edits made while a project save is in flight keep the level dirty
     const rev = st.revision;
     const level = st.snapshot();
+    const before = { ...st.fileRef };
+    // (saved elsewhere: the story preview may hide other objects now — the message says so too)
+    const saved = (msg) => { const left = this._fileRefChanged(before); st.notify(left ? `${msg} · ${left}` : msg); };
     try {
       if (dest === 'project') {
-        const file = await saveProjectLevel(name, level);
-        st.markSaved({ kind: 'project', name: slugify(name) }, rev);
-        st.notify(st.dirty ? `Saved to public/${file} — newer edits are not saved yet` : `Saved to public/${file}`);
+        const file = await saveProjectLevel(name, level, { campaign });
+        st.markSaved(projectRef(name, campaign), rev);
+        saved(st.dirty ? `Saved to public/${file} — newer edits are not saved yet` : `Saved to public/${file}`);
       } else if (dest === 'local') {
         const slot = saveLocalLevel(name, level);
         st.markSaved({ kind: 'local', name: slot }, rev);
-        st.notify(`Saved in this browser (slot “${slot}”)`);
+        saved(`Saved in this browser (slot “${slot}”)`);
       } else {
         // a download cannot be confirmed (blocked, or cancelled in a "Save as" prompt of the
         // browser): the level counts as saved to that file, but a recovery copy stays in this
@@ -1110,7 +1370,7 @@ export class EditorApp {
         downloadLevel(level, fileName);
         writeAutosave(level, { kind: 'file', name: fileName }, { exported: true });
         st.markSaved({ kind: 'file', name: fileName }, rev);
-        st.notify(`Downloaded ${fileName} — check your downloads folder (a recovery copy stays in this browser)`);
+        saved(`Downloaded ${fileName} — check your downloads folder (a recovery copy stays in this browser)`);
         this._autosavedAt = this._changeCount;
         this._updateDoc();
         return true;
@@ -1135,7 +1395,203 @@ export class EditorApp {
     this.state.notify(`Downloaded ${fileName}`);
   }
 
-  validate() {
+  /**
+   * After a save: when the level now lives elsewhere (Save As — another name, browser slot, file
+   * or campaign), what the story preview and the condition hints read changed with it: the
+   * preview's `level` value, the campaign whose story files and levels the checks read (read now).
+   * Returns the message for the objects that left the selection ('' none; the caller shows it with
+   * its own).
+   * @param {FileRef} before the file reference before the save
+   * @returns {string}
+   */
+  _fileRefChanged(before) {
+    const now = this.state.fileRef;
+    if (before.kind === now.kind && before.name === now.name && (before.campaign ?? '') === (now.campaign ?? '')) return '';
+    // copy-on-write of text keys: the file saved away from keeps the keys; the one saved to holds
+    // what the level holds now
+    this.state.forgetCopiedTexts(fileLabel(now));
+    this._copiedRead = this._rememberCopiedFrom(before);
+    const campaign = this._campaign();
+    if (campaign) campaignStoryContext(campaign, { refresh: true });
+    this._heldDropMsg = '';
+    this._holdDropMsg = true;
+    try { this._storyInputsChanged(); } finally { this._holdDropMsg = false; }
+    const msg = this._heldDropMsg;
+    this._heldDropMsg = '';
+    return msg;
+  }
+
+  /**
+   * After a *Save As* to another file (docs/specs/I18N.md §4.2 "one key, one English"): the file the
+   * level was saved away from (a project level or a browser slot) still holds the keys the level
+   * had — its texts, read back from where it lives, count as another file's for copy-on-write
+   * (`EditorState#addCopiedTexts`) until another level is loaded: an edit that changes the English
+   * of a text gives it a new key and the old file keeps the shared one. A file that cannot be read
+   * (or a document loaded meanwhile) adds nothing.
+   * @param {FileRef} from
+   * @returns {Promise<void>}
+   */
+  async _rememberCopiedFrom(from) {
+    if (from.kind !== 'project' && from.kind !== 'local') return;
+    const st = this.state;
+    const loads = st.loads;
+    let r = null;
+    try {
+      r = from.kind === 'project' ? await this._readProjectFile(from) : loadLocalLevel(from.name);
+    } catch {
+      r = null;
+    }
+    // (another document since, or saved back over that file meanwhile: nothing to remember)
+    if (!r || st.loads !== loads || fileLabel(st.fileRef) === fileLabel(from)) return;
+    st.addCopiedTexts(fileLabel(from), textMapOf(levelTexts(r.level)));
+  }
+
+  /**
+   * A project level as its file holds it now: through the dev server's level API when it runs (the
+   * bytes on disk — a file written moments ago may not be served from public/ yet), else the
+   * published file (`loadProjectLevel`).
+   * @param {FileRef} ref a project ref
+   * @returns {Promise<{ level: Level, warnings: string[] }>}
+   */
+  async _readProjectFile(ref) {
+    if (this.projectApi) {
+      const r = await fetch(`${levelsApi(ref.campaign)}/${encodeURIComponent(slugify(ref.name))}`, { cache: 'no-store' });
+      if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) return parseLevel(await r.text());
+    }
+    return loadProjectLevel(ref.name, { campaign: ref.campaign });
+  }
+
+  /**
+   * What the story preview and the condition hints read changed outside the level and the view
+   * (the campaign's story context arrived; the file reference changed): while the preview is on
+   * the views redraw — and the objects it hides now leave the selection, with the usual message —;
+   * the inspector's condition hints are read again.
+   */
+  _storyInputsChanged() {
+    const st = this.state;
+    if (st.view.storyPreview) st.emit('view', { ...st.view });
+    this.inspector?.refresh();
+  }
+
+  /** The campaign of the open level (a campaign's own project level), or ''. */
+  _campaign() {
+    const ref = this.state.fileRef;
+    return ref.kind === 'project' ? ref.campaign ?? '' : '';
+  }
+
+  /**
+   * Level › Assign text keys (docs/specs/I18N.md §4.10): every text without a key gets one, a key
+   * on two texts a new one on the later text (on texts of two Englishes: on the one another file of
+   * the campaign holds it with other English) — one undo step (`EditorState#assignTextKeys`). A
+   * campaign's level shares keys as `npm run i18n:keys -- --assign` does: a chapter variant's text
+   * takes its base level's key for the same English, a campaign copy of a shipped level (the same
+   * file name) the shipped level's (`_assignSources`, read first). Resolves when it is done.
+   * @returns {Promise<{ objects: number, root: boolean }>}
+   */
+  async assignTextKeys() {
+    const st = this.state;
+    const loads = st.loads;
+    const sources = await this._assignSources();
+    // (another level opened meanwhile: the sources were the other one's)
+    const r = st.assignTextKeys(undefined, { sources: st.loads === loads ? sources : [] });
+    const parts = [];
+    if (r.objects) parts.push(`${r.objects} object${r.objects === 1 ? '' : 's'}`);
+    if (r.root) parts.push('the level\'s own texts');
+    st.notify(parts.length ? `Text keys assigned: ${parts.join(' and ')}` : 'Every text already has its own text key');
+    return r;
+  }
+
+  /**
+   * The levels *Assign text keys* shares keys with (the rule of `npm run i18n:keys -- --assign`):
+   * a chapter variant's base level (from the campaign's story context, which read every level of
+   * the campaign), or — a campaign's level that is no variant — the shipped level of the same file
+   * name (public/levels/<name>.json, when there is one). Each as its keyed texts; none outside a
+   * campaign, or when they cannot be read (within a few seconds).
+   * @returns {Promise<{ key: string, text: string, where: string }[][]>}
+   */
+  async _assignSources() {
+    const ref = this.state.fileRef;
+    const campaign = this._campaign();
+    if (!campaign) return [];
+    const ctx = await Promise.race([campaignStoryContext(campaign), new Promise((r) => setTimeout(() => r(null), 4000))]);
+    const base = ctx?.variants?.get(ref.name);
+    if (base) {
+      const texts = ctx.texts?.get(base);
+      return texts ? [[...texts].map(([key, t]) => ({ key, text: t.text, where: t.where }))] : [];
+    }
+    try {
+      const r = await this._readProjectFile({ kind: 'project', name: ref.name });
+      return [levelTexts(r.level)];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Where a text key is in the open level (Edit › *Find by text key…*; nothing is selected yet):
+   * `input` is a GUID (any case; braces and hyphens are fine), a script line's `#line:<GUID>` or a
+   * banner subtitle's `<GUID>.2`. Found: the first object text that holds it (`id`, `row`) — or the
+   * level's own text (`root`: `subtitle`, `title.*`) — and how many other texts hold it too
+   * (`more`: a key on two texts, which *Check for problems* reports). Not found: `message` says why,
+   * and which other file of the campaign (or the file a *Save As* copied the level from) holds it.
+   * @param {string} input
+   * @returns {{ found: boolean, key: string, message: string, id?: string, row?: TextRow, root?: string, more: number }}
+   */
+  locateTextKey(input) {
+    const st = this.state;
+    const key = parseKeyInput(input);
+    const typed = typeof input === 'string' ? input.trim() : '';
+    if (!key) {
+      return { found: false, key: '', more: 0, message: typed ? `“${typed.length > 48 ? `${typed.slice(0, 47)}…` : typed}” is not a text key: a text key is 32 hex digits (a script line’s tag is #line: and the key).` : 'Type or paste a text key.' };
+    }
+    const { objects, root } = findTextKey(st.level, key);
+    const more = objects.length + root.length - 1;
+    if (objects.length) return { found: true, key, id: objects[0].id, row: objects[0].row, more, message: '' };
+    if (root.length) return { found: true, key, root: root[0].field, more, message: '' };
+    const other = st.sharedTexts(key);
+    const where = other?.length ? ` ${other.slice(0, 2).map((t) => `${t.file} has it (${t.where})`).join('; ')}${other.length > 2 ? ` and ${other.length - 2} more` : ''}.` : '';
+    return { found: false, key, more: 0, message: `No text of this level has the text key ${key}.${where}` };
+  }
+
+  /**
+   * Show the text a key was found on (`locateTextKey`): an object's text — the object shown (hidden
+   * types, the story preview: `reveal`) and selected, the views framed on it, and in the inspector
+   * its field scrolled to with the line or page selected and the key line marked —, or the level's
+   * own text (the selection cleared: the inspector shows the level). The status bar says where.
+   * @param {ReturnType<EditorApp['locateTextKey']>} hit
+   */
+  showTextKey(hit) {
+    const st = this.state;
+    if (!hit.found) { st.notify(hit.message); return; }
+    const also = hit.more > 0 ? ` — and ${hit.more} more text${hit.more === 1 ? '' : 's'} (a key on two texts: Check for problems)` : '';
+    if (hit.root) {
+      st.clearSelection();
+      st.notify(`Text key ${hit.key}: the level’s ${hit.root === 'subtitle' ? 'subtitle (Level settings › General)' : `title-screen text environment.${hit.root}`}${also}`);
+      return;
+    }
+    const row = /** @type {TextRow} */ (hit.row);
+    this.reveal([/** @type {string} */ (hit.id)]);
+    const shown = this.inspector?.showTextKey(row);
+    const place = row.line != null ? `, line ${row.line}` : row.page != null ? `, page ${row.page + 1}${row.choice != null ? ` › choice ${row.choice + 1}` : ''}` : '';
+    st.notify(`Text key ${hit.key}: ${hit.id} › ${row.field}${place}${shown ? '' : ' (selected)'}${also}`);
+  }
+
+  /**
+   * Find a text key in the open level and show its text (`locateTextKey` + `showTextKey`; scripted
+   * checks call it, the menu asks first: `findTextKeyDialog`).
+   * @param {string} input
+   */
+  findTextKey(input) {
+    const hit = this.locateTextKey(input);
+    this.showTextKey(hit);
+    return hit;
+  }
+
+  /** Level › Check for problems (a campaign's level: its story and level files are read again first). */
+  async validate() {
+    const campaign = this._campaign();
+    // (at most a few seconds: the checks run without the story files when they do not come)
+    if (campaign) await Promise.race([campaignStoryContext(campaign, { refresh: true }), new Promise((r) => setTimeout(r, 4000))]);
     const errors = validateLevel(this.state.level).map(friendlyProblem);
     const warnings = this._softWarnings();
     if (!errors.length && !warnings.length) { alertDialog({ title: 'No problems found', message: 'The level is ready to play-test.', icon: ICONS.check }); return; }
@@ -1153,12 +1609,31 @@ export class EditorApp {
       return p && (p.x < 0 || p.z < 0 || p.x > L.width || p.z > L.depth);
     }).length;
     if (outside) out.push(`${outside} object${outside === 1 ? ' is' : 's are'} outside the map.`);
-    if (!L.objects.some((o) => o.type === 'npc')) out.push('There are no villagers to talk to yet.');
+    // (a room — a storeroom, a cellar — is often empty: no nudge there)
+    if (!isRoom(L.environment) && !L.objects.some((o) => o.type === 'npc')) out.push('There are no villagers to talk to yet.');
     const silent = L.objects.filter((o) => o.type === 'house' && !(Array.isArray(o.text) && o.text.some((t) => String(t).trim()))).length;
     if (silent) out.push(`${silent} house${silent === 1 ? ' has' : 's have'} no “Text when knocking”: ${silent === 1 ? 'its door is' : 'their doors are'} not interactive.`);
     const edges = walkableEdges(L);
-    if (edges.length) out.push(`Walkable ground reaches the map edge (${edges.join('; ')}): the player can walk to the edge of the world there. Block it with forest (T) or rock (x) tiles if that is not intended.`);
+    if (edges.length) {
+      out.push(isRoom(L.environment)
+        ? `Walkable ground reaches the map edge (${edges.join('; ')}): the player can walk out of the room there. A room's door leads out through an exit over it (Place › Markers › Exit); else block it with rock (x) tiles.`
+        : `Walkable ground reaches the map edge (${edges.join('; ')}): the player can walk to the edge of the world there. Block it with forest (T) or rock (x) tiles if that is not intended.`);
+    }
     out.push(...combatIssues(L, (flier) => this.view3d?.enemyStartTest?.(flier) ?? null));
+    // campaign exits and entrances (docs/specs/CAMPAIGN_FORMAT.md)
+    out.push(...travelIssues(L));
+    // the story: scripts and conditions that do not parse, events missing what their trigger
+    // needs, names nothing declares (against the campaign's story files once they are read, and
+    // `done:` keys against every level's events and `once` keys, as the campaign check reads them)
+    const issues = storyIssues(L, storyCheckContext(this.state));
+    for (const i of [...issues.filter((x) => x.severity === 'error'), ...issues.filter((x) => x.severity !== 'error')]) {
+      out.push(`Story${i.severity === 'error' ? ' error' : ''}: ${formatStoryIssue(i, L)}`);
+    }
+    // the content-text keys (docs/specs/I18N.md §4.10): texts without one, keys on no text, a key
+    // on two texts (of two Englishes: `npm run i18n:keys -- --fix` on the file or campaign)
+    const ref = this.state.fileRef;
+    const file = ref.kind !== 'project' || !ref.name ? '' : ref.campaign ? `public/campaigns/${slugify(ref.campaign)}` : `public/levels/${slugify(ref.name)}.json`;
+    out.push(...textKeyWarnings(L, { file }));
     return out;
   }
 
@@ -1181,8 +1656,14 @@ export class EditorApp {
       alertDialog({ title: 'Could not start the play-test', message: `Browser storage is unavailable or full: ${e?.message ?? e}`, icon: ICONS.warning });
       return false;
     }
-    const url = `index.html?level=local:${PLAYTEST_SLOT}&autostart=1`;
-    const w = window.open(url, 'lumina-playtest');
+    // a campaign's level plays inside its campaign: its exits lead to the campaign's other levels;
+    // another level with the table of the file its keys come from (`origin`: the file it was opened
+    // from — a copy saved under another name has no table of its own)
+    const ref = st.fileRef;
+    const url = ref.kind === 'project' && ref.campaign
+      ? `game.html?campaign=${encodeURIComponent(ref.campaign)}&level=local:${PLAYTEST_SLOT}&as=${encodeURIComponent(ref.name)}&autostart=1`
+      : `game.html?level=local:${PLAYTEST_SLOT}&autostart=1${st.origin ? `&i18n=${st.origin.split('/').map(encodeURIComponent).join('/')}` : ''}`;
+    const w = window.open(url, 'luminati-playtest');
     if (!w) st.notify('Pop-up blocked — allow pop-ups for this page to play-test (the level is saved in the play-test slot).');
     else st.notify(`Play-testing “${level.name}” in a new tab`);
     return true;
@@ -1197,19 +1678,22 @@ export class EditorApp {
     try { this.prefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') ?? {}; } catch { this.prefs = {}; }
     const v = this.prefs.view ?? {};
     const keep = {};
-    for (const k of ['layout', 'grid', 'split', 'textured2d', 'showObjects', 'showMarkers', 'cameraMode', 'postfx', 'atmosphere']) if (k in v) keep[k] = v[k];
+    for (const k of ['layout', 'grid', 'split', 'textured2d', 'showObjects', 'showMarkers', 'cameraMode', 'postfx', 'atmosphere', 'storyValues']) if (k in v) keep[k] = v[k];
     if (keep.layout && !['split', '3d', '2d'].includes(keep.layout)) delete keep.layout;
+    // (the story preview's values are kept; the preview itself starts off in every session)
+    if (typeof keep.storyValues !== 'string') delete keep.storyValues;
     Object.assign(this.state.view, keep);
   }
 
   _savePrefs() {
     const v = this.state.view;
-    this.prefs.view = { layout: v.layout, grid: v.grid, split: v.split, textured2d: v.textured2d, showObjects: v.showObjects, showMarkers: v.showMarkers, cameraMode: v.cameraMode, postfx: v.postfx, atmosphere: v.atmosphere };
+    this.prefs.view = { layout: v.layout, grid: v.grid, split: v.split, textured2d: v.textured2d, showObjects: v.showObjects, showMarkers: v.showMarkers, cameraMode: v.cameraMode, postfx: v.postfx, atmosphere: v.atmosphere, storyValues: v.storyValues };
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(this.prefs)); } catch { /* ignore */ }
   }
 
   dispose() {
     clearInterval(this._autosaveTimer);
+    this._offStoryContext?.();
     this.view2d?.dispose();
     try { this.view3d?.dispose?.(); } catch { /* ignore */ }
   }
@@ -1343,7 +1827,12 @@ function combatIssues(L, exactTest = null) {
 }
 
 function walkableEdges(L) {
-  const walk = (i, j) => { const d = L.legend[L.tiles[j]?.[i]]; return !!d && !d.void && !d.water && d.walkable !== false; };
+  // (a campaign exit over the edge is the way out: its tiles are meant to reach the edge)
+  const exits = levelExits(L);
+  const walk = (i, j) => {
+    const d = L.legend[L.tiles[j]?.[i]];
+    return !!d && !d.void && !d.water && d.walkable !== false && !exits.some((o) => inExit(o, i + 0.5, j + 0.5));
+  };
   const out = [];
   const runs = (n, test) => {
     const r = [];
@@ -1382,6 +1871,15 @@ function comboOf(e) {
   else if (e.shiftKey && key === '?') parts.push('Shift');
   parts.push(key);
   return parts.join('+');
+}
+
+/**
+ * A menu item that is a command id (not a separator or a section header).
+ * @param {string|{ header: string }} x
+ * @returns {x is string}
+ */
+function isCommandId(x) {
+  return typeof x === 'string' && x !== '-';
 }
 
 function normalizeCombo(s) {

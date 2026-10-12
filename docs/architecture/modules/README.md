@@ -1,6 +1,6 @@
 # Engine module reference: index
 
-> **Purpose.** This is the entry point to the per-module reference of the Lumina engine
+> **Purpose.** This is the entry point to the per-module reference of the Luminati engine
 > (`src/engine/`). It lists every module area with a one-line responsibility and a link to its
 > reference page, shows how the areas depend on each other, reproduces the complete public API
 > exported by [`src/engine/index.js`](../../../src/engine/index.js), and lists the modules that
@@ -35,12 +35,12 @@
 | **FX** | `fx/Particles.js`, `fx/GodRays.js` | Stateless GPU particle emitters and bursts (12 presets); sun-following light shafts. | [fx.md](fx.md) |
 | **Lighting** | `lighting/LightingSystem.js`, `lighting/Sky.js`, `lighting/LightPool.js` | 24 h keyframed palette (sun and moon, texel-snapped shadows, hemisphere, fog, exposure, flickering point lights, emissives); sky dome; a fixed pool of 12 point lights shared across big levels. | [lighting.md](lighting.md) |
 | **World** | `world/TileMap.js`, `world/Water.js`, `world/WaterShore.js`, `world/shoreWorker.js`, `world/Props.js` + `world/props/*`, `world/SpatialSplit.js`, `world/ShadowCasters.js` | Terrain meshes, heights, walkability and collision; animated pixel water and waterfalls with a shore bake (in a worker); the procedural prop factory (houses, trees, lights, fences, bridges, windmill …); big-level batching, culling and shadow-only casters. | [world.md](world.md) |
-| **Level** | `level/LevelFormat.js`, `level/ObjectCatalog.js`, `level/ObjectBuilder.js`, `level/LevelStorage.js`, `level/LevelMap.js` | The `lumina-level` JSON format (normalise, validate, byte-stable serialise); the object catalog; building terrain and objects from a level; saving and loading (browser, dev-server API, files); the painted top-down map. | [level.md](level.md) |
-| **UI** | `ui/UI.js`, `ui/DialogBox.js`, `ui/Banner.js`, `ui/TitleScreen.js`, `ui/HUD.js`, `ui/InteractPrompt.js`, `ui/Fader.js`, `ui/DebugPanel.js`, `ui/Minimap.js`, `ui/ui.css` | The DOM overlay: gold-bordered dialog with a typewriter and choices, area banner, title screen, clock/location/help HUD, interaction prompt, fades, lil-gui debug panel with stats, minimap and world map. | [ui.md](ui.md) |
+| **Level** | `level/LevelFormat.js`, `level/ObjectCatalog.js`, `level/ObjectBuilder.js`, `level/LevelStorage.js`, `level/LevelMap.js` | The `luminati-level` JSON format (normalise, validate, byte-stable serialise); the object catalog; building terrain and objects from a level; saving and loading (browser, dev-server API, files); the painted top-down map. | [level.md](level.md) |
+| **UI** | `ui/UI.js`, `ui/DialogBox.js`, `ui/Banner.js`, `ui/TitleScreen.js`, `ui/HUD.js`, `ui/InteractPrompt.js`, `ui/Fader.js`, `ui/DebugPanel.js`, `ui/Minimap.js`, the pixel UI kit (`ui/UiScale.js`, `ui/FontLoader.js`, `ui/GlyphFont.js`, `ui/art/`, `ui/layout/`), one stylesheet per component | The DOM overlay as pixel art after mockup G, in English, Japanese and Chinese: the dialogue window with a portrait, typewriter and choices, area banner, title screen with the language row, place / clock / legend HUD, toasts, interaction prompt, fades, the debug panel with stats, minimap and world map ([PIXEL_UI.md](../../specs/PIXEL_UI.md), [I18N.md](../../specs/I18N.md)). | [ui.md](ui.md) |
 
 ### 1.1 Dependencies between areas
 
-Imports only point "down" this graph (an arrow means "imports"). The game (`src/demo/`) and the
+Imports only point "down" this graph (an arrow means "imports"). The game (`src/game/`) and the
 editor (`src/editor/`) sit on top and wire the areas together.
 
 ```mermaid
@@ -59,14 +59,14 @@ flowchart BT
   LEVEL[level] --> WORLD
   LEVEL --> F
   UI[ui] --> F
-  GAME["src/demo · src/editor"] --> CORE & AUDIO & POST & SPR & FX & LIGHT & LEVEL & UI
+  GAME["src/game · src/editor"] --> CORE & AUDIO & POST & SPR & FX & LIGHT & LEVEL & UI
 ```
 
 Every area imports `utils/math`. `render/GlobalUniforms` is imported by core (`Engine`,
 `CameraRig`), sprite, fx, lighting and world; `PostFX` itself does not use it. The only
 cross-area imports besides the foundation are fx → pixel, world → pixel and level → world: core,
 audio, render, sprite, fx, lighting, level and ui are imported by no other engine area (only by
-the barrel), and nothing in `src/engine/` imports `src/demo/` or `src/editor/`.
+the barrel), and nothing in `src/engine/` imports `src/game/` or `src/editor/`.
 
 Modules never call each other for per-frame sync. They share the uniform objects in
 `globalUniforms` ([render.md §2](render.md#2-globaluniforms)):
@@ -76,7 +76,7 @@ Modules never call each other for per-frame sync. They share the uniform objects
 - `LightingSystem` writes `uNight`, `uSunDirection`, `uSunColor` and `uFogColor`.
 - The game writes `uWind` and `uWindStrength`. While it is overcast (rain, snow), the demo's
   `Weather` also greys `uSunColor` and `uFogColor` each frame, after `LightingSystem.update` has
-  recomputed them.
+  recomputed them. It sets `uFogStart` once per level (`Game._applyLevel`), not per frame.
 
 ### 1.2 Per-frame order in the demo
 
@@ -103,8 +103,8 @@ Details: [core.md §2.3](core.md#23-frame-order), [GAME.md](../GAME.md),
 import { Engine, CameraRig, PostFX, LightingSystem, TileMap /* … */ } from './engine/index.js';
 ```
 
-Importing the barrel has no side effects except the UI stylesheet and `@fontsource` font
-imports pulled in by `ui/UI.js`. Everything below is exported **exactly** under these names.
+Importing the barrel has no side effects except the UI stylesheets pulled in by `ui/UI.js` and
+the components (no font is imported: the UI's fonts load at run time through `ui/FontLoader.js`). Everything below is exported **exactly** under these names.
 
 | Section | Exports | From | Reference |
 | --- | --- | --- | --- |
@@ -140,6 +140,7 @@ imports pulled in by `ui/UI.js`. Everything below is exported **exactly** under 
 | | `PropFactory` | `world/Props.js` | [world.md](world.md) |
 | UI | `UI, DialogBox, Banner, TitleScreen, HUD, InteractPrompt, Fader, DebugPanel, Minimap, WorldMap` | `ui/UI.js` (re-exports) | [ui.md](ui.md) |
 | | `CombatHUD, BossBar, WorldLabels, Announcer, DeathScreen` (combat; registered with `UI.useCombatUI()`, created by `UI.enableCombat()`) | `ui/CombatHUD.js`, `ui/BossBar.js`, `ui/WorldLabels.js`, `ui/Announcer.js`, `ui/DeathScreen.js` (side-effect free in the build: a chunk that does not use them does not hold them) | [ui.md](ui.md) |
+| | *(not in the barrel)* `Journal`, `Emotes`, `EndCard` (story; import them from their files and pass them to `ui.useStoryUI()`) | `ui/Journal.js`, `ui/Emotes.js`, `ui/EndCard.js` (+ `ui/story.css`; side-effect free in the build) | [ui.md §11](ui.md#11-story-ui-story-levels-only) |
 | | `DebugStats` | `ui/DebugPanel.js` | [ui.md](ui.md) |
 | | `DEFAULT_CONTROLS, TIME_PHASES, timePhase, createKeycaps` | `ui/HUD.js` | [ui.md](ui.md) |
 | Advanced: custom props | `MeshBuilder, trs` | `world/props/MeshBuilder.js` | [world.md](world.md) |
@@ -158,7 +159,7 @@ imports pulled in by `ui/UI.js`. Everything below is exported **exactly** under 
 | `level/LevelFormat.js` | `LEVEL_FORMAT`, `LEVEL_VERSION`, `createEmptyLevel`, `normalizeLevel`, `validateLevel`, `serializeLevel`, `parseLevel`, `getTile`/`setTile`, `getHeightLevel`/`setHeightLevel`, `toTileMapInput`, `resizeLevel`, `shiftLevelContent`, `levelStats` … | game, editor, generators in `tools/` |
 | `level/ObjectCatalog.js` | `OBJECT_TYPES`, `OBJECT_CATEGORIES`, `CHARACTER_PRESET_NAMES`, `CRITTER_KINDS`, `EMITTER_PRESETS`, `NPC_ACTIONS`, `NPC_BEHAVIOURS`, `createObject`, `normalizeObject`, `objectBounds`, `hitTestObject` … | editor inspector, game, builder |
 | `level/ObjectBuilder.js` | `LevelObjectBuilder`, `buildLevelTerrain`, `buildWaterfall`, `computeCameraBounds`, `waterGlint`, `LIGHT_PRIORITY`, `bridgeDeckHeight` | game `World`, editor 3D preview |
-| `level/LevelStorage.js` | `resolveLevelFromURL`, `listProjectLevels`, `saveProjectLevel`, `loadProjectLevel`, `saveLocalLevel`, `loadLocalLevel`, `PLAYTEST_SLOT` … | `src/main.js`, `src/demo/Game.js`, editor |
+| `level/LevelStorage.js` | `resolveLevelFromURL`, `listProjectLevels`, `saveProjectLevel`, `loadProjectLevel`, `saveLocalLevel`, `loadLocalLevel`, `PLAYTEST_SLOT` … | `src/main.js`, `src/game/Game.js`, editor |
 | `level/LevelMap.js` | `renderLevelMap(level, { pixelsPerTile })` → `{ canvas, pixelsPerTile, width, depth }` | the game (`Game._setupMaps`), which hands the canvas to the UI `Minimap` and `WorldMap` |
 | `world/SpatialSplit.js` | `kdSplit`, `triangleCount`, `cullByBox` | big-level batching |
 | `world/ShadowCasters.js` | `buildShadowCasters`, `makeShadowOnly`, `isProxyCaster`, `isShadowFrustum` | big-level shadows, sprite proxies |
@@ -175,16 +176,17 @@ The level format and its API are specified in [LEVEL_FORMAT.md](../../specs/LEVE
 ## 3. Sandboxes (one module in isolation)
 
 Every module has a standalone test page under [`sandbox/`](../../../sandbox/). With
-`npm run dev` running, open `http://127.0.0.1:5173/sandbox/` for an index with links and URL
-variants. Headless verification (see
+`npm run dev` running, open `http://127.0.0.1:5173/sandbox/` (linked from the launcher at `/`) for
+an index with links and URL variants. Headless verification (see
 [TESTING_AND_VERIFICATION.md](../../development/TESTING_AND_VERIFICATION.md)):
 
 ```bash
 npm run check -- --page=sandbox/<page>.html --query= --out=<name> [--script=sandbox/<script>.json]
 ```
 
-`--query` defaults to `autostart=1` (meant for the game page). Pass `--query=` for none, or the
-page's own parameters (for example `--query=view=atlas`). All scripts live in `sandbox/`.
+`--query` defaults to `autostart=1` (meant for the game page, `game.html`, the default `--page`).
+Pass `--query=` for none, or the page's own parameters (for example `--query=view=atlas`). All
+scripts live in `sandbox/`.
 
 | Page | Modules | `window` handle | Action scripts |
 | --- | --- | --- | --- |
@@ -208,7 +210,8 @@ page's own parameters (for example `--query=view=atlas`). All scripts live in `s
 
 The `sandbox/editor_shell.*.json` and `sandbox/editor_perf*.json` scripts drive the real
 `editor.html` (see [EDITOR.md](../EDITOR.md) and
-[TESTING_AND_VERIFICATION.md](../../development/TESTING_AND_VERIFICATION.md)).
+[TESTING_AND_VERIFICATION.md](../../development/TESTING_AND_VERIFICATION.md)); `sandbox/launcher.json`
+drives the launcher, `index.html` (`--page=index.html --query= --fps=0`).
 
 ---
 
@@ -239,8 +242,6 @@ Known limitations and open issues across modules are collected in
 [KNOWN_ISSUES.md](../../ai/KNOWN_ISSUES.md). Recipes for common changes are in
 [TASK_PLAYBOOKS.md](../../ai/TASK_PLAYBOOKS.md).
 
-Every module page ends with a **History and decisions** section. These summarise the builder,
-auditor and reviewer reports of the multi-agent workflows that built the module (the raw reports
-are gitignored). Project-wide history is in
-[PROJECT_HISTORY.md](../../history/PROJECT_HISTORY.md) and
-[DECISIONS.md](../../history/DECISIONS.md).
+Module pages retain implementation notes where they explain a design choice or a limitation.
+Use the current API sections and source files when extending a module. The
+[architecture overview](../OVERVIEW.md) describes how the modules fit together.

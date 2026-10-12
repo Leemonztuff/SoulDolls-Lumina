@@ -1,6 +1,6 @@
 # Level design guide — rules learned the hard way
 
-Practical rules for building Lumina levels that look right from the diorama camera and play without
+Practical rules for building Luminati levels that look right from the diorama camera and play without
 dead ends. Most of them were not obvious up front: they come from the reviews of Emberfall, the level
 editor and Starfall Vale (four independent reviewers per phase, ~160 findings in total) and from the
 checks `tools/make-starfall-vale.mjs` now enforces. Each rule says **why** and, where one exists, which
@@ -9,8 +9,8 @@ check catches it.
 | | |
 | --- | --- |
 | **Audience** | Level designers (editor or generator), and AI agents asked to build, extend or review a level. |
-| **Source of truth** | [`src/engine/world/TileMap.js`](../../src/engine/world/TileMap.js) (`move`, water surfaces, stairs), [`src/engine/level/ObjectBuilder.js`](../../src/engine/level/ObjectBuilder.js) (`bridgeDeckHeight`, `buildWaterfall`, `LIGHT_PRIORITY`, `computeCameraBounds`), [`src/engine/lighting/LightPool.js`](../../src/engine/lighting/LightPool.js), [`src/demo/Game.js`](../../src/demo/Game.js) (camera, interaction, regions), [`src/demo/Scenery.js`](../../src/demo/Scenery.js) (border forest), [`src/editor/EditorApp.js`](../../src/editor/EditorApp.js) (`validate`, `_softWarnings`, `bridgeStepIssues`), [`tools/make-starfall-vale.mjs`](../../tools/make-starfall-vale.mjs) (`validate`, `sightlines`, `clearCrowns`, `TREE_RULES`, `ROUTES`) |
-| **Related docs** | [Level format spec](../specs/LEVEL_FORMAT.md) · [Object catalog](../specs/OBJECT_CATALOG.md) · [Level editor guide](../user/LEVEL_EDITOR_GUIDE.md) · [Visual design](VISUAL_DESIGN.md) · [Performance](../architecture/PERFORMANCE.md) · level design docs: [Emberfall](levels/emberfall.md), [Starfall Vale](levels/starfall-vale.md), [Brightwater Crossing](levels/brightwater-crossing.md), [Willowmere](levels/sample-hamlet.md), [Cinderwatch Pass](levels/cinderwatch-pass.md), [Gildhaven](levels/gildhaven.md) · binding contracts [contracts/LEVEL_EDITOR.md](../contracts/LEVEL_EDITOR.md), [contracts/COMBAT.md](../contracts/COMBAT.md) |
+| **Source of truth** | [`src/engine/world/TileMap.js`](../../src/engine/world/TileMap.js) (`move`, water surfaces, stairs), [`src/engine/level/ObjectBuilder.js`](../../src/engine/level/ObjectBuilder.js) (`bridgeDeckHeight`, `buildWaterfall`, `LIGHT_PRIORITY`, `computeCameraBounds`), [`src/engine/lighting/LightPool.js`](../../src/engine/lighting/LightPool.js), [`src/game/Game.js`](../../src/game/Game.js) (camera, interaction, regions), [`src/game/Scenery.js`](../../src/game/Scenery.js) (border forest), [`src/editor/EditorApp.js`](../../src/editor/EditorApp.js) (`validate`, `_softWarnings`, `bridgeStepIssues`), [`tools/make-starfall-vale.mjs`](../../tools/make-starfall-vale.mjs) (`validate`, `sightlines`, `clearCrowns`, `TREE_RULES`, `ROUTES`) |
+| **Related docs** | [Level format spec](../specs/LEVEL_FORMAT.md) · [Object catalog](../specs/OBJECT_CATALOG.md) · [Level editor guide](../user/LEVEL_EDITOR_GUIDE.md) · [Visual design](VISUAL_DESIGN.md) · [Performance](../architecture/PERFORMANCE.md) · level design docs: [Emberfall](levels/emberfall.md), [Starfall Vale](levels/starfall-vale.md), [Brightwater Crossing](levels/brightwater-crossing.md), [Willowmere](levels/sample-hamlet.md), [Cinderwatch Pass](levels/cinderwatch-pass.md), [Gildhaven](levels/gildhaven.md) · campaigns: [Campaign format](../specs/CAMPAIGN_FORMAT.md), [The Ferryman's Lantern](campaigns/ferrymans-lantern.md) · binding contracts [contracts/LEVEL_EDITOR.md](../contracts/LEVEL_EDITOR.md), [contracts/COMBAT.md](../contracts/COMBAT.md) |
 
 ---
 
@@ -40,6 +40,9 @@ If you read nothing else:
 10. **Generated levels are edited through their generator**, never by hand. ([§15](#15-generator-vs-editor-workflows))
 11. **One enemy group makes it a combat level.** Keep packs apart, give them readable ground and
     put a waystone before every hard fight. ([§16](#16-combat-levels))
+12. **A story of several levels is a campaign.** Join outdoor levels at seams, doors and rooms
+    through entrances, and gate ways with story flags that are set where the player can get them.
+    ([§17](#17-campaigns-several-levels-one-story))
 
 ---
 
@@ -49,7 +52,7 @@ If you read nothing else:
 | --- | --- | --- |
 | Tile | 1 × 1 world unit | Tile `(i, j)` covers `x ∈ [i, i+1]`, `z ∈ [j, j+1]`; rows run toward +Z (south, toward the camera). |
 | Height level | 0.5 units | Heights `'0'–'9'`, `'a'–'z'` = levels 0–35; world y = level × 0.5. |
-| Player | radius 0.3, walk 3.2 u/s, run 5.6 u/s | `src/demo/Player.js`; max step 0.55 (`TileMap.move`). |
+| Player | radius 0.3, walk 3.2 u/s, run 5.6 u/s | `src/game/Player.js`; max step 0.55 (`TileMap.move`). |
 | Villager collider | radius 0.34 | Moves with the villager (`dynamic`). |
 | Level size | 8 – 128 tiles per side | `MIN_SIZE` / `MAX_SIZE` in `LevelFormat.js`. Above 64 the big-level path is used ([§13](#13-performance-budgets)). |
 | Camera | fov 28°, pitch 32°, distance 30 (zoom 18–42), yaw ±60° | [Visual design §6](VISUAL_DESIGN.md#6-the-diorama-camera). |
@@ -91,8 +94,9 @@ flowchart LR
   ([brightwater-crossing.md](levels/brightwater-crossing.md#known-issues)).
 - **Stall keepers disappear under the awning.** A `marketStall` awning (2.72 high at the back,
   2.03 at the front) covers a villager posted 1–1.35 behind the stall's centre from the gameplay
-  camera; only the talk bubble shows (Brightwater's Posy, Emberfall's Bertram — KNOWN_ISSUES
-  PROP-13). Accept it, or post the keeper beside the counter.
+  camera (Brightwater's Posy, Emberfall's Bertram — KNOWN_ISSUES PROP-13). While the player can
+  talk to them they show as an x-ray silhouette; post the keeper beside the counter to have them
+  seen from afar.
 - **Doors face south, east or west.** A house's front (door) is its local +Z: `rotation 0` faces the
   camera, `π/2` east, `−π/2` west. A door facing north is behind the house. `doorOffset` slides the
   door along the facade.
@@ -122,8 +126,8 @@ flowchart LR
 
 ### Foreground framing is a tool — use it sparingly
 
-The near depth-of-field blurs whatever stands south of the player, which frames the shot the Octopath
-way. But the Emberfall review found foreground trees and the lodge filling 40–60 % of the frame in
+The near depth-of-field blurs whatever stands south of the player, which frames the shot as in
+Square Enix's HD-2D games. But the Emberfall review found foreground trees and the lodge filling 40–60 % of the frame in
 Amberleaf Grove; the lodge was moved against the cliff north-east of the pond. Remaining blind zones
 (behind Emberfall's thatched cottage and its brick Riverside house) are covered only by the player's
 x-ray silhouette. **Treat the silhouette as a safety net, not a design tool.**
@@ -139,7 +143,7 @@ Brightwater 40°). Set `minY` a little below the plateau surface (Emberfall's hi
 - Surround the playable area with **forest border `T` tiles** (not walkable; the game scatters trees on
   them) and set `environment.border: 'forest'` + `outerScenery: true`, so no view shows the edge of the
   world. The editor's Check for problems warns when walkable ground reaches the map edge.
-- The border scatter (`scatterForest` in `src/demo/Scenery.js`) is tuned for the camera: **no trees
+- The border scatter (`scatterForest` in `src/game/Scenery.js`) is tuned for the camera: **no trees
   on the bottom three rows of the map** (they would hide the southern meadow), half the attempts on
   the top three rows (the upper cliffs stay airy), and on the east / west sides from row 9 southward
   the **third column from the edge stays open and the second is 20 % lower**, so a player walking
@@ -287,7 +291,7 @@ surface half a tile downstream of its position.
 - **Give it a real drop.** The generator requires ≥ 0.5 between the surfaces (the game draws even a
   0.05 sliver on flat water). The lip must be water across the whole `width`.
 - `mist: { count, alpha }` (default 8 particles per unit of width, at least 4, alpha 0.07 —
-  `MIST` in `src/demo/World.js`) and `splash: false` (a quiet spring: no splash bursts or glints, no
+  `MIST` in `src/game/World.js`) and `splash: false` (a quiet spring: no splash bursts or glints, no
   splash sound / water-ambience anchor).
 - Waterfalls read best from below: the curtain faces south, so the player sees it from the ground
   south of the pool (Starfall's Mirror Falls from the North Shore), not from a lookout at the top.
@@ -308,10 +312,10 @@ quays are walkable too: Gildhaven, busy as it looks, has 0.04):
 
 | Level | Size | Walkable tiles | Objects | Per walkable tile |
 | --- | --- | --- | --- | --- |
-| Emberfall | 48 × 40 | 1324 | 136 | 0.103 |
+| Emberfall | 48 × 40 | 1324 | 137 | 0.103 |
 | Brightwater Crossing | 36 × 28 | 640 | 68 | 0.106 |
 | Willowmere | 28 × 22 | 417 | 38 | 0.091 |
-| Starfall Vale | 128 × 128 | 12555 | 874 | 0.070 |
+| Starfall Vale | 128 × 128 | 12555 | 875 | 0.070 |
 | Gildhaven (a town) | 128 × 128 | 13598 | 518 | 0.038 |
 
 Composition rules that worked:
@@ -344,13 +348,13 @@ Composition rules that worked:
 
 ## 9. Lights
 
-The game creates **at most 12 point lights** (`MAX_POINT_LIGHTS` in `src/demo/World.js`), all
+The game creates **at most 12 point lights** (`MAX_POINT_LIGHTS` in `src/game/World.js`), all
 before the first frame; the count never changes afterwards (a different count would recompile every
 shader). Levels may place any number of light sources (lampposts, wall torches, campfires, `light`
 objects, houses with `light: true`); `World._wireLights` hands their descriptors to a `LightPool`:
 
 - **≤ 12 descriptors:** one permanent light per descriptor (so Willowmere has 6 point lights), in
-  `LIGHT_PRIORITY` order — campfire 0, wall torch 1, `light` 1, lamppost 2, house 3 — ties by object
+  `LIGHT_PRIORITY` order — campfire and hearth 0, wall torch 1, `light` 1, lamppost 2, house 3 — ties by object
   order. Emberfall has exactly 12.
 - **> 12:** 12 lights. Every 0.2 s they go to the descriptors whose range (+ 4 u) touches the view,
   nearest the camera focus first, plus 1.5 units per priority step (`priorityWeight`), a small
@@ -438,7 +442,7 @@ ground.
 **Dialogue**
 
 - Villagers without a `script` speak their `dialogue` pages, then their built-in `action`
-  (`rest` / `shop` / `music`). `script` names a hand-written conversation in `src/demo/dialogue.js`
+  (`rest` / `shop` / `music`). `script` names a hand-written conversation in `src/game/dialogue.js`
   (Emberfall only).
 - **The first choice is the harmless one** ("Not yet", "Just looking"). Mashing Space through the text
   lands on the first choice; the inn must not put the player to bed by accident. The built-in actions
@@ -477,7 +481,8 @@ ground.
 
 ## 13. Performance budgets
 
-Measured on the dev machine (GTX 1060, 1600 × 900); see [PERFORMANCE](../architecture/PERFORMANCE.md).
+Historical desktop measurements at 1600 × 900; see the conditions and reproduction steps in
+[PERFORMANCE](../architecture/PERFORMANCE.md).
 
 | Budget | Value |
 | --- | --- |
@@ -486,19 +491,20 @@ Measured on the dev machine (GTX 1060, 1600 × 900); see [PERFORMANCE](../archit
 | Sun shadow map | one 2048² |
 | Particle areas, god-ray shafts, chimney smoke | 1 draw call each while in view |
 
-| Level | Size | Build path | Objects | Light descriptors | Draw calls at the spawn | Triangles at the spawn | Range measured in reviews |
+| Level | Size | Build path | Objects at measurement | Light descriptors | Draw calls at the spawn | Triangles at the spawn | Range measured in reviews |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Willowmere | 28 × 22 | small | 38 | 6 | 165 | 0.17 M | — |
 | Brightwater Crossing | 36 × 28 | small | 68 | 10 | 211 | 0.23 M | — |
 | Emberfall | 48 × 40 | small | 136 | 12 | 229 | 0.34 M | 170–245 calls, ~0.34 M |
-| Starfall Vale | 128 × 128 | **big** | 874 | 95 | 176 | 0.87 M | 135–283 calls at 26 spots, 0.73–1.21 M |
+| Starfall Vale | 128 × 128 | **big** | 875 | 95 | 176 | 0.87 M | 135–283 calls at 26 spots, 0.73–1.21 M |
 | Gildhaven | 128 × 128 | **big** | 518 | 86 | 167 | 0.67 M | 124–274 calls at 26 views (280 zoomed out over the square) |
 
 (Spawn values: `__game.state()` right after loading with `autostart=1`, 1600 × 900, measured
-while writing this page; villagers and time move, so expect a few calls either way.)
+for the historical level revisions shown; current object counts may differ. Villagers and time
+move, so expect a few calls either way.)
 
 - **≤ 64 tiles per side:** the original single-merge batching; draw calls grow with materials in view.
-- **> 64:** `BIG_LEVEL_BATCHING` (`src/demo/World.js`): k-d-split batches culled by their bounding
+- **> 64:** `BIG_LEVEL_BATCHING` (`src/game/World.js`): k-d-split batches culled by their bounding
   boxes, shadow-only proxy casters, instanced foliage in chunks of 4000 tufts, far villagers and
   critters updated every 4th frame, and particle areas / mist / smoke more than **34 units** from the
   camera focus switched off. Budget a big level by views, not by totals.
@@ -521,7 +527,7 @@ while writing this page; villagers and time move, so expect a few calls either w
   or below the bank, objects outside the map, no villagers, houses without knock text, walkable ground
   reaching the map edge.
 - **Play ▶ / F5** refuses to start with errors and words them for the user ("The player start is on
-  water…"), then opens `index.html?level=local:__playtest__&autostart=1`.
+  water…"), then opens `game.html?level=local:__playtest__&autostart=1`.
 - For the deeper checks of the generators, save the level and run `npm run level:check -- <name>`
   ([below](#from-the-command-line-any-level)).
 
@@ -575,13 +581,28 @@ bridge with one end over water is a pier.
   the bar the generators hold.
 - `--routes=<file.json>` adds walks that must stay direct (≤ 1.5 × the straight line + 3):
   `[["the square → the bridge", [x0, z0], [x1, z1]], …]`.
+- **Story states** — where objects carry `when` / `unless` and the conditions apply (a campaign's
+  levels, a level with a story), the checks run once per story state: every combination of what
+  the conditions test that one story can produce (`day > 2` and `day < 3` never hold together), one
+  run per distinct set of objects that are there — up to 64 states on a 128 × 128 level, more on a
+  smaller one; past that a sample, and the report says so (what no state checked reaches is then a
+  warning, not an error). A bridge `when: bridge-mended` and the flood
+  debris `unless: bridge-mended` on its deck never overlap; a finding in every state where its
+  objects are there reads as without conditions (unreachable in every state: the old error);
+  what is reached only in some states is one warning that names them ("reached only with
+  `bridge-mended`: exit exit_east (→ old-quarry), the walkable ground round (44.7, 8.9) …"), and
+  any other finding of some states only names them in brackets. A single level without a story
+  ignores its conditions, as the game does (an info line says so) —
+  [CAMPAIGN_FORMAT §9](../specs/CAMPAIGN_FORMAT.md#9-checks).
 
 On the shipped levels (2026-10-02): Gildhaven, Starfall Vale and Cinderwatch Pass have no errors
 (their own generators check more, with their real streets and scatter; the shared roof model also
 counts every candidate chimney spot, so it warns about a little more than Starfall's own).
 Brightwater Crossing and Willowmere have none either, but 15–17 warnings each: they were built
 before these rules (LVL-15, LVL-16). Emberfall has one error — Tobin's fenced field is sealed
-([KNOWN_ISSUES LVL-20](../ai/KNOWN_ISSUES.md#levels-and-generators)).
+([KNOWN_ISSUES LVL-20](../ai/KNOWN_ISSUES.md#levels-and-generators)). The demo campaign's levels
+(2026-10-07, in their story states) have none; Mill Road warns that its east bank and the exit to
+the quarry are reached only with `bridge-mended` — the bridge's flag, as designed.
 
 ### In the game
 
@@ -596,12 +617,13 @@ stair flight and region, at golden hour and at night.
 
 | Level | Made by | Change it by |
 | --- | --- | --- |
-| Emberfall | converted once from the old hand-written map (`tools/convert-emberfall.mjs`) | the editor (`editor.html?open=emberfall`) or the JSON; **never re-run the converter** (it rebuilds the old layout from git) |
+| Emberfall | converted once from the old hand-written map | the editor (`editor.html?open=emberfall`) or the JSON |
 | Starfall Vale | `tools/make-starfall-vale.mjs` | edit the generator and re-run it; never hand-edit the JSON |
 | Brightwater Crossing | the editor UI only | the editor |
 | Willowmere (`sample-hamlet`) | `tools/make-sample-hamlet.mjs` | the generator (`--check` confirms the file is up to date; see [its page](levels/sample-hamlet.md)) |
 | Cinderwatch Pass | `tools/make-cinderwatch-pass.mjs` | the generator (20 validation rules; `--check`; see [its page](levels/cinderwatch-pass.md)) |
 | Gildhaven | `tools/make-gildhaven.mjs` | the generator (`--check`; see [its page](levels/gildhaven.md)) |
+| The Ferryman's Lantern (a campaign: five level files and `campaign.json`) | `tools/make-ferrymans-lantern.mjs` | the generator (`--check`; checks the whole campaign before writing; see [its page](campaigns/ferrymans-lantern.md)) |
 
 - **Choose one master.** A generated level edited in the editor is overwritten the next time the
   generator runs. To continue a generated level by hand, save a copy under a new name (Save as) and
@@ -682,3 +704,74 @@ editor, where *Check for problems* catches only part of them.
 - **Shops:** a villager with the `shopkeeper` script sells draughts and the one-time wares on a
   combat level — a gold sink worth placing before the hard fights.
 
+---
+
+## 17. Campaigns: several levels, one story
+
+A campaign joins levels into one story game ([CAMPAIGN_FORMAT.md](../specs/CAMPAIGN_FORMAT.md)):
+`public/campaigns/<name>/campaign.json` lists them and where they sit, `exit` objects lead from one
+to another and `entrance` objects say where the player arrives. The demo,
+[The Ferryman's Lantern](campaigns/ferrymans-lantern.md), shows each rule below.
+
+- **One level per place, small enough to build fast.** The game builds the next level behind the
+  fader: ≈ 0.5 s for a 16 × 12 interior, ≈ 1.4 s for a 56 × 18 road, several seconds for a
+  128 × 128 town. Towns of 40–128 tiles, roads as long strips (56 × 18), interiors of 16 × 12 read
+  well; big levels make for long fades.
+- **Seams for the outdoors.** Place connected outdoor levels on the campaign plane (`at`) so their
+  edges touch, run the road off the map at the same plane coordinates and the same height on both
+  sides, and open the border forest only there. Cover the road's last 1.5 tiles on each side with a
+  walk exit (no entrance): the player crosses at the spot where they left, past the way back.
+  `level:check --campaign` compares the edge tiles.
+- **Entrances for everything else.** Doors, stairs and cave mouths are Space exits (`mode: use`)
+  that name an entrance in the target; put the entrance on the door step and give the way back an
+  exit that names an entrance on this side. Interiors are not placed (`at`) and show their own map.
+- **Arrivals are visible.** The camera looks north: an arrival on the south side of tall trees or
+  roofs shows only the x-ray figure. Keep the first metres after an arrival open (the demo's road
+  arrival among the border trees is a known compromise).
+- **Interiors and set pieces have their own hour.** `environment.clock: false` with a
+  `timeOfDay`: the level shows that hour and the campaign clock pauses until the player leaves.
+  Turn off `border` and `outerScenery`, the minimap and the god rays for a room; bring the camera
+  closer (`camera.distance` ≈ 20) and light it with `light` objects (`nightOnly: false`).
+- **Story without dead ends.** Gate a way with an exit's `requires` and its `locked` text — the
+  player is told why — and make sure what opens it can be reached first (the campaign check's flag
+  fixpoint reports an exit that can never open). `level:check --campaign` warns about a flag that is
+  read but never set.
+- **Change things where the player can see them.** Every object comes and goes **live** with
+  `when` / `unless` — villagers, critters, particle areas, every prop (crates, fences, bridges,
+  trees, lamps, signs, stalls, houses, windmills, wells, waterfalls) and the combat objects (enemy
+  groups, chests, waystones): build a scene around it (the demo's ford cutscene builds the bridge; a
+  pack that turns up when a flag is set spawns at its home). Give what belongs to a house (a wall
+  torch on its wall, the crates and barrels against it, the lamppost at its door) the house's own
+  condition, so they go together. The ground stays: an absent house leaves a bare footprint (no
+  grass, the bushes along its walls), an absent waterfall the water's step — place a house that
+  comes later on a path or a yard, a waterfall that comes later where a step in the water reads
+  well without it. Tiles, heights and water change only through a chapter variant.
+- **Write the story as data** ([STORY_SCRIPT.md](../specs/STORY_SCRIPT.md)): recurring characters
+  as actors with one talk script in the story files; one-off villagers with their own `talk`;
+  events for what happens at a place (`use` for things to examine, `enter` for a scene on the way,
+  `arrive` for a level's opening, `change` for a reaction, `cleared` after a fight); `once` for
+  scenes that must not repeat; `cycle` / `pick` so villagers do not repeat themselves word for
+  word; a quest with named stages so the journal tells the player what to do next.
+- **Cutscenes are short and skippable.** Start them with `cutscene` (letterbox, hold Esc to skip),
+  look at what matters (`camera <who or place>`), give the camera back (`camera reset`); name the
+  spots actors walk to with `marker` objects (coordinates break when the map is edited).
+- **Chapters for big changes.** A chapter swaps a level for a variant file (the same place at
+  dusk, after a fire). A variant must keep every entrance other levels' exits name; check it with
+  `--campaign`. Inside a variant, `level` is still the campaign's level id (`level = millbrook` in
+  `millbrook-dusk`), never the file name.
+- **Look at each story state in the editor.** *View › Story preview…* hides what `when` / `unless`
+  hide for the values you type, reading them as the game does: a quest's `stage:` counts the
+  stages it reached in their declared order, and a stage it has not reached (or one the story files
+  do not declare) as later than all of them — `stage:q >= later` is false until the quest gets
+  there ([LEVEL_EDITOR_GUIDE.md §5.5](../user/LEVEL_EDITOR_GUIDE.md#55-story-events-markers-scripts-and-the-story-preview)).
+- **Every place reachable.** The campaign check walks the exits from the start and warns about
+  levels it cannot reach; each level's own check now walks from its entrances too and fails an
+  exit nobody can reach.
+
+### Before you ship a campaign
+
+- [ ] `npm run level:check -- --campaign=<name>` reports no errors (and read its warnings).
+- [ ] Every exit travelled both ways; every Space exit's prompt reads right.
+- [ ] Every gate opened and every flag set in a play from `?campaign=<name>&new=1`.
+- [ ] Each chapter's variants entered.
+- [ ] A saved game continued (`?campaign=<name>` after a reload).

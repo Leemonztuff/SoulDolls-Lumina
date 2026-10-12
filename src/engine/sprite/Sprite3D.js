@@ -1,11 +1,20 @@
 import * as THREE from 'three';
 import { PPU, DIRECTIONS, RENDER_ORDER } from '../constants.js';
 import { globalUniforms } from '../render/GlobalUniforms.js';
+import { showValue } from '../utils/own.js';
 
 /** @import { Direction } from '../constants.js' */
 
 /**
- * Sprite3D — an animated, lit, shadow-casting pixel-art billboard (HD-2D character sprite).
+ * Animation names `play()` has warned about (once per name for the whole page, whatever sprite
+ * asked: a crowd of villagers playing the same missing animation warns once, and a second,
+ * different unknown name on one sprite still warns).
+ * @type {Set<unknown>}
+ */
+const WARNED_ANIMATIONS = new Set();
+
+/**
+ * Sprite3D — an animated, lit, shadow-casting pixel-art billboard (2.5D character sprite).
  *
  * Structure (all children of this Group, whose origin is the character's feet):
  *   - `mesh`        the visible quad (lit MeshLambertMaterial patched for sprite lighting)
@@ -26,7 +35,7 @@ import { globalUniforms } from '../render/GlobalUniforms.js';
 
 /** GLSL: 4x4 ordered-dither threshold in (0, 1) for a (pixel) coordinate. */
 export const GLSL_BAYER4 = /* glsl */ `
-float luminaBayer4( vec2 p ) {
+float luminatiBayer4( vec2 p ) {
 	ivec2 q = ivec2( mod( floor( p ), 4.0 ) );
 	const float M[ 16 ] = float[ 16 ]( 0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0 );
 	return ( M[ q.y * 4 + q.x ] + 0.5 ) / 16.0;
@@ -71,30 +80,30 @@ const GLSL_BENT_NORMAL = /* glsl */ `
 
 /**
  * Shadow lookup offset (wraps `shadowmap_vertex`). Pushes the receiver position toward the sun
- * past the vertical plane through `LUMINA_SHADOW_CENTER` that faces the sun (where the object's
+ * past the vertical plane through `LUMINATI_SHADOW_CENTER` that faces the sun (where the object's
  * own sun-facing shadow proxy lives), so a billboard never shadows itself. The per-vertex value is
  * conservative (the max(0, ·) term is convex, so linear interpolation over-estimates it).
  */
 const GLSL_SHADOW_LOOKUP = /* glsl */ `
 #ifdef USE_SHADOWMAP
-	vec4 luminaSavedWorldPosition = worldPosition;
+	vec4 luminatiSavedWorldPosition = worldPosition;
 	{
 		vec3 lsH = vec3( uSunDirection.x, 0.0, uSunDirection.z );
 		float lsLen = length( lsH );
 		vec3 lsN = lsH / max( lsLen, 1e-4 );
-		float lsSd = dot( worldPosition.xyz - ( LUMINA_SHADOW_CENTER ), lsN );
+		float lsSd = dot( worldPosition.xyz - ( LUMINATI_SHADOW_CENTER ), lsN );
 		float lsSkip = max( 0.0, - lsSd ) / max( lsLen, 0.25 ) * uShadowSkip + uShadowSkipBias;
 		worldPosition.xyz += uSunDirection * lsSkip;
 	}
 #endif
 #include <shadowmap_vertex>
 #ifdef USE_SHADOWMAP
-	worldPosition = luminaSavedWorldPosition;
+	worldPosition = luminatiSavedWorldPosition;
 #endif
 `;
 
 /**
- * Patch a MeshLambertMaterial shader (inside onBeforeCompile) with Lumina sprite lighting:
+ * Patch a MeshLambertMaterial shader (inside onBeforeCompile) with Luminati sprite lighting:
  * bent normals, wrap diffuse and a self-shadow-free shadow lookup.
  * `uniforms` must contain: uNormalUp, uWrap, uRoundness, uShadowSkip, uShadowSkipBias
  * (uSunDirection is taken from globalUniforms).
@@ -114,7 +123,7 @@ varying vec2 vQuadUv;
 uniform vec3 uSunDirection;
 uniform float uShadowSkip;
 uniform float uShadowSkipBias;
-#define LUMINA_SHADOW_CENTER ${shadowCenter}`,
+#define LUMINATI_SHADOW_CENTER ${shadowCenter}`,
     )
     .replace('#include <uv_vertex>', '#include <uv_vertex>\n\tvQuadUv = uv;')
     .replace('#include <shadowmap_vertex>', GLSL_SHADOW_LOOKUP);
@@ -131,7 +140,7 @@ uniform float uRoundness;`,
 }
 
 /**
- * Combat fx additions to the lit sprite shader (program `lumina-sprite3d-lit-fx-v1`, COMBAT.md §10.1),
+ * Combat fx additions to the lit sprite shader (program `luminati-sprite3d-lit-fx-v1`, COMBAT.md §10.1),
  * applied after the regular lit patch:
  *   - selective glow: texels painted with alpha 204 (< 0.98 after the 0.5 alpha test) add
  *     `uGlow.rgb * uGlow.a` × their own colour as emissive (eyes, magma cracks, staff gems);
@@ -544,14 +553,14 @@ ${GLSL_BAYER4}`,
           `#include <alphatest_fragment>
 	if ( uDitherOpacity < 0.999 ) {
 		vec2 ldp = mix( gl_FragCoord.xy, vQuadUv * uFrameSize, uDitherTexel );
-		if ( uDitherOpacity <= luminaBayer4( ldp ) ) discard;
+		if ( uDitherOpacity <= luminatiBayer4( ldp ) ) discard;
 	}`,
         )
         // emissive glows with the sprite's own colours rather than as a flat silhouette
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance *= diffuseColor.rgb;');
       if (u.uFlash) patchCombatFx(shader, u);
     };
-    mat.customProgramCacheKey = u.uFlash ? () => 'lumina-sprite3d-lit-fx-v1' : () => 'lumina-sprite3d-lit-v1';
+    mat.customProgramCacheKey = u.uFlash ? () => 'luminati-sprite3d-lit-fx-v1' : () => 'luminati-sprite3d-lit-v1';
     return mat;
   }
 
@@ -585,11 +594,11 @@ ${GLSL_BAYER4}`,
           `#include <alphatest_fragment>
 	if ( uDitherOpacity < 0.999 ) {
 		vec2 ldp = mix( gl_FragCoord.xy, vQuadUv * uFrameSize, uDitherTexel );
-		if ( uDitherOpacity <= luminaBayer4( ldp ) ) discard;
+		if ( uDitherOpacity <= luminatiBayer4( ldp ) ) discard;
 	}`,
         );
     };
-    mat.customProgramCacheKey = () => 'lumina-sprite3d-unlit-v1';
+    mat.customProgramCacheKey = () => 'luminati-sprite3d-unlit-v1';
     return mat;
   }
 
@@ -609,10 +618,10 @@ ${GLSL_BAYER4}`,
         .replace(
           '#include <alphatest_fragment>',
           `#include <alphatest_fragment>
-	if ( uDitherOpacity < 0.999 && uDitherOpacity <= luminaBayer4( gl_FragCoord.xy ) ) discard;`,
+	if ( uDitherOpacity < 0.999 && uDitherOpacity <= luminatiBayer4( gl_FragCoord.xy ) ) discard;`,
         );
     };
-    mat.customProgramCacheKey = () => 'lumina-sprite3d-depth-v1';
+    mat.customProgramCacheKey = () => 'luminati-sprite3d-depth-v1';
     return mat;
   }
 
@@ -811,9 +820,9 @@ ${GLSL_BAYER4}`,
     const { restart = false, speed, keepPhase = false } = opts;
     const r = this._resolve(name);
     if (!r) {
-      if (!this._warned) {
-        console.warn(`Sprite3D: unknown animation "${name}"`);
-        this._warned = true;
+      if (!WARNED_ANIMATIONS.has(name)) {
+        WARNED_ANIMATIONS.add(name);
+        console.warn(`Sprite3D: unknown animation "${showValue(name)}"`);
       }
       return this;
     }

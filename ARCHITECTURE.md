@@ -1,19 +1,21 @@
-# Lumina — HD-2D Engine Architecture & Module Contracts
+# Luminati — 2.5D Pixel-Art Engine Architecture & Module Contracts
 
-Lumina is a three.js (r186) engine for **HD-2D** games in the style of *Octopath Traveler II*:
+Luminati is a three.js (r186) **2.5D pixel-art** engine inspired by Square Enix's HD-2D games:
 hand-crafted pixel-art sprites living inside a lit, shadowed, depth-of-field-blurred 3D diorama.
-Everything (textures, sprites, sounds) is **procedurally generated at runtime** — there are no
-binary assets.
+Game textures, sprites, sounds and music are **procedurally generated at runtime**. UI fonts
+load from Google Fonts first, with packaged fonts available locally; documentation screenshots
+and UI sandbox backdrops are the repository's image assets.
 
 This file is the single source of truth for module boundaries. Every module MUST implement the
 exact exported names and signatures below. If you need something extra, add it — but never rename
-or change the meaning of a contract member.
+or change the meaning of a contract member. See the
+[contract change rules](docs/contracts/README.md#3-how-to-change-a-contract-the-additive-rule).
 
 ---
 
 ## 1. The look we are targeting (read this first)
 
-Octopath Traveler II's HD-2D look is the combination of:
+The 2.5D pixel-art look (Square Enix's HD-2D games are the reference) is the combination of:
 
 1. **Pixel-art everything, at a consistent density.** Characters are small 2D pixel sprites
    (~24–32 px tall) standing upright in 3D. Environment geometry is simple and blocky, but every
@@ -37,20 +39,24 @@ Octopath Traveler II's HD-2D look is the combination of:
 7. **Ornate UI.** Dark translucent dialog windows with thin gold double borders and corner
    ornaments, serif typography, speaker name plates, typewriter text; elegant area-title banners.
 
-Performance target: **60 fps at 1600×900 on a GTX 1060** (the dev machine). Budget: ≤ 300 draw
-calls, ≤ 12 active point lights, one 2048² directional shadow map, DOF at half resolution.
+Performance target: **60 fps at 1600×900 with hardware-accelerated desktop rendering**. Budget:
+≤ 300 draw calls, ≤ 12 active point lights, one 2048² directional shadow map, DOF at half resolution.
+Actual performance depends on the browser and hardware; see the
+[measurement conditions and profiling guide](docs/architecture/PERFORMANCE.md).
 
 ---
 
 ## 2. Conventions
 
 - **three.js r186**, ES modules, `import * as THREE from 'three'`; addons from `'three/addons/...'`
-  (e.g. `three/addons/postprocessing/EffectComposer.js`). Plain JavaScript (no TypeScript source
+  (e.g. `three/addons/postprocessing/EffectComposer.js` — *note 2026-10-07, following the code
+  (KNOWN_ISSUES DOC-12): only an example of the import path; `PostFX` uses no `EffectComposer`
+  and drives `UnrealBloomPass`, `OutputPass` and `FullScreenQuad` itself*). Plain JavaScript (no TypeScript source
   files), JSDoc comments on public APIs. No external asset files; fonts come from `@fontsource/*`
   npm packages. *(Added 2026-09-30, additive: the JSDoc is type-checked by `tsc` with `checkJs` and
   `noEmit` — `npm run typecheck`, which must report 0 errors; types JSDoc cannot express live in
-  type-only `types.d.ts` files that no bundle includes. See docs/development/CONVENTIONS.md §3.1 and
-  docs/history/DECISIONS.md ADR-044.)*
+  type-only `types.d.ts` files that no bundle includes. See
+  [CONVENTIONS.md §3.1](docs/development/CONVENTIONS.md#31-the-type-check).)*
 - **Units:** `PPU = 16` texels per world unit; 1 tile = 1 unit; terrain level height `LEVEL_HEIGHT = 0.5`
   (see `src/engine/constants.js`). Characters are ~2 units tall (32 px frames).
 - **Axes:** Y up. Map tile `(i, j)` covers `x∈[i,i+1], z∈[j,j+1]`, centre `(i+0.5, h, j+0.5)`.
@@ -65,13 +71,14 @@ calls, ≤ 12 active point lights, one 2048² directional shadow map, DOF at hal
   candela, so warm lanterns typically need intensity ~4–20 with `distance` 6–10.
 - **Materials:** world geometry uses `MeshLambertMaterial` (per-fragment in r186, supports `map`,
   `normalMap`, `emissiveMap`) unless a module has a good reason for `MeshStandardMaterial` or a
-  custom `ShaderMaterial`. Custom shaders that should be fogged must set `fog: true` and include the
-  fog chunks.
+  custom `ShaderMaterial`. Custom shaders that should be fogged must set `fog: true`, include the
+  fog chunks and reference `globalUniforms.uFogStart` (as `uFogStart`, the game's fog start).
 - **Pixel textures:** create them via `PixelCanvas#toTexture()` / `makePixelTexture()`
   (`src/engine/pixel/PixelCanvas.js`) — NEAREST mag filter always.
 - **Shared uniforms:** `src/engine/render/GlobalUniforms.js` exports `globalUniforms`
   (`uTime`, `uNight`, `uWind`, `uWindStrength`, `uCameraYaw`, `uCameraPosition`, `uSunDirection`,
-  `uSunColor`, `uFogColor`). Custom shaders reference these objects directly (never copy the value).
+  `uSunColor`, `uFogColor`, `uFogStart`). Custom shaders reference these objects directly (never
+  copy the value).
 - **Randomness:** always seeded (`RNG` / `hash2` / `fbm2` from `src/engine/utils/math.js`) so the
   world looks identical on every load. Never `Math.random()` for procedural content.
 - **Disposal:** every class that allocates GPU resources has `dispose()`.
@@ -94,8 +101,9 @@ You may make small, backwards-compatible additions to a shared foundation file i
 ## 3. Directory layout & ownership
 
 ```
-index.html                     (integration)
-src/main.js                    (integration) boots the demo
+index.html                     the launcher: the list of campaigns and levels (tools/vite-launcher.js)
+game.html                      (integration) the game page
+src/main.js                    (integration) boots the game
 src/engine/index.js            (integration) barrel re-exporting the public engine API
 src/engine/core/               Engine.js, Input.js, EventEmitter.js, CameraRig.js
 src/engine/audio/              AudioSystem.js
@@ -107,9 +115,32 @@ src/engine/lighting/           LightingSystem.js, Sky.js
 src/engine/world/              TileMap.js, Water.js, Props.js (+ optional world/props/*.js)
 src/engine/ui/                 UI.js, DialogBox.js, Banner.js, TitleScreen.js, HUD.js,
                                InteractPrompt.js, DebugPanel.js, Fader.js, ui.css
-src/demo/                      (integration) village map, player, NPCs, demo wiring
-src/demo/combat/               (combat levels only, COMBAT.md) CombatSystem, PlayerCombat, Enemy, ai/*, defs, rules
+src/game/                      (integration) village map, player, NPCs, game wiring
+src/game/combat/               (combat levels only, COMBAT.md) CombatSystem, PlayerCombat, Enemy, ai/*, defs, rules
 sandbox/<module>.html|.js      per-module standalone test pages (owned by that module's author)
+```
+
+*Added 2026-10-07, following the code (KNOWN_ISSUES DOC-02; all additive — every file above is
+still there).* The layout predates these engine files and folders; the complete, current map is
+[docs/architecture/OVERVIEW.md §3](docs/architecture/OVERVIEW.md#3-engine-module-map) and the
+module pages in [docs/architecture/modules/](docs/architecture/modules/README.md):
+
+```
+src/engine/constants.js, utils/math.js, utils/own.js   shared foundation (own.js: own-key
+                               lookups of level names)
+src/engine/level/              LevelFormat.js, ObjectCatalog.js, ObjectBuilder.js, LevelStorage.js,
+                               LevelMap.js, Travel.js, StoryScript.js, StoryChecks.js (docs/contracts/LEVEL_EDITOR.md)
+src/engine/lighting/           + LightPool.js (at most 12 point lights shared by any number of sources)
+src/engine/world/              + SpatialSplit.js, ShadowCasters.js (big-level batching), WaterShore.js,
+                               shoreWorker.js (the shore bake), world/props/*.js (the prop builders)
+src/engine/sprite/             + BlobBatch.js (instanced contact shadows)
+src/engine/pixel/              + Palette.js, PixelCanvas.js; MonsterSprites.js, FxSprites.js (combat, §4.9)
+src/engine/fx/                 + FxQuads.js, GroundMarkers.js (combat, §4.9)
+src/engine/ui/                 + Minimap.js (minimap + world map); combat and story UI (CombatHUD, BossBar,
+                               WorldLabels, Announcer, DeathScreen, Journal, Emotes, EndCard; combat.css, story.css)
+src/engine/*/types.d.ts        type-only declarations for the type check (§2), in no bundle
+src/editor/                    the level editor (docs/contracts/LEVEL_EDITOR.md §6)
+src/game/campaign/, src/game/story/   campaigns (§5) and the story runtime (docs/specs/STORY_SCRIPT.md)
 ```
 
 ---
@@ -154,6 +185,12 @@ render fn → `'afterRender'` → `input.endFrame()`. The engine resizes to its 
 (ResizeObserver) and emits `'resize'`. Exposes itself as `window.__engine` when `?debug` or
 `?autostart` is in the URL.
 
+*Correction 2026-10-07, following the code (KNOWN_ISSUES DOC-01):* three r186 removed
+`PCFSoftShadowMap` for WebGL (it would fall back with a console warning). `Engine` defaults to
+`THREE.PCFShadowMap` — soft and radius-aware in r186 — and maps an explicit
+`shadowMapType: THREE.PCFSoftShadowMap` to it silently; `LightingSystem` does the same with the
+renderer it is given.
+
 ```js
 // Input.js
 export class Input {
@@ -175,6 +212,11 @@ Default action bindings: `up` KeyW/ArrowUp, `down` KeyS/ArrowDown, `left` KeyA/A
 `music` KeyM, `map` KeyN/Tab (world map). Gamepad (standard mapping): A=confirm, B=cancel,
 LB/RB=camLeft/camRight, left stick = move, RT = run, Back/View = map, right stick click = photo. Keys pressed between frames must still register `wasPressed` on the
 next frame. Prevent default browser behaviour for bound keys (arrows/space scrolling, F1 help).
+*Added 2026-10-07, following the code (KNOWN_ISSUES DOC-12):* the constructor is
+`Input(target = window, { deadzone = 0.2, wheelIgnoreSelector })` — `deadzone` is the radial,
+rescaled stick deadzone; wheel events whose target is inside an element matching
+`wheelIgnoreSelector` (default `.lil-gui, input, textarea, select, [contenteditable],
+[data-input-ignore]`) do not reach `wheelDelta`. Both are also writable members.
 
 ```js
 // CameraRig.js
@@ -202,6 +244,11 @@ export class CameraRig {
 Camera position = `focusPoint + (sin(yaw)·cos(pitch), sin(pitch), cos(yaw)·cos(pitch)) · distance`.
 `update()` writes `globalUniforms.uCameraYaw` and `uCameraPosition`. Look-ahead shifts the focus
 point in the target's movement direction.
+*Note 2026-10-07 (KNOWN_ISSUES DOC-06):* the defaults above are the engine's. The game passes its
+own — `CAMERA` in `src/game/config.js`: distance 30 (zoom 18–42), pitch 32°, fov 28, plus
+look-ahead 1.3 — and a level's `environment.camera` (distance, pitch) and `environment.highGround`
+(a steeper pitch above a height) override those in turn (`Game._applyLevel`; the zoom range
+widens to include a level's distance).
 
 ```js
 // audio/AudioSystem.js — procedural WebAudio, no files
@@ -289,6 +336,15 @@ Required texture names (units = world size of one texture repeat; most are 16×1
   `sign_board`, `flowerbox`
 Every opaque texture with relief (stone, bricks, cobbles, roofs, bark, cliff, planks) must provide
 a normal map. Textures must look good tiled over large areas (no obvious seams/repetition hot-spots).
+*Correction 2026-10-07, following the code (KNOWN_ISSUES DOC-03):* "most are 16×16 px" does not
+hold. The terrain tops and `plaster` are 64×64 px (4×4 units, so large fields do not repeat
+visibly); most walls, roofs and cloths — `brick`, `stone_brick`, `stone_wall`, `wood_planks`,
+`wood_planks_dark`, `log_wall`, `timber_frame`, the four roofs, `chimney_stone`, `well_stone`,
+`hay`, `cloth_red`, `cloth_stripe`, `leaves`, `leaves_autumn`, `pine` — are 32×32 px (2×2 units);
+`bark` and `door` 16×32 (1×2), `sign_board` 32×16 (2×1); only `cliff`, `grass_side`, `dirt_side`,
+`window`, `barrel`, `crate`, `fence_wood`, `metal`, `rope`, `lantern_glass` and `flowerbox` are
+16×16 px (1×1). Scale world-space UVs by `meta(name).units` (uv = position / units), never by an
+assumed size.
 
 ```js
 // CharacterSprites.js — procedural character & creature sprite sheets
@@ -308,11 +364,15 @@ rows = `DIRECTIONS` order (down, left, right, up), columns = `[idle0, idle1, wal
 `run_${d}` (same frames, ~13 fps). Spec fields (all optional, defaults from a preset):
 `{ preset, seed, skin, hair, hairStyle ('short'|'long'|'ponytail'|'bald'|'spiky'|'bun'),
 outfit: { top, bottom, accent }, cape, hat ('none'|'hood'|'wide'|'cap'|'helmet'|'circlet'), weapon ('none'|'sword'|'staff'|'bow'|'lute'), beard }`
-— colors are palette ramp names (keys of `PALETTE`) or hex. Style: Octopath-like — slightly
-chibi proportions (big head ≈ 1/3 height), dark outline (`PALETTE.outline`, not pure black),
+— colors are palette ramp names (keys of `PALETTE`) or hex. Style: like the sprites of
+Square Enix's HD-2D games — slightly chibi proportions (big head ≈ 1/3 height), dark outline (`PALETTE.outline`, not pure black),
 2–3 shades per material, readable silhouettes, subtle cloth/hair secondary motion in walk frames.
 Creature sheets use the same row/animation naming (frames may be smaller, e.g. 16×16 or 24×16).
 Textures: NEAREST, no mipmaps, SRGB, ClampToEdge.
+*Note 2026-10-07, following the code (KNOWN_ISSUES DOC-12):* no sheet has the optional `talk` /
+`wave` columns: a character sheet has exactly the six columns above (`POSES` in
+`CharacterSprites.js`), and the only extra columns are the combat poses of
+`createCharacterSheet(spec, { combat: true })` (columns 6–17, below).
 
 ```js
 // PropSprites.js — small billboard sprites & animated FX sprites
@@ -396,7 +456,7 @@ Foliage billboards face `globalUniforms.uCameraYaw` in the vertex shader and swa
 `uTime`/`uWind`/`uWindStrength` (top vertices only; roots fixed). Lit like Sprite3D.
 
 **Combat additions (additive, COMBAT.md §10.1).** `new Sprite3D(sheet, { combatFx: true })` selects
-the program variant `lumina-sprite3d-lit-fx-v1` with three per-sprite uniforms: `setFlash(r, g, b,
+the program variant `luminati-sprite3d-lit-fx-v1` with three per-sprite uniforms: `setFlash(r, g, b,
 a)` (a mix toward a colour — short silhouette flashes), `setGlow(r, g, b, a)` (additive emissive on
 glow texels) and `setHighlight(r, g, b, a)` (a tint proportional to the texel's own shading — long
 tints such as wind-ups). Without the option (and with `lit: false`) the three methods are no-ops and
@@ -443,10 +503,10 @@ export class GodRays {
 
 **Combat additions (additive, COMBAT.md §11).** `FxQuads` — one instanced batch of atlas quads
 (billboards or flat quads, `alloc()` / `set(h, p)` / `free(h)`, one draw call, key
-`lumina-fxquads-v1`). `GroundMarkers` — one instanced batch of telegraph decals (circle, ring,
+`luminati-fxquads-v1`). `GroundMarkers` — one instanced batch of telegraph decals (circle, ring,
 sector, lane, rect; styles `enemy` / `player` / `lock` / `barrier` / `magma`) whose 24 × 24 grid is
 draped over a baked height texture in the vertex shader (one draw call, key
-`lumina-groundmarkers-v1`). `PARTICLE_PRESETS` gains six override-free burst presets (`hitSpark`,
+`luminati-groundmarkers-v1`). `PARTICLE_PRESETS` gains six override-free burst presets (`hitSpark`,
 `emberBurst`, `deathPoof`, `gooPoof`, `healGlow`, `magicBurst`) that add exactly one pool. No
 runtime point lights.
 
@@ -600,6 +660,13 @@ export class PropFactory {
   windmill(x, y, z, opts)   // rotating sails (update)
   haystack(x, y, z, opts)
   flowerbox(x, y, z, opts)
+  // interior furniture (additive, 2026-10-07; props/Furniture.js, the catalog's `interior: true` types):
+  // (x, y, z) = the footprint's centre on the floor (wallWindow: the wall face), front = local +Z
+  bed(x, y, z, opts); table(x, y, z, opts); chair(x, y, z, opts); shelf(x, y, z, opts)
+  hearth(x, y, z, opts)     // stone fireplace: flame + glowing embers + one light (day and night)
+  counter(x, y, z, opts); rug(x, y, z, opts); staircase(x, y, z, opts); wardrobe(x, y, z, opts)
+  wallWindow(x, y, z, opts) // window seen from inside: emissive panes, curtains, a light shaft by day
+  sacks(x, y, z, opts)
   dispose()
 }
 ```
@@ -619,7 +686,7 @@ deck as walkable ground at height `y` (TileMap should support `addWalkSurface(re
 // UI.js
 export class UI {
   constructor(container = document.body)
-  root            // #lumina-ui overlay div (pointer-events none except interactive children)
+  root            // #luminati-ui overlay div (pointer-events none except interactive children)
   dialog          // DialogBox
   banner          // Banner
   title           // TitleScreen
@@ -643,7 +710,7 @@ export class DialogBox {
   close()
 }
 
-// Banner.js — Octopath-style area title: ornamental lines, serif title, subtitle, fade in/out
+// Banner.js — area title in the manner of Square Enix's HD-2D games: ornamental lines, serif title, subtitle, fade in/out
 export class Banner { show(title, subtitle = '', { duration = 3.5 } = {}) /* → Promise */ }
 
 // TitleScreen.js — elegant title over the live 3D scene; resolves when the player presses a key/click
@@ -670,6 +737,13 @@ export class DebugPanel {
   stats              // small overlay: fps, frame ms, draw calls, triangles; stats.update(renderer, dt)
 }
 ```
+*Note 2026-10-07, following the code (KNOWN_ISSUES DOC-12):* the `stats` overlay (`DebugStats`)
+shows more than the four metrics above: fps and the mean frame time, an fps history graph, draw
+calls, triangles, geometries, textures, shader programs and the worst frame of each sampling
+interval. It switches the renderer's `info.autoReset` off and resets the counters itself after
+each frame, so multi-pass frames count in full (which is why `renderer.info.render` reads 0 in
+the game; `__game.state().drawCalls` comes from `PostFX.sceneInfo`).
+
 Visual style: dialog = bottom-centre, ~70% width, dark navy→black translucent gradient, thin gold
 (#c9a45c-ish) double border with small diamond corner ornaments, speaker name plate on the top-left
 edge, serif font (`Crimson Pro` body, `Cinzel` titles), soft drop shadow, fade/slide in. Pixel font
@@ -706,7 +780,7 @@ into no chunk that does not use them.
 
 ---
 
-## 5. Integration (demo) — `src/demo/`, `src/main.js`, `index.html`
+## 5. Integration (the game) — `src/game/`, `src/main.js`, `game.html`
 
 The demo, "Emberfall", is a small riverside village at golden hour: multi-level terrain with
 cliffs and stairs, a river with a bridge and a waterfall, houses, trees, market, well, lampposts,
@@ -715,24 +789,37 @@ walks with WASD, talks with Space, rotates the camera with Q/E, zooms with the w
 of day with T, toggles weather with R, photo mode with P, debug panel with ` (backquote).
 `window.__game` exposes `{ engine, setTime(h), teleport(x, z), player, postfx, lighting, ui }` for
 automated checks. `?autostart=1` skips the title screen.
+*Note 2026-10-07, following the code (KNOWN_ISSUES DOC-12):* those members are a subset —
+`Game._exposeGlobal` exposes many more (the rig, audio, tile map, world, weather, the `Game`
+itself, `talkTo`, `setWeather`, `photo`, `map`, `state()` …, and `combat` / `campaign` / `story`
+where they exist); the full surface is [docs/specs/AUTOMATION_API.md](docs/specs/AUTOMATION_API.md)
+and its typed copy `GameHooks` in `src/game/Game.js`.
 
 **Combat (additive, [COMBAT.md](docs/contracts/COMBAT.md)).** A level with `enemy` objects (the
 shipped one: Cinderwatch Pass, `?level=cinderwatch-pass`) plays with real-time combat:
-`Game` imports and creates a `CombatSystem` (`src/demo/combat/`) only when `levelHasCombat(level)`,
+`Game` imports and creates a `CombatSystem` (`src/game/combat/`) only when `levelHasCombat(level)`,
 and on every other level `game.combat` is `null` and nothing combat-related exists. The frame order
 gains `combat.update` → `player.update` → `combat.afterPlayer` … `weather.update` →
 `combat.applyLook`; `window.__game.combat` holds the test hooks.
+
+**Campaigns (additive, [docs/specs/CAMPAIGN_FORMAT.md](docs/specs/CAMPAIGN_FORMAT.md)).** A
+campaign (`?campaign=<name>`, `public/campaigns/<name>/`) plays several levels in one page: `exit`
+and `entrance` objects join them, story flags gate exits and objects, chapters swap in variant
+files. `Game` keeps the engine, renderer, post, UI, audio, weather and one `fixed` light pool of
+12 for the whole page and rebuilds the level half (`_buildLevel`) on every travel
+(`swapLevel`, behind the fader, warmed up before play goes on); a single level builds exactly as
+before (`src/game/campaign/`).
 
 ---
 
 ## 6. Testing each module in isolation
 
-Each module author creates `sandbox/<module>.html` (+ `.js`) that exercises the module with raw
-three.js and the shared foundation files ONLY (other modules are being written concurrently and may
-not exist yet — stub what you need locally in your sandbox). Verify with:
+Each module has a `sandbox/<module>.html` (+ `.js`) that exercises it with three.js and the
+shared foundation. Keep these checks small enough to isolate a failure; stub unrelated systems
+when needed. Verify with:
 
 ```bash
 npm run check -- --page=sandbox/<module>.html --out=<module> --wait=3000
 ```
-then inspect `.check/<module>/*.png` (Read the PNG) and fix every console error / page error.
+Then inspect `.check/<module>/*.png` and fix every console error and page error.
 A module is not done until its sandbox renders correctly with zero errors.

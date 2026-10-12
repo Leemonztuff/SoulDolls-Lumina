@@ -178,14 +178,24 @@ export function buildMarketStall(f, x, y, z, opts = {}) {
   // back shelf with a couple of crates
   b.box(TRIM, [W - 0.3, 0.07, 0.4], { at: [0, 1.35, -hd + 0.3] });
   for (let i = 0; i < 2; i++) produceCrate(b, produce, -hw * 0.45 + i * hw * 0.9, 1.39, -hd + 0.3, 0.5, 0.34, (i + 2 + rng.int(0, 1)) % 4, rng);
-  // crates & a sack beside the stall
-  const side = rng.chance(0.5) ? 1 : -1;
-  const crate = f.textures.material('crate', { vertexColors: true });
-  b.box(crate, [0.7, 0.7, 0.7], { at: [side * (hw + 0.5), 0.35, hd - 0.3], rot: rng.range(-0.2, 0.2), uv: 'fit', faces: { ny: false } });
-  produceCrate(b, produce, side * (hw + 0.5), 0.0, -hd + 0.45, 0.62, 0.5, rng.int(0, 3), rng, 0.55);
+  // crates & a sack beside the stall: on the side `opts.crates` names (seen from the front), else
+  // on one the seed picks (drawn either way, so the rest of the stall does not change)
+  const drawn = rng.chance(0.5) ? 1 : -1;
+  const side = opts.crates === 'left' ? -1 : opts.crates === 'right' ? 1 : opts.crates === 'none' ? 0 : drawn;
+  if (side) {
+    const crate = f.textures.material('crate', { vertexColors: true });
+    b.box(crate, [0.7, 0.7, 0.7], { at: [side * (hw + 0.5), 0.35, hd - 0.3], rot: rng.range(-0.2, 0.2), uv: 'fit', faces: { ny: false } });
+    produceCrate(b, produce, side * (hw + 0.5), 0.0, -hd + 0.45, 0.62, 0.5, rng.int(0, 3), rng, 0.55);
+  }
   const group = f.finish(b, 'marketStall', x, y, z, rot);
+  const colliders = [f.boxCollider(group, -hw - 0.05, hw + 0.05, -hd - 0.05, hd + (opts.display !== false ? 0.5 : 0.05))];
+  // the crates beside the stall have their own box (they could be walked through: KNOWN_ISSUES PROP-14)
+  if (side) {
+    const sx0 = side > 0 ? hw + 0.12 : -hw - 0.88;
+    colliders.push(f.boxCollider(group, sx0, sx0 + 0.76, -hd + 0.18, hd + 0.08));
+  }
   return f.result(group, {
-    colliders: [f.boxCollider(group, -hw - 0.05, hw + 0.05, -hd - 0.05, hd + (opts.display !== false ? 0.5 : 0.05))],
+    colliders,
     interact: { position: f.world(group, new THREE.Vector3(0, 0, hd + 1.2)), radius: 1.3, id: opts.id ?? 'stall' },
   });
 }
@@ -219,6 +229,8 @@ function produceCrate(b, produce, cx, by, cz, w, d, kind, rng, h = 0.26) {
  * Wooden plank bridge from (x0, z0) to (x1, z1) with its deck top at height y (+ optional arch).
  * Returns `walkRects` (stepped along the arch) so the map can treat the deck as walkable ground.
  * opts: { width = 2, arch = auto (≤ 0.4), postDepth = 1.4, rails = true }
+ * `rails: false` leaves out the rail planks only: the posts stay, and so do the colliders along
+ * both edges (on purpose — nobody walks off a rail-less deck or pier into the water).
  * @param {PropFactory} f
  */
 export function buildBridge(f, x0, z0, x1, z1, y, opts = {}) {
@@ -295,7 +307,8 @@ export function buildBridge(f, x0, z0, x1, z1, y, opts = {}) {
   const cx = (x0 + x1) / 2;
   const cz = (z0 + z1) / 2;
   const group = f.finish(b, 'bridge', cx, y, cz, yaw);
-  // walkable deck rects (stepped along the arch) + rail colliders
+  // walkable deck rects (stepped along the arch) + rail colliders (also with `rails: false`) —
+  // strips that follow a bridge laid at a slant, not their pieces' AABBs (KNOWN_ISSUES PROP-02)
   const walkRects = [];
   const colliders = [];
   const nW = arch > 0.02 ? Math.max(2, Math.round(L / 0.5)) : 1;
@@ -304,14 +317,15 @@ export function buildBridge(f, x0, z0, x1, z1, y, opts = {}) {
     const t1 = (i + 1) / nW;
     const ext0 = i === 0 ? -0.25 : 0;
     const ext1 = i === nW - 1 ? 0.25 : 0;
-    const r = f.localRect(group, -hwid + 0.1, hwid - 0.1, zOf(t0) + ext0, zOf(t1) + ext1);
-    walkRects.push({ ...r, y: y + deckY((t0 + t1) / 2) });
+    // (0.5-wide strips: every walk-height query scans the surfaces; what they cover beyond the deck
+    // lies inside the rails' colliders)
+    for (const r of f.localRects(group, -hwid + 0.1, hwid - 0.1, zOf(t0) + ext0, zOf(t1) + ext1, 0.5)) walkRects.push({ ...r, y: y + deckY((t0 + t1) / 2) });
   }
   const nC = Math.max(1, Math.round(L / 1));
   for (let i = 0; i < nC; i++) {
     const za = zOf(i / nC);
     const zb = zOf((i + 1) / nC);
-    for (const s of [-1, 1]) colliders.push(f.boxCollider(group, s * (hwid + 0.02) - 0.12, s * (hwid + 0.02) + 0.12, za, zb));
+    for (const s of [-1, 1]) colliders.push(...f.boxColliders(group, s * (hwid + 0.02) - 0.12, s * (hwid + 0.02) + 0.12, za, zb));
   }
   const res = f.result(group, { colliders });
   res.walkRects = walkRects;

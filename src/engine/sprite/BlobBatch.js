@@ -100,7 +100,7 @@ export class BlobBatch {
       polygonOffsetUnits: src.polygonOffsetUnits,
       fog: src.fog,
     });
-    material.name = 'lumina:blob-batch';
+    material.name = 'luminati:blob-batch';
     material.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nattribute float aBlobAlpha;\nvarying float vBlobAlpha;')
@@ -109,7 +109,7 @@ export class BlobBatch {
         .replace('#include <common>', '#include <common>\nvarying float vBlobAlpha;')
         .replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\n\tdiffuseColor.a *= vBlobAlpha;');
     };
-    material.customProgramCacheKey = () => 'lumina-blob-batch';
+    material.customProgramCacheKey = () => 'luminati-blob-batch';
     const mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
     mesh.name = 'BlobBatch';
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

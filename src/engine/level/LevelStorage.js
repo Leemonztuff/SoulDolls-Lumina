@@ -1,8 +1,10 @@
 /**
- * Saving and loading Lumina levels:
+ * Saving and loading Luminati levels:
  *  - browser storage (localStorage slots, always available),
  *  - the project folder `public/levels/<name>.json` through the dev-server API
- *    (tools/vite-level-api.js — only while `npm run dev` is running),
+ *    (tools/vite-level-api.js — only while `npm run dev` is running) — or, with the option
+ *    `{ campaign }`, a campaign's own levels `public/campaigns/<campaign>/levels/<name>.json`
+ *    (docs/specs/CAMPAIGN_FORMAT.md),
  *  - plain files (download / open from disk).
  *
  * Every load goes through `parseLevel`, so files are normalised and validated the same way.
@@ -11,10 +13,36 @@ import { parseLevel, serializeLevel } from './LevelFormat.js';
 
 /** @import { Level } from './types.js' */
 
-const LOCAL_PREFIX = 'lumina.level.';
-const LOCAL_INDEX = 'lumina.levels';
+const LOCAL_PREFIX = 'luminati.level.';
+const LOCAL_INDEX = 'luminati.levels';
 export const PLAYTEST_SLOT = '__playtest__';
-const API = '/api/levels';
+
+/**
+ * The site's base URL, which every file and API path of the site starts with (Vite's `BASE_URL`:
+ * '/' on the dev server, `/project/` under `--base=/project/`, './' in the build — fetched from the
+ * page's own folder; '/' outside Vite). Never a path from the site root: the site may live under
+ * a sub-path.
+ */
+const siteBase = () => import.meta.env?.BASE_URL ?? '/';
+
+/**
+ * The level API folder: the project's levels, or a campaign's (`<base>api/levels`,
+ * `<base>api/campaigns/<campaign>/levels`).
+ * @param {string} [campaign] campaign folder name (slugified); blank = public/levels
+ */
+export function levelsApi(campaign) {
+  return campaign ? `${siteBase()}api/campaigns/${encodeURIComponent(slugify(campaign))}/levels` : `${siteBase()}api/levels`;
+}
+
+/**
+ * Where a project level file lives, relative to the site root (`levels/<name>.json`, or
+ * `campaigns/<campaign>/levels/<name>.json`).
+ * @param {string} name level name (slugified)
+ * @param {{ campaign?: string }} [opts]
+ */
+export function projectLevelPath(name, { campaign = '' } = {}) {
+  return campaign ? `campaigns/${slugify(campaign)}/levels/${slugify(name)}.json` : `levels/${slugify(name)}.json`;
+}
 
 /**
  * Turn any display name into a safe slot / file name ("My Village!" → "my-village"). Names with
@@ -107,7 +135,7 @@ export function deleteLocalLevel(slot) {
 /** Is the dev-server level API reachable (i.e. running under `npm run dev`)? */
 export async function hasProjectApi() {
   try {
-    const r = await fetch(API, { method: 'GET', cache: 'no-store' });
+    const r = await fetch(levelsApi(), { method: 'GET', cache: 'no-store' });
     return r.ok && (r.headers.get('content-type') ?? '').includes('json');
   } catch {
     return false;
@@ -115,24 +143,38 @@ export async function hasProjectApi() {
 }
 
 /**
- * Levels in `public/levels/` (dev server only).
+ * Levels in `public/levels/` — or a campaign's `levels/` folder (dev server only).
+ * @param {{ campaign?: string }} [opts]
  * @returns {Promise<{ name: string, file: string, title: string, size: number, modified: number }[]>}
  */
-export async function listProjectLevels() {
-  const r = await fetch(API, { cache: 'no-store' });
+export async function listProjectLevels({ campaign = '' } = {}) {
+  const r = await fetch(levelsApi(campaign), { cache: 'no-store' });
   if (!r.ok) throw new Error(`Level API: HTTP ${r.status}`);
   return (await r.json()).levels ?? [];
 }
 
 /**
- * Write `public/levels/<name>.json` (dev server only). Returns the file name written.
+ * The campaigns in `public/campaigns/` with their levels (dev server only).
+ * @returns {Promise<{ name: string, title: string, file: string,
+ *   levels: { name: string, file: string, title: string, size: number, modified: number }[] }[]>}
+ */
+export async function listProjectCampaigns() {
+  const r = await fetch(`${siteBase()}api/campaigns`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`Level API: HTTP ${r.status}`);
+  return (await r.json()).campaigns ?? [];
+}
+
+/**
+ * Write `public/levels/<name>.json` — or the campaign's `levels/<name>.json` (dev server only; the
+ * campaign folder must exist). Returns the file name written.
  * @param {string} name display name (slugified)
  * @param {Level} level
+ * @param {{ campaign?: string }} [opts]
  * @returns {Promise<string>}
  */
-export async function saveProjectLevel(name, level) {
+export async function saveProjectLevel(name, level, { campaign = '' } = {}) {
   const slug = slugify(name);
-  const r = await fetch(`${API}/${encodeURIComponent(slug)}`, {
+  const r = await fetch(`${levelsApi(campaign)}/${encodeURIComponent(slug)}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: serializeLevel(level),
@@ -146,21 +188,25 @@ export async function saveProjectLevel(name, level) {
   return (await r.json()).file;
 }
 
-/** @param {string} name display name (slugified) */
-export async function deleteProjectLevel(name) {
-  const r = await fetch(`${API}/${encodeURIComponent(slugify(name))}`, { method: 'DELETE' });
+/**
+ * @param {string} name display name (slugified)
+ * @param {{ campaign?: string }} [opts]
+ */
+export async function deleteProjectLevel(name, { campaign = '' } = {}) {
+  const r = await fetch(`${levelsApi(campaign)}/${encodeURIComponent(slugify(name))}`, { method: 'DELETE' });
   if (!r.ok) throw new Error(`Delete failed: HTTP ${r.status}`);
 }
 
 /**
- * Load a published level `levels/<name>.json` (works in dev and in production builds, since
- * files in public/ are copied to dist/).
+ * Load a published level `levels/<name>.json` — or `campaigns/<campaign>/levels/<name>.json`
+ * (works in dev and in production builds, since files in public/ are copied to dist/).
  * @param {string} name level name (slugified)
+ * @param {{ campaign?: string }} [opts]
  * @returns {Promise<{ level: Level, warnings: string[] }>}
  */
-export async function loadProjectLevel(name) {
-  const base = import.meta.env?.BASE_URL ?? '/';
-  const r = await fetch(`${base}levels/${encodeURIComponent(slugify(name))}.json`, { cache: 'no-store' });
+export async function loadProjectLevel(name, { campaign = '' } = {}) {
+  const where = campaign ? `campaigns/${encodeURIComponent(slugify(campaign))}/levels` : 'levels';
+  const r = await fetch(`${siteBase()}${where}/${encodeURIComponent(slugify(name))}.json`, { cache: 'no-store' });
   // dev servers answer unknown paths with index.html (HTTP 200), so check what actually came back
   const type = r.headers.get('content-type') ?? '';
   if (!r.ok || type.includes('text/html')) throw new Error(`Level "${name}" not found${r.ok ? '' : ` (HTTP ${r.status})`}`);
@@ -198,8 +244,8 @@ export async function readLevelFile(file) {
 }
 
 /**
- * Let the user pick a level file. Resolves null when the picker reports no file; a cancelled
- * picker never resolves (only `change` is listened to — docs/ai/KNOWN_ISSUES.md ED-20).
+ * Let the user pick a level file. Resolves null when the picker is cancelled (the input's
+ * `cancel` event) or reports no file; rejects when the file is not a level.
  * @returns {Promise<{ level: Level, warnings: string[], fileName: string }|null>}
  */
 export function openLevelFileDialog() {
@@ -207,6 +253,7 @@ export function openLevelFileDialog() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,application/json';
+    input.addEventListener('cancel', () => resolve(null));
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) { resolve(null); return; }

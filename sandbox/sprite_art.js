@@ -188,7 +188,7 @@ function characterCard(name, sheet, sheetZoom, prevZoom) {
 }
 
 if (mode === 'gallery') {
-  app.append(el('h2', {}, 'In the diorama (three.js, HD-2D camera)'));
+  app.append(el('h2', {}, 'In the diorama (three.js, gameplay camera)'));
   const threeHost = el('div', { id: 'three' });
   app.append(threeHost);
   setupThree(threeHost);
@@ -317,7 +317,7 @@ if (mode === 'gallery') {
 }
 
 // ---------------------------------------------------------------------------
-// three.js preview: sprites standing in a tiny diorama with the HD-2D camera
+// three.js preview: sprites standing in a tiny diorama with the gameplay camera
 // ---------------------------------------------------------------------------
 
 function setupThree(host) {
@@ -808,9 +808,9 @@ function verifyCombat(out, { enemy, player, atlas }) {
   // Sprite3D combatFx: program keys and uniforms (§10.1)
   const fxs = new Sprite3D(enemy.slime, { combatFx: true });
   const plain = new Sprite3D(enemy.slime, {});
-  need(fxs.material.customProgramCacheKey() === 'lumina-sprite3d-lit-fx-v1', 'fx program key');
-  need(plain.material.customProgramCacheKey() === 'lumina-sprite3d-lit-v1', 'plain program key');
-  need(plain.mesh.customDepthMaterial.customProgramCacheKey() === 'lumina-sprite3d-depth-v1' && fxs.mesh.customDepthMaterial.customProgramCacheKey() === 'lumina-sprite3d-depth-v1', 'depth program key');
+  need(fxs.material.customProgramCacheKey() === 'luminati-sprite3d-lit-fx-v1', 'fx program key');
+  need(plain.material.customProgramCacheKey() === 'luminati-sprite3d-lit-v1', 'plain program key');
+  need(plain.mesh.customDepthMaterial.customProgramCacheKey() === 'luminati-sprite3d-depth-v1' && fxs.mesh.customDepthMaterial.customProgramCacheKey() === 'luminati-sprite3d-depth-v1', 'depth program key');
   need(!('uFlash' in plain._uniforms) && !('uGlow' in plain._uniforms) && !('uHighlight' in plain._uniforms), 'plain sprite has fx uniforms');
   need(fxs._uniforms.uFlash.value.isVector4 && fxs._uniforms.uGlow.value.isVector4 && fxs._uniforms.uHighlight.value.isVector4, 'fx uniforms are Vector4');
   plain.setFlash(1, 1, 1, 1).setGlow(1, 1, 1, 1).setHighlight(1, 1, 1, 1);
@@ -922,7 +922,7 @@ function setupCombatThree(host, { enemy, player }) {
   return {
     /** Programs compiled so far with their cache keys (fx variant vs plain). */
     programs() {
-      return [...new Set(renderer.info.programs.map((p) => (p.cacheKey.match(/lumina-sprite3d-[a-z-]+-v[0-9]/) || [null])[0]).filter(Boolean))];
+      return [...new Set(renderer.info.programs.map((p) => (p.cacheKey.match(/luminati-sprite3d-[a-z-]+-v[0-9]/) || [null])[0]).filter(Boolean))];
     },
     /**
      * Glow survives the upload: render the golem alone into a float target with its glow on and

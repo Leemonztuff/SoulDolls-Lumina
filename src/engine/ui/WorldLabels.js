@@ -1,35 +1,81 @@
 import * as THREE from 'three';
 import { RNG } from '../utils/math.js';
+import { t, registerStrings } from '../i18n/I18n.js';
+import worldfxStrings from '../i18n/strings/worldfx.js';
+import { artScale, scaleRootOf, onScale } from './UiScale.js';
+import { currentFonts } from './FontLoader.js';
+import { pal, GEMS } from './art/palette.js';
+import { art } from './art/painter.js';
+import { gem } from './art/gilt.js';
+import { gemGlyph } from './art/pieces.js';
+import { bracket } from './art/combat.js';
+import { roles, cjk, UP, measure, fit, styleText } from './layout/type.js';
 import './ui.css';
 import './combat.css';
+import './worldfx.css';
 
 /**
- * WorldLabels — world-anchored combat labels in one DOM layer (`.lu-worldfx`, COMBAT.md §13.2):
- * floating damage numbers (pool 40), enemy HP bars / aggro pips (32 slots), off-screen edge arrows
- * (8 slots), the '!' alert (pool 8) and the lock-on reticle. Not depth-occluded (by design: 0 draw
- * calls, crisp, not DOF-blurred). Created by `UI.enableCombat()` on combat levels only.
+ * WorldLabels — world-anchored combat labels in one DOM layer (`.lu-worldfx`, COMBAT.md §13.2),
+ * drawn after mockup G (docs/specs/PIXEL_UI.md §5, World labels): floating damage numbers (pool
+ * 40), enemy HP bars / aggro pips (32 slots), off-screen edge arrows (8 slots), the '!' alert (pool
+ * 8) and the lock-on reticle. Not depth-occluded (by design: 0 draw calls, crisp, not DOF-blurred).
+ * Created by `UI.enableCombat()` on combat levels only.
+ *
+ * The look (G's family, in art pixels of the UI root's `--px`, docs/specs/PIXEL_UI.md §1.2):
+ * - numbers in the type roles (layout/type.js) with G's `ol8` outline (eight ways and a drop, one art
+ *   px, --g-nol): a hit, a companion's hit, a heal, MP, the player's hurt in `big` (--g-hit, --g-mint,
+ *   --g-heal, --g-mp3, --g-hp3), a crit in `numL` (--g-crit); a word (Guard, Perfect!, translated:
+ *   the 'worldfx' strings) in `name`. They move in whole art px with steps(): appear two art px low,
+ *   hop one up, rest, rise ten art px one at a time, fade in three steps; a crit's and Perfect!'s
+ *   pop is two frames at twice the size (an integer pop) then one two art px up;
+ * - the enemy bar a 34 × 4 art-px pixel bar (an ink outline, the trough rows --g-tr0 / --g-tr1, the
+ *   fill's ramp rows --g-hp3 / --g-hp1, the pale chip --g-g5 / --g-g4 trailing it), quantised to
+ *   whole art px; an elite's gets a gilt ring and the line "Lv 3 BRAMBLE GOBLIN CAPTAIN" — "Lv" in
+ *   `tiny`, the level in `num`, the name in tracked `small` capitals (`line` in Japanese and
+ *   Chinese); the aggro pip a 7 × 7 ruby, the '!' alert in the ember ramp;
+ * - the lock-on reticle G's four `bracket()` L-shapes stepping one art px in and out (0.7 s) round
+ *   a ruby heart gem;
+ * - edge arrows 8 pre-drawn octant sprites (an ember arrowhead, no free rotation), nudging one art
+ *   px toward their enemy, flashing a hot frame in two steps while it winds up.
+ * All art is painted once per page with the kit's painter (src/engine/ui/art/) into CSS url()
+ * values on the layer.
  *
  * Performance rules: every element is created once in the constructor (pools); `update(dt,
  * camera)` projects the live labels with one view-projection matrix per frame and writes
- * `translate3d` only when the rounded pixel changes; bars fill with `transform: scaleX()` plus a
- * lagging second fill; CSS animations restart by toggling between two identical keyframe names;
- * no layout reads in the frame loop (the viewport size is cached by a ResizeObserver).
+ * `translate3d` only when the rounded pixel changes; bars fill with `transform: scaleX()` (whole
+ * art px) plus a lagging second fill; CSS animations restart by toggling between two identical
+ * keyframe names; no layout reads in the frame loop (the viewport size is cached by a
+ * ResizeObserver; text is measured with canvas `measureText`, layout/type.js, when it changes).
  *
  * Anchors are read live: `anchor(vec3, offsetY)` / `alert(vec3, offsetY)` / `reticle(vec3,
  * offsetY)` keep the vector (not a copy) and add `offsetY` world units to its y every frame (like
- * `InteractPrompt` and the enemy defs' `labelY`). World-art pixel scale: `--lu-px` =
- * max(1, round(viewport height / 450)) (2 at 900 px).
+ * `InteractPrompt` and the enemy defs' `labelY`). The art scale is the UI root's (`--px`, `--fpx`:
+ * UiScale.js), followed through `onScale`.
  *
  * HUD panels (COMBAT-07): the layer sits under the HUD, so `setPanels()` (called by
  * `UI.enableCombat()` with the location plate, clock, minimap, controls legend, vitals, skill bar
  * and boss bar) makes every label keep out of the panels that are shown (6 px clear; panels less
  * than 48 px apart whose union box is not much bigger than the two — plate + vitals, clock +
- * minimap — count as one zone; the legend and the boss bar stay two): a number, bar, pip,
+ * minimap — count as one zone; the boss bar never merges, `PanelSpec.merge` false, so the open
+ * lower middle above it stays free whatever the skill bar or the legend beside it measure): a
+ * number, bar, pip,
  * alert or the reticle that would overlap one is moved just outside it (the smallest move that
  * stays on screen and clear of the other zones), and an edge arrow slides inward along its ray
- * until it clears the zone (it still points at its enemy). The panel rects are read in a ResizeObserver callback
- * (after layout — re-armed by a class / style change, a transition's end or a viewport resize),
- * never in the frame loop; still no depth occlusion (D9).
+ * until it clears the zone (it still points at its enemy). The labels' boxes are the drawn art and
+ * text at every step of their motion (numbers: their role's line box, measured advance, pop and
+ * rise). The panel rects are read in a ResizeObserver callback (after layout — re-armed by a class /
+ * style change, a transition's end or a viewport resize), never in the frame loop; a panel hidden
+ * by CSS (`visibility: hidden`: the controls legend under the boss bar or the death screen) does
+ * not count. While it shows, the area banner's card counts as a panel too (an elite's label no
+ * longer runs over 'MOSSY GLADE'). Still no depth occlusion (D9).
+ *
+ * Off-screen edge arrows stay apart along the border: two foes in one direction get two arrows
+ * EDGE_SPACE art px apart, not two touching cells that read as one doubled arrow.
+ *
+ * The roles are the type's at the root's scale (type.js `roles()`: Japanese words in Noto Sans JP
+ * at --px 2). A crit is Jersey 10 at twice the half-size font pixel (`_sizeK`): numL's own size at
+ * an even --px, and a step over the hit's Jersey 15 at an odd one, where numL's whole art px gave
+ * both the same 10-art-px cap at --px 3.
  */
 
 const NUMBER_POOL = 40;
@@ -39,8 +85,11 @@ const ALERT_POOL = 8;
 /** Lifetimes in ms (wall clock, matching the CSS animations). */
 const NUMBER_MS = 800;
 const ALERT_MS = 800;
-/** Edge arrows sit this far (CSS px) inside the viewport border. */
-const EDGE_INSET = 24;
+/** Edge arrows sit this far (art px) inside the viewport border. */
+const EDGE_INSET = 12;
+/** The least distance between two edge arrows' centres along the border (art px): their 17-art-px
+ * cells and 2 art px between them. */
+const EDGE_SPACE = 19;
 /** Clearance (CSS px) between a label and a HUD panel it keeps out of (COMBAT-07). */
 const PANEL_GAP = 6;
 /**
@@ -50,28 +99,51 @@ const PANEL_GAP = 6;
  * ZONE_MERGE_AREA × the two boxes' areas (plate + vitals ≈ 1.2, clock + minimap ≈ 1.1). The union of
  * the controls legend and the boss bar (≈ 3.1) covered the open lower middle of the screen in
  * every boss fight and pushed labels there up beside the player; kept apart, a label between them
- * still clears both (`_clear` only takes a move that is clear of the other zones).
+ * still clears both (`_clear` only takes a move that is clear of the other zones). The skill bar +
+ * boss bar union measured 1.39–1.50 (1024 × 768 in every language, Chinese at 1280 × 720: the
+ * boxes overlap or the CJK plate is taller) and merged under this rule, so a panel can opt out of
+ * merging altogether (`PanelSpec.merge` false: the boss bar).
  */
 const ZONE_MERGE = 48;
 const ZONE_MERGE_AREA = 1.5;
-/** ±px of seeded scatter on a new number. */
-const SCATTER = 12;
+/** ± art px of seeded scatter on a new number (12 CSS px at --px 2). */
+const SCATTER = 6;
 /**
  * Stacking: a number spawned within STACK_MS of another at the same anchor (±0.8 u) — a combo's
- * hits, a hit's 'Guard' — starts one line higher per earlier one and alternates sides by
- * STACK_SIDE px (they used to fuse: "23" + "19" read "2319", "Guard" sat on "19").
+ * hits, a hit's 'Guard' — starts one line (its role's line box) higher per earlier one and
+ * alternates sides by STACK_SIDE art px (they used to fuse: "23" + "19" read "2319", "Guard" sat on
+ * "19").
  */
 const STACK_MS = 520;
-const STACK_SIDE = 18;
-const NUMBER_KINDS = new Set(['dmg', 'crit', 'hurt', 'heal', 'mp', 'guard', 'perfect']);
-/** Kinds with a fixed text. */
-const NUMBER_TEXT = { guard: 'Guard', perfect: 'Perfect!' };
+const STACK_SIDE = 9;
+/** How far a number rises (art px, one at a time over its last 70 %; worldfx.css lu-num-*). */
+const NUMBER_RISE = 10;
+const NUMBER_KINDS = new Set(['dmg', 'crit', 'hurt', 'heal', 'mp', 'guard', 'perfect', 'ally']);
+/**
+ * Kinds with a fixed text: the key of their word in the 'worldfx' strings (en 'Guard', 'Perfect!';
+ * src/engine/i18n/strings/worldfx.js). The caller's text is ignored for them.
+ */
+const NUMBER_TEXT = Object.freeze({ guard: 'guard', perfect: 'perfect' });
+/**
+ * The same words when a caller passes them as the text of another kind (a companion's blocked
+ * swing is `number(…, 'Guard', 'ally')`): shown translated, in the word role, in the kind's colour.
+ */
+const WORD_OF = Object.freeze({ Guard: 'guard', 'Perfect!': 'perfect' });
+/** Kinds whose first two frames are an integer pop (twice the size). */
+const POP_KINDS = new Set(['crit', 'perfect']);
+/** A number's text that is a number (digits, a sign, a decimal point): else it is a word. */
+const NUMERIC = /^[+\-−]?[0-9][0-9.,]*%?$/;
+/** The longest elite name (art px) before it is cut with an ellipsis. */
+const NAME_MAX = 150;
+
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 // ---- pixel art ------------------------------------------------------------------------------
 
 /**
  * Pixel-art SVG from a char map (one `<rect>` per horizontal run of a colour; '.' = empty), like the
  * interaction prompt's bubble. `shape-rendering: crispEdges`, so integer scales stay sharp.
+ * (Kept for other modules; the layer's own art is painted with the kit's canvas painter.)
  * @param {string[]} rows
  * @param {Record<string, string>} colors
  * @returns {string} SVG markup
@@ -99,18 +171,7 @@ export function svgUrl(svg) {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
-// aggro pip: a 4×4 px red diamond inside a 1 px dark outline
-const PIP = [
-  '..OO..',
-  '.OHRO.',
-  'ORHRRO',
-  'ORRRDO',
-  '.ODDO.',
-  '..OO..',
-];
-const PIP_COLORS = { O: '#1a0b08', R: '#e8483a', H: '#ff9c86', D: '#a8231c' };
-
-// '!' alert (telegraph red-orange)
+// '!' alert, 7 × 12 art px: O ink, Y ember, H ember light, D ember dark
 const ALERT = [
   '..OOO..',
   '.OHYYO.',
@@ -125,31 +186,117 @@ const ALERT = [
   '.ODDDO.',
   '..OOO..',
 ];
-const ALERT_COLORS = { O: '#1a0b08', Y: '#ff7a3c', H: '#ffd6a8', D: '#c03d1c' };
 
-// lock-on reticle: one corner (top-left) — a gold diamond with two bracket arms; the other three
-// corners are this quadrant mirrored
-const RETICLE = [
-  '...O........',
-  '..OHO.......',
-  '.OHGGOOOOOO.',
-  'OHGGGDGGGGGO',
-  '.OGGDOOOOOO.',
-  '..ODO.......',
-  '..OGO.......',
-  '..OGO.......',
-  '..OGO.......',
-  '..OGO.......',
-  '..ODO.......',
-  '...O........',
-];
-const RETICLE_COLORS = { O: '#1a1206', H: '#fff4d0', G: '#e8cf8a', D: '#8c6a32' };
+/** Edge-arrow sprite cell (art px): the arrowhead, its ink outline and the hot frame's halo. */
+const EDGE_CELL = 17;
+/**
+ * The arrowhead pointing east (7 × 13, a right-angled tip) and north-east (9 × 9, the same area);
+ * the other octants are their quarter turns.
+ */
+const ARROW_E = ['#......', '##.....', '###....', '####...', '#####..', '######.', '#######', '######.', '#####..', '####...', '###....', '##.....', '#......'];
+const ARROW_NE = ['#########', '.########', '..#######', '...######', '....#####', '.....####', '......###', '.......##', '........#'];
+/** Each octant's nudge (art px toward the enemy): 0 E, 1 SE, 2 S, 3 SW, 4 W, 5 NW, 6 N, 7 NE (screen y down). */
+const OCT_DIR = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 
-// off-screen edge arrow (vector: it rotates freely), pointing +x
-const EDGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <path d="M3.5 4.2 21 12 3.5 19.8 7.4 12z" fill="#ff6a3a" stroke="#1a0b08" stroke-width="1.8" stroke-linejoin="round"/>
-  <path d="M6.2 6.9 16.6 11.6 8.6 11.6z" fill="#ffd0a8" opacity=".75"/>
-</svg>`;
+/** A mask turned a quarter clockwise. @param {string[]} m */
+function quarter(m) {
+  const H = m.length;
+  const W = m[0].length;
+  const out = [];
+  for (let y = 0; y < W; y++) {
+    let r = '';
+    for (let x = 0; x < H; x++) r += m[H - 1 - x][y];
+    out.push(r);
+  }
+  return out;
+}
+
+/** The eight octant masks, index = octant (0 E, 1 SE … 7 NE). */
+function octantMasks() {
+  const e = ARROW_E, s = quarter(e), w = quarter(s), n = quarter(w);
+  const ne = ARROW_NE, se = quarter(ne), sw = quarter(se), nw = quarter(sw);
+  return [e, se, s, sw, w, nw, n, ne];
+}
+
+/**
+ * One arrowhead into its sprite cell: lit from above (light along its top edges, shade along its
+ * bottom ones, in every octant alike), an ink outline; `hot`: the bright frame with a ruby halo one
+ * more pixel out.
+ * @param {import('./art/painter.js').PixelPainter} p
+ * @param {number} ox
+ * @param {number} oy
+ * @param {string[]} m
+ * @param {boolean} hot
+ */
+function paintArrow(p, ox, oy, m, hot) {
+  const k = pal();
+  const H = m.length;
+  const W = m[0].length;
+  const x0 = ox + ((EDGE_CELL - W) >> 1);
+  const y0 = oy + ((EDGE_CELL - H) >> 1);
+  const on = (x, y) => y >= 0 && y < H && x >= 0 && x < W && m[y][x] === '#';
+  const rim = (x, y) => !on(x, y) && (on(x + 1, y) || on(x - 1, y) || on(x, y + 1) || on(x, y - 1));
+  const [lit, mid, dark] = hot ? [k.sel, k.em3, k.em2] : [k.em3, k.em2, k.em1];
+  for (let y = -2; y < H + 2; y++) {
+    for (let x = -2; x < W + 2; x++) {
+      let col = null;
+      if (on(x, y)) col = !on(x, y - 1) ? lit : !on(x, y + 1) ? dark : mid;
+      else if (rim(x, y)) col = k.ink0;
+      else if (hot && (rim(x + 1, y) || rim(x - 1, y) || rim(x, y + 1) || rim(x, y - 1))) col = k.rb2;
+      if (col) p.px(x0 + x, y0 + y, col);
+    }
+  }
+}
+
+/** @param {HTMLCanvasElement} c */
+const urlOf = (c) => `url("${c.toDataURL('image/png')}")`;
+
+/** @type {Record<string, string>|null} the layer's art as CSS url() values (painted once per page) */
+let ART = null;
+
+/**
+ * The layer's art, painted once with the kit (G's palette): custom property → url().
+ * @returns {Record<string, string>}
+ */
+function layerArt() {
+  if (ART) return ART;
+  const k = pal();
+  /** @type {Record<string, string>} */
+  const a = {};
+  // the enemy bar, 34 × 4: an ink outline round the trough rows (the fill and the chip are DOM
+  // elements over it, scaled in whole art px)
+  a['--lu-wf-bar'] = urlOf(art(34, 4, (p) => {
+    p.rect(0, 0, 34, 4, k.ink0);
+    p.hline(1, 1, 32, k.tr0);
+    p.hline(1, 2, 32, k.tr1);
+  }));
+  // an elite's ring round it, 38 × 8: gilt (lit on top, shaded below) with cut corners, inked
+  a['--lu-wf-ring'] = urlOf(art(38, 8, (p) => {
+    p.hline(2, 0, 34, k.ink0); p.hline(2, 7, 34, k.ink0); p.vline(0, 2, 4, k.ink0); p.vline(37, 2, 4, k.ink0);
+    p.px(1, 1, k.ink0); p.px(36, 1, k.ink0); p.px(1, 6, k.ink0); p.px(36, 6, k.ink0);
+    p.hline(2, 1, 34, k.g5); p.hline(2, 6, 34, k.g2); p.vline(1, 2, 4, k.g4); p.vline(36, 2, 4, k.g3);
+  }));
+  // the aggro pip: a ruby, 7 × 7, set in ruby (lit top left)
+  a['--lu-wf-pip'] = urlOf(art(7, 7, (p) => gem(p, 3, 3, 2, GEMS.ruby(), { setting: [k.rb3, k.rb2, k.rb1] })));
+  // the '!' in the ember ramp
+  a['--lu-wf-alert'] = urlOf(art(7, 12, (p) => p.rows(0, 0, ALERT, { O: k.ink0, Y: k.em2, H: k.em3, D: k.em1 })));
+  // the lock-on: G's four brackets (14 × 14 each; [1, 1] the top-left one) and the ruby heart (7 × 7)
+  a['--lu-wf-ret-tl'] = urlOf(bracket(1, 1));
+  a['--lu-wf-ret-tr'] = urlOf(bracket(-1, 1));
+  a['--lu-wf-ret-bl'] = urlOf(bracket(1, -1));
+  a['--lu-wf-ret-br'] = urlOf(bracket(-1, -1));
+  a['--lu-wf-heart'] = urlOf(gemGlyph(2, GEMS.ruby()));
+  // the edge arrows: 8 octants side by side, the plain frames on top, the hot ones under them
+  const masks = octantMasks();
+  a['--lu-wf-edge'] = urlOf(art(EDGE_CELL * 8, EDGE_CELL * 2, (p) => {
+    masks.forEach((m, o) => {
+      paintArrow(p, o * EDGE_CELL, 0, m, false);
+      paintArrow(p, o * EDGE_CELL, EDGE_CELL, m, true);
+    });
+  }));
+  ART = a;
+  return a;
+}
 
 /** Handle returned for an out-of-range slot (does nothing). */
 const NOOP_HANDLE = Object.freeze({
@@ -163,10 +310,16 @@ const NOOP_HANDLE = Object.freeze({
 
 /** One enemy bar slot (bar or aggro pip). */
 class BarSlot {
-  constructor(layer) {
+  /**
+   * @param {HTMLElement} layer
+   * @param {WorldLabels} owner
+   */
+  constructor(layer, owner) {
+    this._owner = owner;
     const el = document.createElement('div');
     el.className = 'lu-ebar';
-    el.innerHTML = '<div class="lu-ebar__in"><div class="lu-ebar__name"><span class="lu-ebar__lv"></span></div>'
+    el.innerHTML = '<div class="lu-ebar__in"><div class="lu-ebar__name"><span class="lu-ebar__lv"></span>'
+      + '<span class="lu-ebar__lvn"></span><span class="lu-ebar__nm"></span></div>'
       + '<div class="lu-ebar__frame"><i class="lu-ebar__lag"></i><i class="lu-ebar__fill"></i></div>'
       + '<i class="lu-ebar__pip"></i></div>';
     layer.appendChild(el);
@@ -175,10 +328,17 @@ class BarSlot {
     this._fill = el.querySelector('.lu-ebar__fill');
     /** @type {HTMLElement} */
     this._lag = el.querySelector('.lu-ebar__lag');
-    this._lvText = document.createTextNode('');
-    el.querySelector('.lu-ebar__lv').appendChild(this._lvText);
-    this._nameText = document.createTextNode('');
-    el.querySelector('.lu-ebar__name').appendChild(this._nameText);
+    /** @type {HTMLElement} */
+    this._nameEl = el.querySelector('.lu-ebar__name');
+    /** The name line's parts: "Lv" (tiny), the level (num), the name (small; line in CJK). */
+    /** @type {HTMLElement[]} */
+    this._parts = [el.querySelector('.lu-ebar__lv'), el.querySelector('.lu-ebar__lvn'), el.querySelector('.lu-ebar__nm')];
+    this._partText = this._parts.map((p) => {
+      const tn = document.createTextNode('');
+      p.appendChild(tn);
+      return tn;
+    });
+    owner._styleNameParts(this._parts);
     /** @type {{ x: number, y: number, z: number }|null} anchor, read live (Vector3 or any xyz) */
     this.ref = null;
     this.oy = 0;
@@ -193,6 +353,17 @@ class BarSlot {
     this._name = '';
     this._snap = true;
     this._snapClass = false;
+    /** The name line as laid out (`_owner._layoutName`): width and left (art px), top (CSS px). */
+    this._nameW = 0;
+    this._nameL = 0;
+    this._nameT = 0;
+    /** The name the line was last laid out for after its font slices came in. */
+    this._laidFor = '';
+    /** The keep-out box (CSS px): half width, above and below the anchor (`_owner._barBox`). */
+    this._bw = 0;
+    this._bu = 0;
+    this._bd = 0;
+    owner._barBox(this);
   }
 
   /**
@@ -209,7 +380,8 @@ class BarSlot {
   /**
    * @param {number} frac HP fraction 0..1
    * @param {{ elite?: boolean, level?: number, name?: string, pip?: boolean }} [opts]
-   *   pip: only the small red diamond (aggroed, undamaged); elite: gold frame + "Lv N name"
+   *   pip: only the small ruby (aggroed, undamaged); elite: the gilt ring + "Lv N NAME" (the name is
+   *   shown as given: callers pass it translated, I18N.md §4.3)
    */
   set(frac, opts) {
     // a slot that just changed enemy (or was hidden) jumps its lag fill instead of draining it
@@ -220,24 +392,41 @@ class BarSlot {
       this._snapClass = false;
       this._lag.classList.remove('is-snap');
     }
+    // whole art px of the 32 inside the frame: never empty above 0, never full below 1
     const f = frac > 0 ? (frac < 1 ? frac : 1) : 0;
-    const q = Math.round(f * 1000);
+    let q = Math.round(f * 32);
+    if (f > 0 && q === 0) q = 1;
+    else if (f < 1 && q === 32) q = 31;
     if (q !== this._q) {
       this._q = q;
-      const s = `scaleX(${q / 1000})`;
+      const s = `scaleX(${q / 32})`;
       this._fill.style.transform = s;
       this._lag.style.transform = s;
     }
+    let box = false;
+    let relayout = false;
     const pip = !!(opts && opts.pip);
-    if (pip !== this._pip) { this._pip = pip; this.el.classList.toggle('is-pip', pip); }
+    if (pip !== this._pip) { this._pip = pip; this.el.classList.toggle('is-pip', pip); box = true; }
     const elite = !!(opts && opts.elite);
-    if (elite !== this._elite) { this._elite = elite; this.el.classList.toggle('is-elite', elite); }
+    if (elite !== this._elite) {
+      this._elite = elite;
+      this.el.classList.toggle('is-elite', elite);
+      box = true;
+      // (laid out again: the scale may have changed while the slot showed a plain bar)
+      relayout = elite;
+    }
     if (elite) {
       const lv = opts.level | 0;
-      if (lv !== this._lv) { this._lv = lv; this._lvText.nodeValue = lv > 0 ? `Lv ${lv} ` : ''; }
       const name = opts.name ? String(opts.name) : '';
-      if (name !== this._name) { this._name = name; this._nameText.nodeValue = name; }
+      if (lv !== this._lv || name !== this._name) {
+        this._lv = lv;
+        this._name = name;
+        relayout = true;
+      }
     }
+    // only on a change: set() runs every frame for every bar
+    if (relayout) this._owner._layoutName(this);
+    else if (box) this._owner._barBox(this);
     return this;
   }
 
@@ -272,7 +461,13 @@ class EdgeSlot {
     this.inside = false;
     this.x = NaN;
     this.y = NaN;
-    this.a = NaN;
+    /** This frame's place on the border before it is written (CSS px; `_spreadEdges` may move it). */
+    this.tx = 0;
+    this.ty = 0;
+    /** On the top or bottom border (it gives room along x), else on a side (along y). */
+    this.horiz = false;
+    /** The octant shown (0 E, 1 SE … 7 NE), -1 before the first. */
+    this.o = -1;
     this._windup = false;
   }
 
@@ -286,7 +481,7 @@ class EdgeSlot {
     return this;
   }
 
-  /** @param {{ windup?: boolean }} [opts] windup: the enemy telegraphs an attack (the arrow pulses) */
+  /** @param {{ windup?: boolean }} [opts] windup: the enemy telegraphs an attack (the arrow flashes) */
   set(opts) {
     const w = !!(opts && opts.windup);
     if (w !== this._windup) { this._windup = w; this.el.classList.toggle('is-windup', w); }
@@ -307,21 +502,65 @@ class EdgeSlot {
 // ---- component ------------------------------------------------------------------------------
 
 /**
- * A HUD panel given to `setPanels` as a wrapper: `shown` says whether it counts right now.
- * @typedef {{ el: HTMLElement, shown?: () => boolean }} PanelSpec
+ * A HUD panel given to `setPanels` as a wrapper: `shown` says whether it counts right now; `box`
+ * the element whose rect is the panel (default `el`: a component whose element covers the root and
+ * whose drawn card is a child, the banner; additive); `merge` false keeps its keep-out zone apart
+ * from every near panel's (default true: near panels with a compact union count as one zone; the
+ * boss bar passes false; additive).
+ * @typedef {{ el: HTMLElement, shown?: () => boolean, box?: () => (Element|null), merge?: boolean }} PanelSpec
+ */
+/**
+ * A type role's box in CSS px at the current scale: `mid` the ink centre below the line box top
+ * (whole device px), `L` the line box, `ink` the ink height.
+ * @typedef {{ mid: number, L: number, ink: number }} RoleBox
+ */
+/**
+ * A pooled floating number.
+ * @typedef {object} NumberRec
+ * @property {HTMLDivElement} el `.lu-num` (moved with translate3d)
+ * @property {HTMLSpanElement} t `.lu-num__t` (the moving box: steps, fade, colour)
+ * @property {HTMLSpanElement} x$ `.lu-num__x` (the text, styled in its role; the pop's size)
+ * @property {Text} text
+ * @property {string} str the text shown
+ * @property {import('./layout/type.js').RoleId|''} role
+ * @property {string} sk the role and size the text is styled in (`_styleNumber`)
+ * @property {number} k its size factor (`_sizeK`)
+ * @property {boolean} pop
+ * @property {boolean} live
+ * @property {number} end
+ * @property {boolean} flip
+ * @property {number} wx world anchor
+ * @property {number} wy
+ * @property {number} wz
+ * @property {number} dx scatter / stack offset (CSS px)
+ * @property {number} dy
+ * @property {boolean} out
+ * @property {number} x the drawn anchor (CSS px, rounded)
+ * @property {number} y
+ * @property {number} hw half the text's advance (CSS px, whole device px)
+ * @property {number} mid the ink centre below the text's line box top (CSS px)
+ * @property {number} mb the line box below the ink centre (CSS px)
  */
 
 export class WorldLabels {
-  /** @param {HTMLElement} root the UI root (`#lumina-ui`) */
+  /** @param {HTMLElement} root the UI root (`#luminati-ui`) */
   constructor(root) {
     this.root = root;
+    registerStrings('worldfx', worldfxStrings);
+    // the art scale: the UI root's (--px / --fpx, UiScale.js), else the window's
+    this._sroot = scaleRootOf(root);
+    this._scale = null;
+    this._px = 2;
+    this._fpx = 1;
+    this._dpx = 1;
+    /** @type {Map<string, RoleBox>} */
+    this._roleBoxes = new Map();
+    this._applyScale(this._sroot?.scale ?? null);
+
     const el = document.createElement('div');
     el.className = 'lu-worldfx';
     el.setAttribute('aria-hidden', 'true');
-    el.style.setProperty('--lu-ico-pip', svgUrl(pixelSvg(PIP, PIP_COLORS)));
-    el.style.setProperty('--lu-ico-alert', svgUrl(pixelSvg(ALERT, ALERT_COLORS)));
-    el.style.setProperty('--lu-ico-ret', svgUrl(pixelSvg(RETICLE, RETICLE_COLORS)));
-    el.style.setProperty('--lu-ico-edge', svgUrl(EDGE_SVG));
+    for (const [prop, url] of Object.entries(layerArt())) el.style.setProperty(prop, url);
     // under the interaction prompt (same z-index, earlier in the DOM)
     root.insertBefore(el, root.querySelector(':scope > .lu-prompt') ?? root.firstChild);
     this.element = el;
@@ -329,7 +568,7 @@ export class WorldLabels {
     // paint order inside the layer: bars, edge arrows, alerts, reticle, numbers on top
     /** @type {BarSlot[]} */
     this._bars = [];
-    for (let i = 0; i < BAR_POOL; i++) this._bars.push(new BarSlot(el));
+    for (let i = 0; i < BAR_POOL; i++) this._bars.push(new BarSlot(el, this));
     /** @type {EdgeSlot[]} */
     this._edges = [];
     for (let i = 0; i < EDGE_POOL; i++) this._edges.push(new EdgeSlot(el));
@@ -347,25 +586,39 @@ export class WorldLabels {
     const ret = document.createElement('div');
     ret.className = 'lu-reticle';
     ret.innerHTML = '<i class="lu-reticle__c lu-reticle__c--tl"></i><i class="lu-reticle__c lu-reticle__c--tr"></i>'
-      + '<i class="lu-reticle__c lu-reticle__c--bl"></i><i class="lu-reticle__c lu-reticle__c--br"></i>';
+      + '<i class="lu-reticle__c lu-reticle__c--bl"></i><i class="lu-reticle__c lu-reticle__c--br"></i>'
+      + '<i class="lu-reticle__h"></i>';
     el.appendChild(ret);
     this._reticle = { el: ret, ref: null, oy: 0, on: false, out: false, x: NaN, y: NaN };
 
+    /** @type {NumberRec[]} */
     this._nums = [];
     for (let i = 0; i < NUMBER_POOL; i++) {
       const n = document.createElement('div');
       n.className = 'lu-num';
-      const t = document.createElement('span');
-      t.className = 'lu-num__t';
+      // the moving box (its own compositor layer: whole art px steps) round the styled text (its
+      // edge filter painted into that layer on the device-pixel grid)
+      const tEl = document.createElement('span');
+      tEl.className = 'lu-num__t';
+      const xEl = document.createElement('span');
+      xEl.className = 'lu-num__x';
       const text = document.createTextNode('');
-      t.appendChild(text);
-      n.appendChild(t);
+      xEl.appendChild(text);
+      tEl.appendChild(xEl);
+      n.appendChild(tEl);
       el.appendChild(n);
-      this._nums.push({ el: n, text, str: '', em: 1.2, pop: false, live: false, end: 0, flip: false, wx: 0, wy: 0, wz: 0, dx: 0, dy: 0, out: false, x: NaN, y: NaN });
+      this._nums.push({
+        el: n, t: tEl, x$: xEl, text, str: '', role: '', sk: '', k: 1, pop: false, live: false, end: 0, flip: false,
+        wx: 0, wy: 0, wz: 0, dx: 0, dy: 0, out: false, x: NaN, y: NaN, hw: NaN, mid: NaN, mb: 0,
+      });
     }
     this._numNext = 0;
     /** Visual-only scatter RNG (never the combat RNG). */
     this._rng = new RNG(0x6d6e);
+
+    // the words a number can be: their font slices in before one is measured (CJK fonts come in
+    // unicode-range slices; FontLoader.ensure)
+    currentFonts()?.ensure(Object.values(NUMBER_TEXT).map((k) => t(`worldfx.${k}`)).concat(t('worldfx.lv')));
 
     this._vp = new THREE.Matrix4();
     this._m = this._vp.elements;
@@ -377,25 +630,31 @@ export class WorldLabels {
     this._sy = 0;
     this._w = root.clientWidth || window.innerWidth;
     this._h = root.clientHeight || window.innerHeight;
-    this._px = 0;
-    this._applyScale();
     this._ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
       this._w = root.clientWidth || window.innerWidth;
       this._h = root.clientHeight || window.innerHeight;
-      this._applyScale();
+      if (this._applyScale(this._sroot?.scale ?? null)) this._refit();
       this._invalidate();
     }) : null;
     this._ro?.observe(root);
+    // the root's 'scale' comes once the fonts follow the new --px (a CJK page's Jersey aliases
+    // rebuilt): measure the text again then
+    this._offScale = onScale(root, (s) => {
+      this._applyScale(s);
+      this._refit();
+      this._invalidate();
+    });
 
     /**
-     * HUD panels the labels keep out of (`setPanels`): { el, shown, on, has, l, t, r, b } — rect in
-     * root pixels, measured after layout.
+     * HUD panels the labels keep out of (`setPanels`): { el, shown, boxOf, solo, on, has, l, t, r, b }
+     * — rect in root pixels, measured after layout; `solo`: never merged with another (merge false).
      */
     this._panels = [];
     this._panelOn = 0;
-    /** Keep-out zones of this frame: the shown panels' rects grown by PANEL_GAP, near ones merged. */
+    /** Keep-out zones of this frame: the shown panels' rects grown by PANEL_GAP, near ones merged
+     * (`solo`: a panel that never merges). */
     this._zones = [];
-    for (let i = 0; i < 8; i++) this._zones.push({ l: 0, t: 0, r: 0, b: 0 });
+    for (let i = 0; i < 8; i++) this._zones.push({ l: 0, t: 0, r: 0, b: 0, solo: false });
     this._zoneN = 0;
     this._panelRo = null;
     this._panelMo = null;
@@ -410,19 +669,32 @@ export class WorldLabels {
    * HUD panels the labels stay out of (COMBAT-07; `UI.enableCombat()` passes the HUD's). A number,
    * bar, pip, alert or the reticle that would overlap a shown panel is moved just outside it (the
    * smallest move that stays on screen); an edge arrow slides inward along its ray until it clears
-   * it. Replaces the previous list; `[]` turns it off.
+   * it. Replaces the previous list; `[]` turns it off. A non-empty list also keeps the labels out
+   * of the area banner's card while it shows (the root's `.lu-banner`, found here).
    * @param {(HTMLElement | PanelSpec)[]} list shown: whether the panel counts right now (read
-   *   once per frame, no DOM reads; default: while it has a box)
+   *   once per frame, no DOM reads; default: while it has a box); box: the element measured; merge:
+   *   false keeps its zone apart from near panels' (default true)
    */
   setPanels(list) {
     this._disconnectPanels();
     this._panels = [];
-    for (const item of list ?? []) {
+    const items = [...(list ?? [])];
+    const banner = items.length ? this.root.querySelector(':scope > .lu-banner') : null;
+    if (banner instanceof HTMLElement) {
+      items.push({
+        el: banner,
+        box: () => banner.querySelector(':scope > .grp'),
+        shown: () => banner.classList.contains('is-in') || banner.classList.contains('is-out'),
+      });
+    }
+    for (const item of items) {
       // casts: the `typeof Element` guard keeps TS from narrowing `item` to the wrapper
       const el = typeof Element !== 'undefined' && item instanceof Element ? item : /** @type {PanelSpec} */ (item)?.el;
       if (!el) continue;
       const shown = el === item ? null : /** @type {PanelSpec} */ (item).shown ?? null;
-      this._panels.push({ el, shown, on: false, has: false, l: 0, t: 0, r: 0, b: 0 });
+      const boxOf = el === item ? null : /** @type {PanelSpec} */ (item).box ?? null;
+      const solo = el !== item && /** @type {PanelSpec} */ (item).merge === false;
+      this._panels.push({ el, shown, boxOf, solo, on: false, has: false, l: 0, t: 0, r: 0, b: 0 });
     }
     if (!this._panels.length || typeof ResizeObserver !== 'function') return;
     // measured in the observer's callback (after layout: no forced layout); observing the root too
@@ -439,20 +711,30 @@ export class WorldLabels {
   }
 
   /**
-   * A floating number at a world point (rises ~24 px and fades over 0.8 s; seeded ±12 px scatter;
-   * numbers spawned in quick succession at the same anchor stack upward, alternating sides).
-   * The oldest number is reused when all 40 are live.
+   * A floating number at a world point (rises 10 art px in whole steps and fades over 0.8 s; seeded
+   * ±6 art px scatter; numbers spawned in quick succession at the same anchor stack upward,
+   * alternating sides). The oldest number is reused when all 40 are live.
    * @param {number} x
    * @param {number} y
    * @param {number} z
-   * @param {string|number} text ignored for 'guard' ('Guard') and 'perfect' ('Perfect!')
-   * @param {'dmg'|'crit'|'hurt'|'heal'|'mp'|'guard'|'perfect'} [kind]
+   * @param {string|number} text ignored for 'guard' ('Guard') and 'perfect' ('Perfect!'), which show
+   *   their word in the page's language; the text 'Guard' or 'Perfect!' of another kind is shown
+   *   translated too
+   * @param {'dmg'|'crit'|'hurt'|'heal'|'mp'|'guard'|'perfect'|'ally'} [kind] ('ally': a party
+   *   companion's hit, PARTY.md §5.2)
    */
   number(x, y, z, text, kind = 'dmg') {
     const k = NUMBER_KINDS.has(kind) ? kind : 'dmg';
     const n = this._nums[this._numNext];
     this._numNext = (this._numNext + 1) % NUMBER_POOL;
     const now = performance.now();
+    // the text and its role: a word (translated) in `name`, a crit in `numL`, other numbers in `big`
+    const wordKey = hasOwn(NUMBER_TEXT, k) ? NUMBER_TEXT[k] : typeof text === 'string' && hasOwn(WORD_OF, text) ? WORD_OF[text] : null;
+    const str = wordKey ? t(`worldfx.${wordKey}`) : String(text ?? '');
+    /** @type {import('./layout/type.js').RoleId} */
+    const role = k === 'crit' && !wordKey ? 'numL' : wordKey || (str && !NUMERIC.test(str)) ? 'name' : 'big';
+    const pop = POP_KINDS.has(k);
+    const size = this._sizeK(role);
     // earlier numbers at the same anchor that are still young: stack above them
     let stack = 0;
     for (let i = 0; i < NUMBER_POOL; i++) {
@@ -463,23 +745,24 @@ export class WorldLabels {
     n.wx = x;
     n.wy = y;
     n.wz = z;
-    const sx = this._rng.range(-SCATTER, SCATTER);
-    const sy = this._rng.range(-SCATTER, SCATTER);
+    const px = this._px;
+    const sx = this._rng.range(-SCATTER, SCATTER) * px;
+    const sy = this._rng.range(-SCATTER, SCATTER) * px;
     if (stack === 0) {
       n.dx = sx;
       n.dy = sy;
     } else {
-      // one line (≈ the number's font size, --lu-fs-md × 1.2; a crit's is 1.5×) per earlier number
-      const line = (k === 'crit' ? 1.5 : 1.05) * 1.2 * Math.min(28, Math.max(14, 0.0112 * this._w));
-      n.dx = (stack % 2 ? STACK_SIDE : -STACK_SIDE) + sx * 0.25;
+      // one line per earlier number: the role's line box and its outline and drop (a pop's half again)
+      const line = (this._roleBox(role, size).L + 3 * px) * (pop ? 1.5 : 1);
+      n.dx = (stack % 2 ? STACK_SIDE : -STACK_SIDE) * px + sx * 0.25;
       n.dy = -stack * line + sy * 0.2;
     }
     n.end = now + NUMBER_MS;
     n.live = true;
-    n.em = k === 'crit' ? 1.8 : k === 'perfect' ? 1.35 : k === 'guard' ? 1.05 : 1.2;
-    n.pop = k === 'crit' || k === 'perfect';
-    const str = NUMBER_TEXT[k] ?? String(text ?? '');
+    n.pop = pop;
+    this._styleNumber(n, role);
     if (str !== n.str) { n.str = str; n.text.nodeValue = str; }
+    this._fitNumber(n);
     n.flip = !n.flip;
     n.el.className = `lu-num lu-num--${k} ${n.flip ? 'is-a' : 'is-b'}`;
     n.out = false;
@@ -498,8 +781,9 @@ export class WorldLabels {
 
   /**
    * Off-screen edge-arrow slot (0..7): `{ anchor(vec3, offsetY), set({ windup }), show(), hide() }`.
-   * The arrow sits on the viewport border (inset 24 px) on the line from the screen centre to the
-   * anchor and points at it; it hides itself while the anchor is inside that inset rectangle.
+   * The arrow sits on the viewport border (inset 12 art px) on the line from the screen centre to
+   * the anchor and points at it (the nearest of 8 octants); it hides itself while the anchor is
+   * inside that inset rectangle.
    * @param {number} slot
    */
   edge(slot) {
@@ -556,7 +840,6 @@ export class WorldLabels {
     const on = this._buildZones();
 
     const bars = this._bars;
-    const px = this._px;
     for (let i = 0; i < BAR_POOL; i++) {
       const b = bars[i];
       if (!b.on) continue;
@@ -564,24 +847,21 @@ export class WorldLabels {
       const vis = !!r && this._screen(r.x, r.y + b.oy, r.z);
       this._setOut(b, !vis);
       if (!vis) continue;
-      if (on) {
-        // the bar hangs above its anchor: 34 × 4 art px (an elite adds its name line), a pip 6 × 6
-        let hw = 17 * px + 1;
-        let up = 4 * px + 2;
-        if (b._pip) { hw = 3 * px + 1; up = 6 * px + 1; } else if (b._elite) {
-          const fs = Math.min(23, Math.max(12, 0.0092 * this._w));
-          hw = Math.max(hw, (b._name.length + (b._lv > 0 ? 5 : 0)) * 0.32 * fs + 2);
-          up += fs + 2 * px;
-        }
-        this._clear(this._sx, this._sy, hw, up, 2);
-      }
+      // the bar hangs above its anchor (its box: `_barBox`)
+      if (on) this._clear(this._sx, this._sy, b._bw, b._bu, b._bd);
       this._move(b, this._sx, this._sy);
     }
 
     const edges = this._edges;
+    let shownEdges = 0;
     for (let i = 0; i < EDGE_POOL; i++) {
       const e = edges[i];
-      if (e.on) this._placeEdge(e);
+      if (e.on && this._placeEdge(e)) shownEdges++;
+    }
+    if (shownEdges > 1) this._spreadEdges();
+    for (let i = 0; i < EDGE_POOL; i++) {
+      const e = edges[i];
+      if (e.on && !e.inside) this._moveEdge(e);
     }
 
     const alerts = this._alerts;
@@ -603,7 +883,9 @@ export class WorldLabels {
       const vis = this._screen(p.x, p.y + r.oy, p.z);
       this._setOut(r, !vis);
       if (vis) {
-        if (on) this._clear(this._sx, this._sy, 20 * px + 1, 20 * px + 1, 20 * px + 1);
+        // G's brackets reach 17 art px out from the heart (they step inward)
+        const half = 17 * this._px + 1;
+        if (on) this._clear(this._sx, this._sy, half, half, half);
         this._move(r, this._sx, this._sy);
       }
     }
@@ -648,12 +930,230 @@ export class WorldLabels {
 
   dispose() {
     this._ro?.disconnect();
+    this._offScale?.();
     this._disconnectPanels();
     this._panels = [];
     this.element.remove();
   }
 
   // ------------------------------------------------------------------------------------------
+
+  /**
+   * Follow an art scale (the root's, else the window's): one art px in CSS px (`_px`), one font px
+   * (`_fpx`), one device px (`_dpx`). Returns true when it changed.
+   * @param {import('./UiScale.js').ArtScale|null} s
+   */
+  _applyScale(s) {
+    const sc = s ?? artScale({ w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 });
+    const dpx = 1 / sc.dpr;
+    if (sc.cssPx === this._px && sc.cssFpx === this._fpx && dpx === this._dpx && this._scale) return false;
+    this._scale = sc;
+    this._px = sc.cssPx;
+    this._fpx = sc.cssFpx;
+    this._dpx = dpx;
+    this._roleBoxes.clear();
+    return true;
+  }
+
+  /** A length in CSS px rounded to whole device px. @param {number} v */
+  _snapPx(v) {
+    return Math.round(v / this._dpx) * this._dpx;
+  }
+
+  /**
+   * A role's box in CSS px at the current scale and language (cached until the scale changes), its
+   * text `k` times the role's size.
+   * @param {import('./layout/type.js').RoleId} role
+   * @param {number} [k]
+   * @returns {RoleBox}
+   */
+  _roleBox(role, k = 1) {
+    const key = k === 1 ? role : `${role}*${k}`;
+    let b = this._roleBoxes.get(key);
+    if (!b) {
+      const f = roles()[role];
+      const u = (f.u === 'fpx' ? this._fpx : this._px) * k;
+      b = { mid: this._snapPx(f.mid * u), L: f.L * u, ink: f.ink * u };
+      this._roleBoxes.set(key, b);
+    }
+    return b;
+  }
+
+  /**
+   * A number's size over its role's: a crit ('numL', Jersey 10 at one font pixel an art px) at
+   * twice the half-size font pixel — 1 at an even --px; ⁴⁄₃ at --px 3 (4 device px a font pixel, a
+   * 13⅓-art-px cap over the hit's 10, G's 4 : 3), ⁶⁄₅ at 5.
+   * @param {import('./layout/type.js').RoleId} role
+   */
+  _sizeK(role) {
+    const s = this._scale;
+    return role === 'numL' && s ? (2 * s.fpx) / s.px : 1;
+  }
+
+  /**
+   * Style a number's text in its role (once per role and size: pooled elements keep theirs).
+   * @param {NumberRec} n
+   * @param {import('./layout/type.js').RoleId} role
+   */
+  _styleNumber(n, role) {
+    const k = this._sizeK(role);
+    const sk = k === 1 ? role : `${role}*${k}`;
+    n.role = role;
+    n.k = k;
+    if (sk === n.sk) return;
+    n.sk = sk;
+    const ts = n.x$.style;
+    styleText(n.x$, role, { ol8: true });
+    if (k !== 1) {
+      // (a 'px' role at k: its font pixel is 2·--fpx, a whole number of device px)
+      const f = roles()[role];
+      const u = f.u === 'fpx' ? 'fpx' : 'px';
+      ts.fontSize = `calc(var(--${u}) * ${+(f.em * k).toFixed(4)})`;
+      ts.lineHeight = `calc(var(--${u}) * ${+(f.L * k).toFixed(4)})`;
+    }
+    // the pop's keyframes double the text's size (worldfx.css lu-pop-*)
+    ts.setProperty('--lu-fs', ts.fontSize);
+    ts.setProperty('--lu-lh', ts.lineHeight);
+  }
+
+  /**
+   * Place a number's text so its ink is centred on the `.lu-num` anchor, on whole device px: its
+   * measured half advance left, its ink centre up (the pop's keyframes read both).
+   * @param {NumberRec} n
+   */
+  _fitNumber(n) {
+    if (!n.role) return;
+    const rb = this._roleBox(n.role, n.k);
+    const hw = this._snapPx((measure(n.str, n.role) * this._px * n.k) / 2);
+    const s = n.t.style;
+    if (hw !== n.hw) {
+      n.hw = hw;
+      s.left = `${-hw}px`;
+      s.setProperty('--lu-hw', `${hw}px`);
+    }
+    if (rb.mid !== n.mid) {
+      n.mid = rb.mid;
+      s.top = `${-rb.mid}px`;
+      s.setProperty('--lu-mid', `${rb.mid}px`);
+    }
+    n.mb = rb.L - rb.mid;
+  }
+
+  /** Measure the live text again (a new scale, the fonts in). */
+  _refit() {
+    for (const n of this._nums) {
+      if (!n.role) continue;
+      this._styleNumber(n, n.role);
+      this._fitNumber(n);
+    }
+    for (const b of this._bars) {
+      if (b._elite) this._layoutName(b);
+      else this._barBox(b);
+    }
+  }
+
+  /**
+   * Style the name line's three parts in their roles (once: the language is the page's).
+   * @param {HTMLElement[]} parts "Lv", the level, the name
+   */
+  _styleNameParts(parts) {
+    const c = cjk();
+    styleText(parts[0], 'tiny', { ol: true, drop: true });
+    styleText(parts[1], 'num', { ol: true, drop: true });
+    // a CJK name (anti-aliased, its outline a font px) gets the numbers' art-px outline over the world
+    styleText(parts[2], c ? 'line' : 'small', c ? { ol8: true } : { ol: true, drop: true, track: 1 });
+  }
+
+  /**
+   * Lay out an elite's name line (on a change of its level, name or the scale): "Lv" + 2 + the level
+   * + 4 + the name, each part's ink centred on one line 3 art px over the ring's top, the line centred
+   * over the bar on whole art px; then its keep-out box.
+   * @param {BarSlot} b
+   */
+  _layoutName(b) {
+    const c = cjk();
+    const nameRole = c ? 'line' : 'small';
+    const track = c ? 0 : 1;
+    const hasLv = b._lv > 0;
+    const lvText = hasLv ? t('worldfx.lv') : '';
+    const lvNum = hasLv ? String(b._lv) : '';
+    const name = b._name ? fit(c ? b._name : UP(b._name), nameRole, NAME_MAX, track) : '';
+    const texts = [lvText, lvNum, name];
+    const roles = /** @type {import('./layout/type.js').RoleId[]} */ (['tiny', 'num', nameRole]);
+    const widths = [hasLv ? measure(lvText, 'tiny') : 0, hasLv ? measure(lvNum, 'num') : 0, name ? measure(name, nameRole, track) : 0];
+    const gaps = [hasLv ? 2 : 0, hasLv && name ? 4 : 0, 0];
+    const W = widths[0] + gaps[0] + widths[1] + gaps[1] + widths[2];
+    const px = this._px;
+    const left0 = -Math.round(W / 2);
+    // the line's ink centre: its tallest ink's bottom 3 art px over the ring's top (6 art px up)
+    let ink = 0;
+    for (let i = 0; i < 3; i++) if (texts[i]) ink = Math.max(ink, this._roleBox(roles[i]).ink);
+    const rc = -9 * px - ink / 2;
+    let top = Infinity;
+    let bottom = -Infinity;
+    const tops = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+      const rb = this._roleBox(roles[i]);
+      tops[i] = this._snapPx(rc - rb.mid);
+      if (!texts[i]) continue;
+      top = Math.min(top, tops[i]);
+      bottom = Math.max(bottom, tops[i] + rb.L);
+    }
+    if (!(top < bottom)) { top = rc; bottom = rc; }
+    const ns = b._nameEl.style;
+    ns.left = `${left0 * px}px`;
+    ns.top = `${top}px`;
+    ns.width = `${W * px}px`;
+    ns.height = `${bottom - top}px`;
+    let x = 0;
+    for (let i = 0; i < 3; i++) {
+      if (b._partText[i].nodeValue !== texts[i]) b._partText[i].nodeValue = texts[i];
+      const s = b._parts[i].style;
+      s.left = `${x * px}px`;
+      s.top = `${tops[i] - top}px`;
+      x += widths[i] + gaps[i];
+    }
+    b._nameW = W;
+    b._nameL = left0;
+    b._nameT = top;
+    this._barBox(b);
+    // a new name's font slices (Japanese, Chinese): measure again once they are in
+    if (name) {
+      const key = b._name;
+      const lv = b._lv;
+      currentFonts()?.ensure(name).then(() => {
+        if (b._elite && b._name === key && b._lv === lv && b._laidFor !== key) {
+          b._laidFor = key;
+          this._layoutName(b);
+        }
+      });
+    }
+  }
+
+  /**
+   * A bar slot's keep-out box (CSS px from its anchor): the 34 × 4 bar over the anchor; an elite's
+   * ring 2 art px round it and its name line over it; a pip's 7 × 7 ruby.
+   * @param {BarSlot} b
+   */
+  _barBox(b) {
+    const px = this._px;
+    if (b._pip) {
+      b._bw = 4 * px + 1;
+      b._bu = 7 * px + 1;
+      b._bd = 2;
+    } else if (b._elite) {
+      const nl = b._nameL;
+      const nw = b._nameW;
+      const nameHalf = nw > 0 ? Math.max(-nl, nl + nw) * px + px : 0;
+      b._bw = Math.max(19 * px, nameHalf) + 1;
+      b._bu = Math.max(6 * px, nw > 0 ? -b._nameT + px : 0) + 2;
+      b._bd = 2 * px + 2;
+    } else {
+      b._bw = 17 * px + 1;
+      b._bu = 4 * px + 2;
+      b._bd = 2;
+    }
+  }
 
   /** Clip coordinates of a world point with the cached view-projection matrix. */
   _clip(x, y, z) {
@@ -696,17 +1196,25 @@ export class WorldLabels {
     }
   }
 
+  /** @param {NumberRec} n */
   _placeNumber(n) {
     const vis = this._screen(n.wx, n.wy, n.wz);
     this._setOut(n, !vis);
     if (!vis) return;
     let x = this._sx + n.dx;
     let y = this._sy + n.dy;
+    // the text's box at every step of its motion: its line box round the ink centre (twice the size
+    // in a pop's first frames), the outline, the start 2 art px low, the 10 art px rise
+    const px = this._px;
+    const k = n.pop ? 2 : 1;
+    const hw = (n.hw || 0) * k + px + 2;
+    // the whole word on screen (an enemy at the screen's edge)
+    if (x - hw < 0) x = hw;
+    else if (x + hw > this._w) x = this._w - hw;
     if (this._panelOn) {
-      // centred text (Pixelify digits ≈ 0.9 em + the 2 px outline) that pops in (a crit from
-      // 1.9 ×) and rises 24 px as it fades
-      const f = Math.min(28, Math.max(14, 0.0112 * this._w)) * n.em;
-      this._clear(x, y, n.str.length * 0.5 * f + 4, f * 1.1 + 24, n.pop ? f : f * 0.7);
+      const up = Math.max(n.mid * k, n.mid + (NUMBER_RISE + 2) * px) + px + 2;
+      const down = Math.max(n.mb * k, n.mb + 2 * px) + 2 * px + 2;
+      this._clear(x, y, hw, up, down);
       x = this._sx;
       y = this._sy;
     }
@@ -718,15 +1226,15 @@ export class WorldLabels {
     const vis = this._screen(p.x, p.y + a.oy, p.z);
     this._setOut(a, !vis);
     if (!vis) return;
-    // the '!' pops up from 4 art px below its anchor (scale 0.4 → 1.2)
+    // the '!' (7 × 12 art px over its anchor) appears 3 art px low and hops 2 up
     if (this._panelOn) this._clear(this._sx, this._sy, 4.5 * this._px + 1, 15 * this._px, 4 * this._px + 1);
     this._move(a, this._sx, this._sy);
   }
 
   /**
    * Build this frame's keep-out zones from the shown panels (grown by PANEL_GAP; panels within
-   * ZONE_MERGE of each other merged when their union is compact, ZONE_MERGE_AREA). Returns the
-   * number of shown panels.
+   * ZONE_MERGE of each other merged when their union is compact, ZONE_MERGE_AREA, and neither is
+   * `solo`). Returns the number of shown panels.
    */
   _buildZones() {
     const P = this._panels;
@@ -738,8 +1246,9 @@ export class WorldLabels {
       p.on = p.has && (!p.shown || !!p.shown());
       if (!p.on) continue;
       on++;
-      if (n >= Z.length) Z.push({ l: 0, t: 0, r: 0, b: 0 });
+      if (n >= Z.length) Z.push({ l: 0, t: 0, r: 0, b: 0, solo: false });
       const z = Z[n++];
+      z.solo = p.solo;
       z.l = p.l - PANEL_GAP;
       z.t = p.t - PANEL_GAP;
       z.r = p.r + PANEL_GAP;
@@ -752,6 +1261,7 @@ export class WorldLabels {
         for (let b = a + 1; b < n; b++) {
           const A = Z[a];
           const B = Z[b];
+          if (A.solo || B.solo) continue;
           const gapX = Math.max(A.l, B.l) - Math.min(A.r, B.r);
           const gapY = Math.max(A.t, B.t) - Math.min(A.b, B.b);
           if (!((gapX < 0 && gapY < ZONE_MERGE) || (gapY < 0 && gapX < ZONE_MERGE))) continue;
@@ -827,8 +1337,11 @@ export class WorldLabels {
   _measurePanels() {
     const root = this.root.getBoundingClientRect();
     for (const p of this._panels) {
-      const r = p.el.getBoundingClientRect();
-      p.has = r.width > 0 && r.height > 0 && p.el.isConnected;
+      const el = p.boxOf ? p.boxOf() : p.el;
+      const r = el ? el.getBoundingClientRect() : null;
+      // a panel CSS hides (the legend under the boss bar) leaves its place to the labels
+      p.has = !!r && r.width > 0 && r.height > 0 && p.el.isConnected && getComputedStyle(p.el).visibility !== 'hidden';
+      if (!r) continue;
       p.l = r.left - root.left;
       p.t = r.top - root.top;
       p.r = r.right - root.left;
@@ -863,16 +1376,23 @@ export class WorldLabels {
     this._zoneN = 0;
   }
 
+  /**
+   * An edge arrow's place on the inset border (into `e.tx`, `e.ty`; written by `_moveEdge`) and its
+   * octant. Returns whether it shows (its enemy is off screen).
+   * @param {EdgeSlot} e
+   * @returns {boolean}
+   */
   _placeEdge(e) {
     const p = e.ref;
-    if (!p) { this._setInside(e, true); return; }
+    if (!p) { this._setInside(e, true); return false; }
     this._clip(p.x, p.y + e.oy, p.z);
     const W = this._w;
     const H = this._h;
     const cx = W * 0.5;
     const cy = H * 0.5;
-    const hw = Math.max(1, cx - EDGE_INSET);
-    const hh = Math.max(1, cy - EDGE_INSET);
+    const inset = EDGE_INSET * this._px;
+    const hw = Math.max(1, cx - inset);
+    const hh = Math.max(1, cy - inset);
     const w = this._cw;
     let dx;
     let dy;
@@ -880,7 +1400,7 @@ export class WorldLabels {
       dx = (this._cx / w) * cx;
       dy = -(this._cy / w) * cy;
       // on screen (inside the inset rectangle): no arrow
-      if (Math.abs(dx) <= hw && Math.abs(dy) <= hh) { this._setInside(e, true); return; }
+      if (Math.abs(dx) <= hw && Math.abs(dy) <= hh) { this._setInside(e, true); return false; }
     } else {
       // behind the camera: the clip x / y keep the lateral direction (symmetric frustum)
       dx = this._cx * cx;
@@ -889,15 +1409,73 @@ export class WorldLabels {
     }
     this._setInside(e, false);
     let t = Math.min(hw / (Math.abs(dx) || 1e-9), hh / (Math.abs(dy) || 1e-9));
-    if (this._panelOn) t = this._edgeClear(cx, cy, dx, dy, t, 9 * this._px + 1);
-    const x = Math.round(cx + dx * t);
-    const y = Math.round(cy + dy * t);
-    const a = Math.round((Math.atan2(dy, dx) * 180) / Math.PI);
-    if (x !== e.x || y !== e.y || a !== e.a) {
+    // the sprite reaches 8.5 art px from its centre, and nudges 1 more toward the enemy
+    if (this._panelOn) t = this._edgeClear(cx, cy, dx, dy, t, 10 * this._px + 1);
+    e.tx = Math.round(cx + dx * t);
+    e.ty = Math.round(cy + dy * t);
+    // along the top or bottom border (else a side): the way it gives room to a neighbour
+    e.horiz = Math.abs(dy) * hw >= Math.abs(dx) * hh;
+    // the nearest of the 8 pre-drawn octants (screen y down: 1 is south-east)
+    const o = ((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8;
+    if (o !== e.o) {
+      e.o = o;
+      const s = e.el.style;
+      s.setProperty('--o', String(o));
+      s.setProperty('--nx', String(OCT_DIR[o][0]));
+      s.setProperty('--ny', String(OCT_DIR[o][1]));
+    }
+    return true;
+  }
+
+  /** @param {EdgeSlot} e */
+  _moveEdge(e) {
+    const x = Math.round(e.tx);
+    const y = Math.round(e.ty);
+    if (x !== e.x || y !== e.y) {
       e.x = x;
       e.y = y;
-      e.a = a;
-      e.el.style.transform = `translate3d(${x}px,${y}px,0) rotate(${a}deg)`;
+      e.el.style.transform = `translate3d(${x}px,${y}px,0)`;
+    }
+  }
+
+  /**
+   * Keep the shown edge arrows EDGE_SPACE art px apart: two whose cells come closer along both axes
+   * are pushed apart along their border (half each; a few passes for three or more), staying within
+   * the inset border.
+   */
+  _spreadEdges() {
+    const E = this._edges;
+    const D = Math.ceil(EDGE_SPACE * this._px);
+    const inset = Math.round(EDGE_INSET * this._px);
+    const W = Math.round(this._w);
+    const H = Math.round(this._h);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved = false;
+      for (let i = 0; i < EDGE_POOL; i++) {
+        const a = E[i];
+        if (!a.on || a.inside) continue;
+        for (let j = i + 1; j < EDGE_POOL; j++) {
+          const b = E[j];
+          if (!b.on || b.inside) continue;
+          const ddx = b.tx - a.tx;
+          const ddy = b.ty - a.ty;
+          if (Math.abs(ddx) >= D || Math.abs(ddy) >= D) continue;
+          // along the border they share (a corner pair: the axis they are further apart on)
+          const horiz = a.horiz === b.horiz ? a.horiz : Math.abs(ddx) >= Math.abs(ddy);
+          const d = horiz ? ddx : ddy;
+          const sgn = d > 0 || (d === 0 && i < j) ? 1 : -1;
+          const push = Math.ceil((D - Math.abs(d)) / 2);
+          if (horiz) {
+            a.tx = Math.min(W - inset, Math.max(inset, a.tx - sgn * push));
+            b.tx = Math.min(W - inset, Math.max(inset, b.tx + sgn * push));
+          } else {
+            a.ty = Math.min(H - inset, Math.max(inset, a.ty - sgn * push));
+            b.ty = Math.min(H - inset, Math.max(inset, b.ty + sgn * push));
+          }
+          moved = true;
+        }
+      }
+      if (!moved) break;
     }
   }
 
@@ -953,14 +1531,5 @@ export class WorldLabels {
     for (const e of this._edges) e.x = NaN;
     for (const a of this._alerts) a.x = NaN;
     this._reticle.x = NaN;
-  }
-
-  _applyScale() {
-    // whole-number pixel-art scale (bars, pips, alert, reticle stay crisp and even)
-    const px = Math.max(1, Math.round(this._h / 450));
-    if (px !== this._px) {
-      this._px = px;
-      this.element.style.setProperty('--lu-px', String(px));
-    }
   }
 }

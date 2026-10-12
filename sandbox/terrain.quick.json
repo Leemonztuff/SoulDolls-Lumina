@@ -1,7 +1,7 @@
 [
-  { "eval": "window.__terrain.setClock(3.0); window.__terrain.setView('hd2d'); 'ok'" },
+  { "eval": "window.__terrain.setClock(3.0); window.__terrain.setView('diorama'); 'ok'" },
   { "wait": 300 },
-  { "shot": "hd2d_day" },
+  { "shot": "diorama_day" },
   { "eval": "window.__terrain.setView('cliffs'); 'ok'" },
   { "wait": 300 },
   { "shot": "cliffs_day" },

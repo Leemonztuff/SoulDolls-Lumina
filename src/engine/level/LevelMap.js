@@ -5,7 +5,7 @@ import { ownValue } from '../utils/own.js';
 /** @import { Level } from './types.js' */
 
 /**
- * LevelMap — a painted top-down map of a Lumina level (for the HUD minimap and the world map):
+ * LevelMap — a painted top-down map of a Luminati level (for the HUD minimap and the world map):
  * tile colours from TILE_TYPES (custom legend chars by their top texture / water flag), relief
  * shading by height (lit from the north-west, darker cliff faces on the south / east drops),
  * water with light shores, the blocked forest as tree crowns, then the level's objects: house
@@ -16,6 +16,13 @@ import { ownValue } from '../utils/own.js';
  * Rendered once into a canvas (the level data only — no scene, no WebGL); the minimap then just
  * pans / scales that image.
  */
+
+/**
+ * The object types `renderLevelMap` paints (keep in step with the object passes at its end): a
+ * live story prop of another type coming or going leaves the painted map as it is (World.applyStory
+ * → `mapChanged`).
+ */
+export const LEVEL_MAP_TYPES = new Set(['fence', 'bridge', 'tree', 'rock', 'haystack', 'house', 'windmill', 'marketStall', 'well', 'campfire', 'chest', 'waystone']);
 
 const ROOF_COLORS = { roof_red: '#a4493b', roof_blue: '#4a638c', roof_thatch: '#b89452', roof_slate: '#5b606f' };
 const TOP_COLORS = Object.fromEntries(TILE_TYPES.filter((t) => t.def.top && !t.def.water).map((t) => [t.def.top, t.color]));
@@ -37,7 +44,7 @@ const hash = (x, y) => {
 };
 
 /**
- * @param {Level} level a normalised Lumina level
+ * @param {Level} level a normalised Luminati level
  * @param {{ pixelsPerTile?: number }} [opts] pixelsPerTile: default from the level size
  *   (≈ 768 px for the longer side, 4–12 px per tile)
  * @returns {{ canvas: HTMLCanvasElement, pixelsPerTile: number, width: number, depth: number }}

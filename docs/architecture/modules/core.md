@@ -1,8 +1,8 @@
 # Core module: Engine, Input, CameraRig, EventEmitter, constants, math
 
-> **Purpose.** This is the reference for the foundation of every Lumina front end: the render
+> **Purpose.** This is the reference for the foundation of every Luminati front end: the render
 > loop with its ordered systems (`Engine`), keyboard, mouse and gamepad input with named actions
-> (`Input`), the HD-2D diorama follow camera (`CameraRig`), the tiny event bus (`EventEmitter`),
+> (`Input`), the diorama follow camera (`CameraRig`), the tiny event bus (`EventEmitter`),
 > the engine-wide constants and the seeded math, noise and randomness helpers. It covers every
 > public member, its defaults and its behaviour at the edges, and the order things run in each
 > frame.
@@ -36,7 +36,7 @@
 | `EventEmitter` | `core/EventEmitter.js` | `on / off / once / emit` with copy-on-write listener lists. `emit` allocates nothing for up to 4 arguments. |
 | `PPU, TILE_SIZE, LEVEL_HEIGHT, DIRECTIONS, RENDER_ORDER` | `constants.js` | World units and conventions. |
 | `clamp … bayer4` (17 helpers) | `utils/math.js` | Scalar helpers, frame-rate independent damping, the seeded PRNG (`mulberry32`, `RNG`), a lattice hash, value noise, fBm and 4×4 Bayer dithering. |
-| `isOwnKey`, `ownValue`, `showValue`, `toText`, `toNumber` | `utils/own.js` | Own-key lookups for names from level data, and conversions that never throw ([§7.1](#71-names-and-values-from-level-data-srcengineutilsownjs)). |
+| `isOwnKey`, `ownValue`, `showValue`, `toText`, `toNumber`, `hasUnconvertible`, `stripUnconvertible`, `ownColor` | `utils/own.js` | Own-key lookups for names from level data, conversions that never throw, the load's sweep of unconvertible values and the colour-name guard for three.js ([§7.1](#71-names-and-values-from-level-data-srcengineutilsownjs)). |
 
 All of them except `utils/own.js` are re-exported by [`src/engine/index.js`](../../../src/engine/index.js); import `own.js` by path.
 
@@ -81,7 +81,7 @@ What the constructor sets up:
   `toneMappingExposure = 1` and `outputColorSpace = SRGBColorSpace`. Anti-aliasing comes from
   PostFX's MSAA scene target, and tone mapping is applied once by PostFX's `OutputPass`. See
   [render.md](render.md).
-- **Canvas:** the class is `lumina-canvas`, with `display: block`, `touch-action: none`,
+- **Canvas:** the class is `luminati-canvas`, with `display: block`, `touch-action: none`,
   `outline: none` and `tabIndex = -1`. It is appended to the container.
 - **Camera:** `PerspectiveCamera(28, 1, 0.5, 400)` placed at `(0, 12.7, 20.4)` looking at the
   origin. Its aspect is set by the first (forced) resize at the end of the constructor. A
@@ -156,7 +156,7 @@ flowchart LR
 - Frame-event listeners are called as `fn.call(engine.events, dt, t)`.
 
 How the demo game uses the order for every level (`Game.init` in
-[`src/demo/Game.js`](../../../src/demo/Game.js); see [GAME.md](../GAME.md)):
+[`src/game/Game.js`](../../../src/game/Game.js); see [GAME.md](../GAME.md)):
 `LightingSystem` at order −10 (clock and palette in `update`, shadow frustum in `lateUpdate`),
 then a `game` system at 0 (player, NPCs, `CameraRig.update`, `SpriteManager.update`, particles …),
 then `AudioSystem` at 20. The `'lateUpdate'` event drives `ui.update`, the render fn does
@@ -181,7 +181,7 @@ integers ≥ 1 and computes the pixel ratio. When something changed (or `force`)
 `renderer.setSize(w, h, false)`, updates `camera.aspect` and emits `'resize'`.
 
 > **Gotcha:** in full-window mode a visible page scrollbar stretches the canvas by the scrollbar
-> width. Keep `overflow: hidden` on full-window pages, as `index.html` does.
+> width. Keep `overflow: hidden` on full-window pages, as `game.html` does.
 
 ---
 
@@ -282,6 +282,8 @@ digits and mouse clicks stay unbound and not `preventDefault`ed.
 | Member | Description |
 | --- | --- |
 | `addBindings(keyboard = {}, pad = {})` | For every action key, replaces that action's code list with a copy of the given one (an empty list unbinds it, e.g. `zoomIn: []` for the pad). Other actions are untouched, and new action names such as `skillMod` or `photoPad` are allowed. The bound-code cache is invalidated, so newly bound keys are `preventDefault`ed from the next key event on (never with Ctrl, Alt or Meta). |
+| `saveBindings()` → `{ keyboard, pad }` / `restoreBindings(saved)` | A copy of every binding, and putting such a copy back (actions added since are removed; the bound-code cache is invalidated). `CombatSystem` saves before `addBindings` and restores on dispose, so a campaign that leaves a combat level has the peaceful bindings again (additive, 2026-10-07). |
+| `disableMouseButtons()` | Stops reporting mouse buttons (removes `enableMouseButtons`' listeners, releases held mouse codes). Additive, 2026-10-07. |
 | `enableMouseButtons(target)` | Reports mouse buttons as the codes `'Mouse0'` (left), `'Mouse1'` (middle) and `'Mouse2'` (right) in the key sets, so they work with `isDown`, `wasPressed`, `wasReleased` and actions (`attack: ['KeyJ', 'Mouse0']`). **A press counts only when the pointer event's target is `target`** (the renderer canvas), so clicks on the dialog, choices, title screen, lil-gui or death screen never produce the codes. **A release counts anywhere** (window listeners, capture phase), and `reset()` on blur or a hidden tab releases every held button, so a button can't stick. A second button pressed while one is held (reported as `pointermove` with `button ≥ 0`) is handled the same way. The context menu and the middle-button autoscroll are suppressed on `target` only. Each press sets `lastDevice = 'mouse'`. Calling it again moves the listeners; `dispose()` removes them. |
 
 Mouse aim is not part of `Input`: combat intersects the camera ray through `input.pointer` with
@@ -312,7 +314,7 @@ already applies the initial pose.
 | `pitch` | `32` | Initial pitch, clamped to `[minPitch, maxPitch]`. |
 | `yaw` | `0` | Initial yaw. It also becomes `yawCenter`, the centre of the allowed orbit arc. |
 | `distance` | `24` | Initial distance, clamped to `[minDistance, maxDistance]`. |
-| `minDistance` / `maxDistance` | `14` / `36` | Zoom range. The demo uses 18 / 42 with distance 30 ([`src/demo/config.js`](../../../src/demo/config.js) `CAMERA`). |
+| `minDistance` / `maxDistance` | `14` / `36` | Zoom range. The demo uses 18 / 42 with distance 30 ([`src/game/config.js`](../../../src/game/config.js) `CAMERA`). |
 | `fov` | `28` | Always applied: without the option, a camera whose fov isn't 28 is reset to 28. |
 | `followLambda` | `5` (1/s) | XZ follow smoothing. |
 | `followLambdaY` | `followLambda × 0.7` | Vertical follow smoothing, softer so stairs don't bounce the view. |
@@ -382,7 +384,7 @@ error logs).
 import * as THREE from 'three';
 import { Engine, CameraRig } from './engine/index.js';
 
-const WALK_SPEED = 3.2, RUN_SPEED = 5.6;              // the demo player's speeds (src/demo/Player.js)
+const WALK_SPEED = 3.2, RUN_SPEED = 5.6;              // the demo player's speeds (src/game/Player.js)
 const engine = new Engine({ container: document.getElementById('app') });
 const rig = new CameraRig(engine.camera, { distance: 30, minDistance: 18, maxDistance: 42 });
 rig.bounds = { minX: 0, maxX: 64, minZ: 0, maxZ: 64 };
@@ -478,11 +480,14 @@ barrel.
 | `showValue` | `(v) → string` | Text of any value for a message: a string as it is, anything else as JSON (`5`, `null`, `["house"]`, `{"toString":1}`). Never throws; strings, numbers, booleans, `null` and `undefined` read as `${v}` would. |
 | `toText` | `(v, fallback) → string` | `String(v)`, or `fallback` when `String()` throws. |
 | `toNumber` | `(v) → number` | `Number(v)`, or `NaN` when `Number()` throws. |
+| `hasUnconvertible` | `(value) → boolean` | Does `value` hold, itself or anywhere inside (depth 8), a value `String()` cannot convert? |
+| `stripUnconvertible` | `(value) → value` | In place: deletes every such value under an object key and turns such an array element into `null`; anything `String()` converts stays as it is. `normalizeObject` runs it on its copy of every object, `normalizeLevel` on legend entries, `environment` and `water` that need it (KNOWN_ISSUES LVL-18). Load-time code. |
+| `ownColor` | `(value, names) → value \| undefined` | A colour from level data for three.js: `undefined` (after a warning, once per name) for a string three.js's `Color` would resolve through `Object.prototype` — `"constructor"`, `"__proto__"` (lower-cased), which give black silently — else `value` unchanged. Pass `THREE.Color.NAMES` as `names`. Used by `sanitizeLightDescriptor` (the light then takes the default #ffb46b), `Particles` (white, as for any unknown name) and the editor's light bulbs (LVL-19). |
 
 `String()`, `Number()`, template literals and comparisons throw `Cannot convert object to
 primitive value` on a JSON object with its own `toString` key (`{"toString": 1}`): `toText` /
 `toNumber` give the old result for every value that converted before, so load-time code can use
-them without changing any valid file. Mutable dictionaries keyed by level strings are
+them without changing any valid file; values the load keeps go through `stripUnconvertible`. Mutable dictionaries keyed by level strings are
 null-prototype objects (`Object.create(null)`: `Game.inventory`, `AudioSystem._lastSfx`) or `Map`s.
 
 ---
@@ -527,34 +532,33 @@ null-prototype objects (`Object.create(null)`: `Game.inventory`, `AudioSystem._l
 - **WebGL context loss:** the Engine only logs and emits `contextlost` / `contextrestored`.
   Rebuilding GPU state is up to the front end; the editor's `Viewport3D` does it.
 
-## 10. History and decisions
+## 10. Design notes
 
-- **Phase 1 build** (workflow "lumina-build-modules": a core + audio builder, then an
-  independent auditor). Every ARCHITECTURE §4.1 member exists with the specified names and
-  defaults. The rest are additive extras. Deliberate deviations and interpretations:
+- **Core conventions.** The public interface follows ARCHITECTURE §4.1, with the additive
+  extensions described above. Deliberate deviations and interpretations:
   - `PCFShadowMap` instead of the contract's `PCFSoftShadowMap`. r186 removed PCFSoft and warns
     on every page. `LightingSystem` makes the same switch.
   - `CameraRig.name = 'CameraRig'` for readable error logs.
   - The ±60° yaw limit is measured around the *initial* yaw. Wheel down zooms out. `camLeft`
     decreases yaw. `lookAhead` is in world units, reached at 4 u/s.
-- **Audit fixes** (Phase 1):
+- **Audit fixes**:
   - The first `start()` forces a `'resize'` emit. Before, PostFX and UI registered after
     construction never received the initial size.
   - A throwing `'dispose'` listener no longer aborts `dispose()`.
   - A mid-frame dispose returns before rendering.
   - The wheel no longer accumulates while `Input.enabled` is false.
-- **Phase 2 (Emberfall review):** removing `CameraRig`'s remaining small allocations was judged
+- **Allocation budget:** removing `CameraRig`'s remaining small allocations was judged
   low priority and not done (the heap is stable and GC doesn't show in profiles).
-- **Phase 3 (level editor fix-and-verify workflow):** `Engine._resize` calls `setPixelRatio` only
+- **Editor resizing:** `Engine._resize` calls `setPixelRatio` only
   when the ratio changes (one buffer reallocation per resize instead of two), and
   `resizeThrottleMs` was added. The editor sets it to 100 ms while a splitter is dragged, with a
   final resize on release: 17 `setSize` calls per drag instead of 132, and no hitch over 51 ms
   (before: up to 296 ms).
-- **Phase 4 (Starfall Vale):** the `map` action was added (KeyN, Tab, GamepadBack), and gamepad
+- **Map controls:** the `map` action was added (KeyN, Tab, GamepadBack), and gamepad
   photo mode moved from Back to the right-stick click. This intentionally changed an existing
-  pad binding; revert it in `DEFAULT_PAD_BINDINGS` if needed. (The core section of
+  pad binding; the current defaults are in `DEFAULT_PAD_BINDINGS`. (The core section of
   [MODULE_NOTES.md](../../contracts/MODULE_NOTES.md) still lists the old "Back = photo".)
-- **Combat (fx-audio-input package, [COMBAT.md §5.3](../../contracts/COMBAT.md)):** all additive
+- **Combat ( [COMBAT.md §5.3](../../contracts/COMBAT.md)):** all additive
   and opt-in — `Input.addBindings`, `Input.enableMouseButtons` (the `Mouse0`–`Mouse2` codes),
   `Input.lastDevice` and `CameraRig.stickZoom`. With their defaults nothing changes on peaceful
   levels (no listeners, no bound codes, `stickZoom = 0`).
@@ -565,7 +569,6 @@ null-prototype objects (`Object.create(null)`: `Game.inventory`, `AudioSystem._l
   the engine behaves exactly as before (an Emberfall fingerprint with the new `Engine.js` equals
   one with the old). The URL flag counts only with `?autostart` or `?debug` (a review finding: a
   stray `?fixedstep` froze any page). See [COMBAT.md §27.18](../../contracts/COMBAT.md#2718-fixed-step-bot-revision-5)
-  and [ADR-043](../../history/DECISIONS.md#adr-043--a-fixed-step-mode-for-the-play-through-bot).
+  and [Fixed-step automation](../../specs/AUTOMATION_API.md).
 
-Project-wide history: [PROJECT_HISTORY.md](../../history/PROJECT_HISTORY.md) ·
-[DECISIONS.md](../../history/DECISIONS.md).
+See the [architecture overview](../OVERVIEW.md) for the current module relationships.

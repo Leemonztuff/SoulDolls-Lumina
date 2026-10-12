@@ -204,7 +204,7 @@ export function buildWaystone(f, x, y, z, opts = {}) {
   // ---- per-instance emissive material (crystal + runes): a clone of a library material shares its
   // program and textures; only the colours are its own ----
   const mat = f.textures.material('plaster', { vertexColors: true }).clone();
-  mat.name = 'lumina:waystone-crystal';
+  mat.name = 'luminati:waystone-crystal';
   mat.color.set('#6aa6b5');
   mat.emissive = new THREE.Color(WAYSTONE_COLORS.idle);
   mat.emissiveIntensity = 0.9;

@@ -1,7 +1,7 @@
 [
   { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.saveCombatFixture())" },
-  { "goto": "index.html?level=local:combat-fixture&autostart=1" },
-  { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.ready()).then(() => window.__lumina.loadMs)" },
+  { "goto": "game.html?level=local:combat-fixture&autostart=1" },
+  { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.ready()).then(() => window.__luminati.loadMs)" },
   { "wait": 1000 },
   { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.tests.boss()).then((r) => JSON.stringify(r))" },
   { "shot": "01_boss_defeated" },

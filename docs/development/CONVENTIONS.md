@@ -1,6 +1,6 @@
 # Code conventions
 
-> **Purpose.** The conventions the Lumina code actually follows — module structure, naming,
+> **Purpose.** The conventions the Luminati code actually follows — module structure, naming,
 > JSDoc and the type check, determinism, disposal, allocation-free frames, units and axes, colour
 > spaces, texture creation, shader patching in three r186, shared uniforms, error handling,
 > contract changes, UI theming and documentation. Each rule is taken from the code and the binding
@@ -16,7 +16,7 @@
 > [`src/engine/render/GlobalUniforms.js`](../../src/engine/render/GlobalUniforms.js),
 > [`src/engine/pixel/PixelCanvas.js`](../../src/engine/pixel/PixelCanvas.js), and the patterns in
 > [`src/engine/world/TileMap.js`](../../src/engine/world/TileMap.js) (`_patchMaterial`),
-> [`src/demo/SnowCover.js`](../../src/demo/SnowCover.js) (`addSnowCover`),
+> [`src/game/SnowCover.js`](../../src/game/SnowCover.js) (`addSnowCover`),
 > [`src/engine/lighting/LightPool.js`](../../src/engine/lighting/LightPool.js); for the type
 > check, [`tsconfig.json`](../../tsconfig.json), [`tools/tsconfig.json`](../../tools/tsconfig.json),
 > [`tools/typecheck.mjs`](../../tools/typecheck.mjs) and the `types.d.ts` files named in
@@ -24,7 +24,7 @@
 >
 > **Related:** [contracts/README.md](../contracts/README.md) (how to change a contract) ·
 > [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) · [TESTING_AND_VERIFICATION.md](TESTING_AND_VERIFICATION.md) ·
-> [DECISIONS.md](../history/DECISIONS.md) · [architecture/RENDER_PIPELINE.md](../architecture/RENDER_PIPELINE.md) ·
+> [architecture/RENDER_PIPELINE.md](../architecture/RENDER_PIPELINE.md) ·
 > [architecture/modules/](../architecture/modules/README.md)
 
 ---
@@ -33,31 +33,34 @@
 
 - **Plain JavaScript ES modules, type-checked through JSDoc.** No `.ts` source files, no
   framework, no bundler-specific syntax apart from Vite's `import.meta.glob`,
-  `new URL(…, import.meta.url)` for workers, and one guarded `import.meta.env?.BASE_URL`
-  (`LevelStorage.loadProjectLevel`; the `?.` keeps the module usable from Node). The JSDoc types
+  `new URL(…, import.meta.url)` for workers, and the guarded `import.meta.env?.BASE_URL` that every
+  URL of the site's files and of the level API starts with (`LevelStorage`, `CampaignStorage`,
+  `ContentText`, the editor's story context; the `?.` keeps those modules usable from Node). Never a
+  path from the site root (`/levels/…`): the site may live under a sub-path
+  ([GETTING_STARTED §5](../user/GETTING_STARTED.md#5-build-and-deploy)). The JSDoc types
   are checked by the TypeScript compiler (`tsc` with `checkJs`, `npm run typecheck`,
-  [§3.1](#31-the-type-check)); it only checks — Vite builds the same bytes with or without it
-  ([ADR-044](../history/DECISIONS.md#adr-044--jsdoc-types-checked-by-tsc-instead-of-a-typescript-conversion)).
+  [§3.1](#31-the-type-check)); it only checks — Vite builds the same bytes with or without it.
   Declarations the JSDoc cannot express live in **type-only `.d.ts` files** that no bundle
   includes: a `types.d.ts` in the folders that need one (contract types, module augmentation) and
   [`src/globals.d.ts`](../../src/globals.d.ts) (the `window.__*` hooks). There is no linter or
   formatter; match the surrounding style (2-space indent, single quotes, semicolons, trailing
-  commas in multi-line literals; comments wrapped near 100 characters, and 97 % of code lines
+  commas in multi-line literals; comments wrapped near 100 characters, aim for code lines
   under 120).
 - **three.js imports:** `import * as THREE from 'three'`; add-ons from `'three/addons/…'`
   (for example `three/addons/postprocessing/UnrealBloomPass.js`,
   `three/addons/utils/BufferGeometryUtils.js`).
 - **Relative imports with the `.js` extension** (`'../utils/math.js'`). Node scripts in `tools/`
   import the same engine modules (`LevelFormat.js`, `ObjectCatalog.js`, `math.js`,
-  `props/SmallProps.js`), so modules they use must not touch `window` or `document` at import time.
+  `combat/defs.js`), so modules they use must not touch `window` or `document` at import time.
 - **The public engine API is the barrel** [`src/engine/index.js`](../../src/engine/index.js). Add
-  new public exports there, in the section of their module. Demo and editor code may import from
+  new public exports there, in the section of their module. Game and editor code may import from
   the barrel or from a module file directly (both are used).
 - **No side effects on import** (ARCHITECTURE §2). The only exception is CSS: the modules in
-  `src/engine/ui/` import `./ui.css` (and `UI.js` also the `@fontsource` font CSS), and the editor
+  `src/engine/ui/` import their stylesheets (`ui.css`, `layout/base.css`, their own), and the editor
   entry `src/editor/main.js` imports `editor.css` and one Cinzel weight. Apart from the two entry
-  points (`src/main.js`, `src/editor/main.js`), no module touches the DOM, creates WebGL resources
-  or sets globals at import time (module-level scratch vectors are fine).
+  points (`src/main.js` of `game.html`, `src/editor/main.js` of `editor.html`; the launcher
+  `index.html` has no script), no module touches the DOM, creates WebGL resources or sets globals
+  at import time (module-level scratch vectors are fine).
 - **Workers:** `new Worker(new URL('./shoreWorker.js', import.meta.url), { type: 'module' })`
   (see [`Water.js`](../../src/engine/world/Water.js) and
   [`TerrainPreview.js`](../../src/editor/viewport3d/TerrainPreview.js)). Keep the worker's logic a pure
@@ -76,15 +79,17 @@
 | Private members | leading underscore | `_patchMaterial`, `_runJobs`, `this._tmpTint` |
 | Module-level scratch objects | leading underscore, created once | `const _v = new THREE.Vector3();` |
 | Shader uniforms | `u` + PascalCase | `uTime`, `uSunDirection`, `uSnowCover`, `uLmBounce` |
-| Texture / material names | `lumina:<name>` | `lumina:grass`, `lumina:grass:normal` |
-| Program cache keys | `lumina-<feature>[-variant][-vN]` (demo-only materials may use their own prefix) | `lumina-tilemap-var-decal`, `lumina-sprite3d-lit-v1`, `lumina-wind-depth-bb`; `emberfall-player-silhouette-v2` (`src/demo/Player.js`) |
+| Texture / material names | `luminati:<name>` | `luminati:grass`, `luminati:grass:normal` |
+| Program cache keys | `luminati-<feature>[-variant][-vN]` (game-only materials may use their own prefix) | `luminati-tilemap-var-decal`, `luminati-sprite3d-lit-v1`, `luminati-wind-depth-bb`; `emberfall-player-silhouette-v2` (`src/game/Player.js`) |
+| Browser storage keys | `luminati.<area>[.<name>]` in `localStorage` ([LEVEL_STORAGE_API.md §3](../specs/LEVEL_STORAGE_API.md#3-browser-storage-localstorage)) | `luminati.level.<slot>`, `luminati.campaign.<name>`, `luminati.editor.prefs`, `luminati.lang` |
+| File-format ids | `luminati-<kind>` in a document's `format` (a `<NAME>_FORMAT` constant beside its reader) | `luminati-level`, `luminati-campaign`, `luminati-story`, `luminati-i18n`, `luminati-objects` (the editor clipboard) |
 | Engine UI CSS classes and tokens | `lu-` prefix | `.lu-root`, `.lu-worldmap__label--compact`, `--lu-gold` |
 | Editor CSS classes and tokens | `le-` prefix | `.le-dialog`, `.le-map2d-canvas`, `--le-bg1` |
-| Test hooks | `window.__<name>` | `__game`, `__editor`, `__lumina`, `__terrain`, `__vp` |
-| Console messages | `[Module]` prefix | `[Lumina]`, `[Engine]`, `[Viewport3D]`, `[editor]`, `[TileMap]`, `[AudioSystem]`, `[TextureLibrary]` |
+| Test hooks | `window.__<name>` | `__game`, `__editor`, `__luminati`, `__terrain`, `__vp` |
+| Console messages | `[Module]` prefix | `[Luminati]`, `[Engine]`, `[Viewport3D]`, `[editor]`, `[TileMap]`, `[AudioSystem]`, `[TextureLibrary]` |
 | Sandbox files | `sandbox/<module>.html` + `.js`, scripts `sandbox/<module>[.<suite>].json` or `.actions.json` | `terrain.html`, `terrain.quick.json`, `core.actions.json` |
 | Typedefs | PascalCase, named after what they describe, declared next to the code that produces the value | `PropResult` (`Props.js`), `GameHooks` (`Game.js`), `PointerEv` (`tools/index.js`), `LightKeyframe`, `TileMapInput` |
-| Type-only files | `types.d.ts` in the folder whose modules it types; never `Foo.d.ts` beside `Foo.js` (it would shadow the module); `Window` members in `src/globals.d.ts` | `src/engine/level/types.d.ts`, `src/demo/combat/types.d.ts`, `src/engine/core/types.d.ts` |
+| Type-only files | `types.d.ts` in the folder whose modules it types; never `Foo.d.ts` beside `Foo.js` (it would shadow the module); `Window` members in `src/globals.d.ts` | `src/engine/level/types.d.ts`, `src/game/combat/types.d.ts`, `src/engine/core/types.d.ts` |
 
 ## 3. Comments and JSDoc
 
@@ -105,8 +110,9 @@
   ```
 - **Shader code** lives in template literals tagged with `/* glsl */` so editors highlight it.
 - **Say why, not what.** Comments in this code base usually record a decision or a measured
-  trade-off (`Game.init`: "64 taps is plenty for this blur radius (96 costs ~0.35 ms more at 1080p
-  for no visible gain)"), which is what a later reader needs before changing it. Keep that habit.
+  trade-off (`Game.init`: "64 taps is plenty for this blur radius (96 cost 0.06–0.26 ms more at
+  1080p … for no visible gain)"), which is what a later reader needs before changing it. Keep that
+  habit — and quote the measurement, not a guess.
 - Refer to docs by repository path (`docs/contracts/LEVEL_EDITOR.md §5`).
 
 ### 3.1 The type check
@@ -127,12 +133,11 @@ parameter or a read of an unknown member of a plain object literal is `any`, sil
 `strictNullChecks` (`null` fits every type), so the check catches wrong names, shapes, literal
 unions and call arities wherever the code is typed, not missing null checks; `skipLibCheck: false`
 (the project's `.d.ts` files and the assertions in them are checked); `moduleResolution: bundler`;
-`lib` ES2023 + DOM; `paths` for the root-absolute `/src/*` and `/sandbox/*` URLs the sandbox
-helpers import (type-check only — the build is unchanged). The dev dependencies are `typescript`
-^7.0.2, `@types/three` ^0.186.0 (bump it together with `three`) and `@types/node` ^24.19.0. The
-reasons for JSDoc rather than `.ts` files, and what the check catches in numbers, are in
-[ADR-044](../history/DECISIONS.md#adr-044--jsdoc-types-checked-by-tsc-instead-of-a-typescript-conversion)
-and [TESTING_AND_VERIFICATION.md §8.4](TESTING_AND_VERIFICATION.md#84-the-type-check).
+`lib` ES2023 + DOM; no `paths`, so an import from the site root (`import('/src/…')`) fails the
+check — the site may live under a sub-path. The dev dependencies are `typescript`
+^7.0.2, `@types/three` ^0.186.0 (bump it together with `three`) and `@types/node` ^24.19.0.
+JSDoc keeps the runtime sources directly executable as JavaScript while checking their interfaces. See [TESTING_AND_VERIFICATION.md §8.4](TESTING_AND_VERIFICATION.md#84-the-type-check)
+for what the checker catches and its limits.
 
 **Rules.**
 
@@ -166,9 +171,8 @@ and [TESTING_AND_VERIFICATION.md §8.4](TESTING_AND_VERIFICATION.md#84-the-type-
   when you add an object type, enemy kind, sound, input action, particle preset, editor event or
   hook is listed in [TASK_PLAYBOOKS §21](../ai/TASK_PLAYBOOKS.md#21-fix-a-failing-type-check).
 - **Keep the browser graph out of the Node program.** A module the generators import
-  (`LevelFormat.js`, `ObjectCatalog.js`, `math.js`, `props/SmallProps.js`, `combat/defs.js`) must
-  not import browser modules through its types: that is why `defs.js` keeps its enemy typedefs as
-  JSDoc and the `SmallProps` builders keep an untyped factory `f`.
+  (`LevelFormat.js`, `ObjectCatalog.js`, `math.js`, `combat/defs.js`) must not import browser
+  modules through its types: that is why `defs.js` keeps its enemy typedefs as JSDoc.
 - **Private helpers** may use a one-line block: `/** @param {number} x @param {number} z */`.
 
 **Where the contract types live** (the checked copies of the contracts' interfaces; where the
@@ -176,14 +180,15 @@ contract text and the code differ they follow the code and say so):
 
 | Types | File | Describes |
 | --- | --- | --- |
-| `Level`, `LevelEnvironment`, `LevelWater`, `LevelSpawn`, `TileDef`, `ObjectType`, `LevelObject`, `LevelObjectOf<T>`, `ObjectExtras`, `ObjectTypeDef`, `FieldDef`, `Rect`, `TileRect` | [`src/engine/level/types.d.ts`](../../src/engine/level/types.d.ts) | the `lumina-level` document (LEVEL_EDITOR.md §1–§2). `LevelObject` is a union discriminated on `type`, derived from `OBJECT_TYPES` (checked against `ObjectTypeDef` with `@satisfies`), so a new catalog type or default is typed without editing the file |
+| `Level`, `LevelEnvironment`, `LevelWater`, `LevelSpawn`, `TileDef`, `ObjectType`, `LevelObject`, `LevelObjectOf<T>`, `ObjectExtras`, `ObjectTypeDef`, `FieldDef`, `Rect`, `TileRect` | [`src/engine/level/types.d.ts`](../../src/engine/level/types.d.ts) | the `luminati-level` document (LEVEL_EDITOR.md §1–§2). `LevelObject` is a union discriminated on `type`, derived from `OBJECT_TYPES` (checked against `ObjectTypeDef` with `@satisfies`), so a new catalog type or default is typed without editing the file |
+| `ObjectTextKeys`, `Level.textKeys`, `StoryFields.textKeys`; `Mint`, `SharedKeys`, `KeyedText` | [`src/engine/level/types.d.ts`](../../src/engine/level/types.d.ts); [`TextKeys.js`](../../src/engine/i18n/TextKeys.js) | the text keys a level's own texts and its objects hold ([I18N.md §4.2](../specs/I18N.md#42-keys-and-lookup)); a minter, copy-on-write's other copies and a keyed text with its English (I18N.md §4.10). `campaign.json`'s and a chapter's `textKeys` are typed in [`CampaignFormat.js`](../../src/game/campaign/CampaignFormat.js) |
 | `PropResult`, `PropParts`; `TileMapInput`, `Tile`, `Collider` | [`Props.js`](../../src/engine/world/Props.js); [`TileMap.js`](../../src/engine/world/TileMap.js) | prop results (ARCHITECTURE §4 Props.js); the terrain's input, tiles and colliders. [`world/types.d.ts`](../../src/engine/world/types.d.ts) also asserts that every catalog prop type has a `PropFactory` method that declares its default `opts` |
-| `CombatContext`, `PlayerView`, `Brain`, `HitSpec`, `ProjectileSpec`, `MarkerSpec`, `HitInfo`, `EnemyInit`, `CombatHooks`, `CombatState` …; `EnemyKind`, `EnemyDef`, `ScaledEnemyDef` | [`src/demo/combat/types.d.ts`](../../src/demo/combat/types.d.ts); [`combat/defs.js`](../../src/demo/combat/defs.js) | the combat interfaces (COMBAT.md §9, §20) |
+| `CombatContext`, `PlayerView`, `Brain`, `HitSpec`, `ProjectileSpec`, `MarkerSpec`, `HitInfo`, `EnemyInit`, `CombatHooks`, `CombatState` …; `EnemyKind`, `EnemyDef`, `ScaledEnemyDef` | [`src/game/combat/types.d.ts`](../../src/game/combat/types.d.ts); [`combat/defs.js`](../../src/game/combat/defs.js) | the combat interfaces (COMBAT.md §9, §20) |
 | `Tool`, `RotatableTool`, `PointerEv`, `ToolPreview`, `ToolCursor`; `EditorEvents` | [`src/editor/tools/index.js`](../../src/editor/tools/index.js); [`src/editor/types.d.ts`](../../src/editor/types.d.ts) | the tool interface (LEVEL_EDITOR.md §7); the `EditorState` events by name |
-| `GameHooks`, `EditorHooks`, `LuminaHooks`; `Window` members | [`Game.js`](../../src/demo/Game.js), [`EditorApp.js`](../../src/editor/EditorApp.js), [`main.js`](../../src/main.js); [`src/globals.d.ts`](../../src/globals.d.ts) | the automation hooks (AUTOMATION_API.md); the sandbox handles are typed by a typedef in each sandbox file |
+| `GameHooks`, `EditorHooks`, `LuminatiHooks`; `Window` members | [`Game.js`](../../src/game/Game.js), [`EditorApp.js`](../../src/editor/EditorApp.js), [`main.js`](../../src/main.js); [`src/globals.d.ts`](../../src/globals.d.ts) | the automation hooks (AUTOMATION_API.md); the sandbox handles are typed by a typedef in each sandbox file |
 | `GlobalUniforms`, `SceneNode`, `SolidMesh`; `ActionName` / `ExtraActions`; `SfxName`; `Direction` | [`render/types.d.ts`](../../src/engine/render/types.d.ts); [`Input.js`](../../src/engine/core/Input.js) / [`core/types.d.ts`](../../src/engine/core/types.d.ts); [`AudioSystem.js`](../../src/engine/audio/AudioSystem.js); [`constants.js`](../../src/engine/constants.js) | the shared uniforms and scene-graph walks; input action names (runtime actions by augmenting `ExtraActions`); sound names; the four facings |
 
-**The `@ts-expect-error` lines** (11): the `castShadow` / `receiveShadow` accessors of `Sprite3D`
+**Reasons for existing `@ts-expect-error` annotations:** the `castShadow` / `receiveShadow` accessors of `Sprite3D`
 (an accessor overriding an `Object3D` field, TS2611); the `= {}` defaults of the `PropFactory`,
 `TileMap` and `Viewport3D` constructors (they lack `textures` on purpose — the constructors throw
 without it, and an optional `textures` would stop flagging a caller that forgets it) and of
@@ -217,7 +222,7 @@ What the check does not see is listed in
   `SRGBColorSpace`; data textures (normal maps, masks) use `NoColorSpace`
   (`makePixelTexture(canvas, { srgb: false })`).
 - **Tone mapping happens once**, in PostFX's `OutputPass` (ACES Filmic). The grade after it works
-  on display-space values ([ADR-006](../history/DECISIONS.md#adr-006--tone-map-once-in-outputpass-then-grade-in-display-space)).
+  on display-space values.
 - **`LightingSystem` owns `renderer.toneMappingExposure`.** It writes it every frame; apart from
   `Engine` initialising it to 1, nothing else does.
 - Colours in pixel-art code go through `PALETTE` ramps and the `PixelCanvas` colour helpers
@@ -235,12 +240,17 @@ What the check does not see is listed in
   waterfall splash offsets in `Game.js`; editor session and DOM ids (`autosave.js`,
   `ui/Dialog.js`); the next Place-tool seed (`PlaceTool.js`, stored into the placed object's
   `opts.seed`, so the level itself stays reproducible); the harness's port.
+- **Text keys** are identities, made once and then kept: the editor mints them with `randomGuid`
+  (Web Crypto, never `Math.random`); the generators and `npm run i18n:keys` with
+  `seededMint(<repository-relative path>)` (`guidOf` of the file and the text: the same input gives
+  the same keys, so their output stays byte for byte — an OS path would differ between machines, so
+  it throws); scripted checks seed the editor with `__editor.seedTextKeys(prefix)`.
 - **Seeds derive from content**, not from load order: props seed variation from kind and position,
   `TextureLibrary` from its seed (1337 by default) and the texture name, flicker from the light
   position. Adding an object must not reshuffle unrelated ones — except in generators with
   sequential scatter, where a new rule early in the sequence reshuffles everything after it
   (documented in `make-starfall-vale.mjs`).
-- **Level data round-trips byte-for-byte** ([ADR-023](../history/DECISIONS.md#adr-023--byte-stable-level-serialisation)):
+- **Level data round-trips byte-for-byte**:
   `normalizeObject` keeps an object's own key order and only *appends* catalog defaults it lacks,
   unknown fields survive, and optional fields without a catalog default (`environment.minimap`,
   `water.glint`, …) are written only when set. A file that is already normalised — every shipped
@@ -264,8 +274,7 @@ What the check does not see is listed in
 
 ## 8. No per-frame allocations
 
-The Emberfall performance review measured ~105–130 KB of JS garbage per frame before cleanup;
-the rule since then is **no allocation in `update()` / render paths**:
+Avoid allocations in `update()` and render paths: garbage collection can interrupt frame pacing.
 
 - Take an optional `out` argument. Per-frame getters default it to an internal object
   (`Input.getMoveVector(out = this._move)`, `CameraRig.getMoveBasis(out = this._basis)`);
@@ -285,22 +294,20 @@ the rule since then is **no allocation in `update()` / render paths**:
 
 ## 9. Rendering invariants
 
-These are the rules that are easiest to break (also listed in [`CLAUDE.md`](../../CLAUDE.md)):
+These are the rules that are easiest to break (also listed in [`AGENTS.md`](../../AGENTS.md)):
 
 1. **The point-light count is fixed after the first frame — at most 12** (one per light
    descriptor up to 12, else 12 shared ones). Adding or removing lights, or toggling
    `light.visible`, recompiles every lit shader. Fade intensities instead; levels with more light
-   sources share the 12 through `LightPool`
-   ([ADR-007](../history/DECISIONS.md#adr-007--a-fixed-set-of-12-point-lights-then-a-lightpool)).
+   sources share the 12 through `LightPool`.
 2. **Warm up shaders against `postfx.sceneTarget`**, the linear HDR target, not the canvas. A
    material or effect that first appears mid-game must be compiled at load (the game primes
-   particle burst pools for this reason)
-   ([ADR-008](../history/DECISIONS.md#adr-008--compile-every-shader-at-load-against-the-hdr-target)).
+   particle burst pools for this reason).
 3. **Toggle shadows through intensity**, not `castShadow` (LightingSystem's `shadows` setting sets
    `shadow.intensity` to 0 and stops auto-updates, so no recompile happens).
 4. **Tone map once; LightingSystem owns exposure** (§5).
 5. **Custom shaders read `globalUniforms` by reference** (§12).
-6. **Budgets** at 1600 × 900 on the GTX 1060: ≤ ~300 scene draw calls including the shadow pass,
+6. **Rendering budgets** at 1600 × 900: ≤ ~300 scene draw calls including the shadow pass,
    one 2048² sun shadow map, DOF at half resolution, 60 fps
    ([architecture/PERFORMANCE.md](../architecture/PERFORMANCE.md)).
 7. **Big-level code paths are gated** (`World.isBigLevel`: either side > 64 tiles) so small levels
@@ -330,8 +337,7 @@ These are the rules that are easiest to break (also listed in [`CLAUDE.md`](../.
 
 ## 11. Shader patching with `onBeforeCompile`
 
-The engine extends built-in materials instead of writing full shaders where it can
-([ADR-003](../history/DECISIONS.md#adr-003--lambert-materials-patched-with-onbeforecompile)). The
+The engine extends built-in materials instead of writing full shaders where it can. The
 pattern, abridged from `TileMap._patchMaterial` (`BOUNCE_PARS`, `BOUNCE_APPLY`, `VARIATION_*`
 and `DECAL_ALPHA` are GLSL strings defined in the same file):
 
@@ -349,7 +355,7 @@ m.onBeforeCompile = (shader) => {
   shader.fragmentShader = fs;
 };
 // one program per distinct patch variant
-m.customProgramCacheKey = () => `lumina-tilemap${variation ? '-var' : ''}${decal ? '-decal' : ''}`;
+m.customProgramCacheKey = () => `luminati-tilemap${variation ? '-var' : ''}${decal ? '-decal' : ''}`;
 ```
 
 Rules:
@@ -360,14 +366,15 @@ Rules:
   material returning that constant shares one program — encode every option that changes the GLSL.
 - **Chain, don't overwrite, when a material may already be patched.** `addSnowCover` keeps the
   previous `onBeforeCompile`, calls it first, then appends its own step and extends the key
-  (`${baseKey}|lumina-snow-ground`). Set `material.needsUpdate = true` after installing a patch on
+  (`${baseKey}|luminati-snow-ground`). Set `material.needsUpdate = true` after installing a patch on
   a material that may already have compiled.
 - **Guard the maths.** `pow()` of a negative base or a division by zero produces NaN, and one NaN
   pixel spreads through the bloom mip chain as black and white blocks. Wrap long-running time
   hashes with `mod(…)` so float precision does not degrade after hours of `uTime`.
 - **Custom `ShaderMaterial`s that should be fogged** set `fog: true` and include the fog chunks
-  (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`); do not compute
-  `vFogDepth` yourself or the demo's fog-start offset is bypassed.
+  (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`) and put
+  `uFogStart: globalUniforms.uFogStart` into their uniforms; do not compute `vFogDepth` yourself
+  or the demo's fog-start offset is bypassed.
 
 **Chunk anchors used in the code** (all exist in three r186 under
 `node_modules/three/src/renderers/shaders/ShaderChunk/`): `common`, `uv_vertex`, `begin_vertex`,
@@ -414,9 +421,9 @@ objects themselves (`uniforms.uTime = globalUniforms.uTime`), never a copy of th
   `console.error` for real failures and use `console.warn` for expected problems (a hand-edited
   level that needed repair, the light budget, an unknown dialogue script).
 - **Level data never throws for recoverable problems.** `normalizeLevel` returns
-  `{ level, warnings }` and throws only when the input is not a Lumina level at all;
+  `{ level, warnings }` and throws only when the input is not a Luminati level at all;
   `validateLevel` returns the hard errors that make a level unplayable. The game logs both as
-  `[Lumina] <source>: …` warnings and shows load failures on the loading screen with links out.
+  `[Luminati] <source>: …` warnings and shows load failures on the loading screen with links out.
 - **Names from level data are untrusted keys.** Look a name read from a level (a type, kind,
   preset, facing, script, texture or colour name …) up with `isOwnKey(TABLE, name)` or
   `ownValue(TABLE, name) ?? fallback` from [`src/engine/utils/own.js`](../../src/engine/utils/own.js),
@@ -444,23 +451,39 @@ same change. The full rules and examples are in [contracts/README.md §3](../con
 
 For level fields in particular:
 
-- `normalizeLevel` / `normalizeObject` give every new field its default.
+- `normalizeLevel` / `normalizeObject` write catalog defaults into files. Prefer optional
+  fields absent by default; if a new default is necessary, regenerate or re-save every affected
+  shipped level in the same change.
 - The editor must not write a default into a file that did not have the field (Level settings
   writes `environment.minimap` only when it is `false` or the file already had the key, and
   `water.glint` only when it is not 1 or was already there) and must keep unknown keys (it copies
   the file's `water` object and only overwrites the keys it edits).
-- Behaviour that depends on an object's position is stored relative to the object
-  ([ADR-013](../history/DECISIONS.md#adr-013--object-behaviour-fields-are-relative-to-the-object)).
+- Behaviour that depends on an object's position is stored relative to the object.
 
 ## 15. UI and CSS theming
 
-- **Engine UI** ([`src/engine/ui/ui.css`](../../src/engine/ui/ui.css)): design tokens on `.lu-root`
-  — golds `--lu-gold` `#c9a45c`, `--lu-gold-hi` `#e8cf8a`, cream text `--lu-cream` `#f3ead7`, ink
-  `--lu-ink` `#07080f`, translucent navy panels `--lu-panel-top/mid/bot`; fonts `--lu-serif`
-  (Crimson Pro), `--lu-display` (Cinzel), `--lu-pixel` (Pixelify Sans), all from `@fontsource`.
-  Sizes scale with `clamp()` and `vw` (readable from 1280 to 2560 px wide). Layering inside
-  `#lumina-ui`: prompt 1 · HUD 2 · banner 3 · dialog 4 · toasts 5 · title 6 · world map 7 ·
-  fader 8 · debug 9.
+- **Engine UI** ([`src/engine/ui/`](../../src/engine/ui/), contract
+  [PIXEL_UI.md](../specs/PIXEL_UI.md)): pixel art after mockup G. Colours only from G's palette
+  (`art/palette.js` `PALETTE`; CSS `var(--g-<token>)` on `.lu-root`); sizes only in art px
+  (`calc(var(--px) * n)`, `layout.js` `U(n)`) — no `vw` / `clamp()`; text only through `txt()` in a
+  type role (`layout/type.js`); the fonts come from `FontLoader.js` (Google Fonts first, else the
+  `@fontsource` copies in `dist/`), never an `@fontsource` import in the game UI. Every word the
+  player reads is a string-table key (`t()`, en / ja / zh; also the defaults standing in for blank
+  data and the prompt's built-in verbs) or data translated at display by the caller — prose by the
+  key the data holds, `loc(key, english)` with the key read by `ContentKeys.js`' readers
+  (`textKeyOf`, `pageKeyOf`, `dialogueKeyOf`, `choiceKeyOf`) or a script node's `tk`, names as
+  terms, `term(name)` — never written back into data or state, and no key is ever formatted or
+  typed by hand ([I18N.md](../specs/I18N.md) §4; a code
+  line of the game's own is `loc('<ns>.<name>', 'English')` with both literal, so the extractor
+  finds it). Each component has its own stylesheet, scoped `.lu-root .lu-x …`.
+  Layering inside `#luminati-ui`: HUD 2 · banner 3 · dialog 4 · prompt 4 · toasts 5 · title 6 ·
+  world map 7 · fader 8 · debug 9.
+- **Launcher** (`index.html`, [`src/launcher/launcher.css`](../../src/launcher/launcher.css)): a
+  plain English page in the sandbox gallery's look, outside the pixel UI and its languages — tokens
+  on `:root` (`--gold`, `--panel` …), `lu-` classes at the page root (no `.lu-root`), Cinzel and
+  Crimson Pro from `@fontsource`. Its list is HTML written by
+  [`tools/vite-launcher.js`](../../tools/vite-launcher.js): every text read from a file escaped,
+  every link relative.
 - **Editor UI** ([`src/editor/editor.css`](../../src/editor/editor.css)): tokens on `:root` —
   navy backgrounds `--le-bg0` `#080c18` … `--le-bg5` `#2a3758` (`--le-bg1` is `#0e1424`), gold
   `--le-gold` `#c9a45c`, text `--le-text`, status colours `--le-danger`, `--le-ok`, `--le-warn`,
@@ -479,10 +502,13 @@ For level fields in particular:
 ## 16. Documentation conventions
 
 - Docs live in `docs/` ([README](../README.md)); the binding contracts stay where they are
-  (`ARCHITECTURE.md` at the root, `docs/contracts/LEVEL_EDITOR.md`). `CLAUDE.md` is the short
-  guide for Claude Code sessions.
-- Every document starts with a header block: purpose, audience, source of truth (the code paths it
+  (`ARCHITECTURE.md` at the root, `docs/contracts/LEVEL_EDITOR.md`). [`AGENTS.md`](../../AGENTS.md)
+  holds shared guidance for contributors and coding tools; `CLAUDE.md` points to it.
+- Reference documents start with a header block: purpose, audience, source of truth (the code paths it
   describes), related docs.
+- Keep examples portable: use repository-relative paths or named placeholders, and exclude
+  personal account details, machine names, credentials and private session logs. Benchmark
+  hardware and software belong only with the measurements they explain.
 - Link relatively, to docs and to source files; refer to code by path and symbol name, never by
   line number.
 - One canonical place per topic: link instead of copying (the level format lives in

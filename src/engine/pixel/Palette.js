@@ -1,5 +1,5 @@
 /**
- * Shared HD-2D palette. Every ramp runs dark → light and is hue-shifted the way a
+ * Shared 2.5D pixel-art palette. Every ramp runs dark → light and is hue-shifted the way a
  * pixel artist would paint it (cool, saturated shadows; warm, soft highlights).
  * Using the same ramps for world textures and sprites keeps the whole scene cohesive.
  */

@@ -162,6 +162,9 @@
     "eval": "window.__sb.testPlaySemantics()"
   },
   {
+    "eval": "(() => { const r = window.__sb.testRegistryAndWarnings(); if (!r.ok) setTimeout(() => { throw new Error('[sprite_runtime] ' + r.fails.join('; ') + ' ' + JSON.stringify(r)); }); return JSON.stringify(r); })()"
+  },
+  {
     "eval": "(window.__sb.foliage.castShadow = true, window.__sb.setView('plaza'))"
   },
   {

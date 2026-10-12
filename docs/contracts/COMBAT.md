@@ -1,13 +1,11 @@
-# Lumina Combat — Design & Contracts
+# Luminati Combat — Design & Contracts
 
 > **Status.** **Binding contract** for the ARPG combat system, its engine additions, the combat
 > catalog types and the demo level *Cinderwatch Pass*. Like the other contracts it may only be
-> changed additively ([contracts/README.md](README.md)); where a builder finds this text
-> impossible to implement as written, the builder records the deviation in its report and the
-> lead amends this file — nobody silently diverges.
+> changed additively ([contracts/README.md](README.md)). Document any necessary deviation
+> alongside the code change and record its reason in §27.
 >
-> **Audience.** The builder agents of the combat workflow (one per work package, §22), the lead
-> who integrates them, and later maintainers.
+> **Audience.** Contributors changing combat, its engine dependencies, level data or tests.
 >
 > **Revision 2** (after the design review): the review findings and how each was resolved —
 > including the ones rejected, with the reason — are listed in §26.
@@ -30,9 +28,25 @@
 > **§27.13–§27.20** and amended in place above, marked *(rev. 5, §27.x Nn)*.
 >
 > **Revision 6** (the type-check pass, 2026-09-30): the §9 and §20 interfaces now have a
-> type-checked copy, [`src/demo/combat/types.d.ts`](../../src/demo/combat/types.d.ts) (and the
-> enemy data types in [`defs.js`](../../src/demo/combat/defs.js)), written from the code;
+> type-checked copy, [`src/game/combat/types.d.ts`](../../src/game/combat/types.d.ts) (and the
+> enemy data types in [`defs.js`](../../src/game/combat/defs.js)), written from the code;
 > where it differs from the text below is recorded in **§27.21** and marked *(rev. 6, §27.21 Jn)*.
+>
+> **Revision 9** (the party, 2026-10-08, [PARTY.md](../specs/PARTY.md)): companions — party
+> members who fight beside the player — are part of the combat: `addAlly` / `removeAlly` /
+> `healAllies`, a per-enemy target (`ctx.player` is the target's view), their hits and the enemies'
+> hits on them, separation, the boss arena, hooks and state. Recorded in **§28**; with no
+> companion every rule above is unchanged (the fixed-step bot's digest stays `1d81f069`).
+>
+> **Revision 12** (a party of four, 2026-10-11,
+> [Party balance](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass)):
+> Cinderwatch Pass gains two companions who join at the Waystone Camp — Sister Ilse (a mystic, the
+> healer) and Rook (a ranger) — beside Sela (a warden) at the Crossroads Waystone, and its enemy
+> groups and Cinderheart's HP are balanced for the player with that full party. Nothing scales
+> with the party's size; alone the pass is hard by design. No rule of the combat code changes
+> (only the golem's `hp`, data). Recorded in **§27.24** and amended in place in §7.1, §8.3, §9.4,
+> §15, §21, §23 and §28, marked *(rev. 12, …)*. The fixed-step bot now recruits the party: its
+> digest is `cf165213` (`combat.play.human.json`: `8c4ef71b`).
 >
 > **Relation to the other contracts.** [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (engine
 > conventions, §4 module contracts) and [`LEVEL_EDITOR.md`](LEVEL_EDITOR.md) (level format,
@@ -55,7 +69,7 @@
 
 ## 1. Summary and decisions
 
-Real-time action combat (Secret of Mana / Ys lineage, in the HD-2D look) that exists **only on
+Real-time action combat (Secret of Mana / Ys lineage, in the 2.5D pixel-art look) that exists **only on
 levels that enable it**. The player gets a 3-hit sword combo, a dodge roll with invulnerability,
 three MP skills with cooldowns, stamina, a healing draught, soft targeting and lock-on. Six
 hostile kinds (slime, goblin, archer, shaman, bat, boar) plus a training dummy and a three-phase
@@ -69,14 +83,14 @@ byte-identical; Starfall's coverage check skips the combat-only types, which Cin
 | # | Decision | Chosen | Rejected (why) |
 | --- | --- | --- | --- |
 | D1 | Per-level enabling | `levelHasCombat(level)`: `environment.combat === true`, or the key is not `false` and the level has an `enemy` object. Peaceful levels create **nothing** combat-related (`game.combat === null`). | Always-on combat (changes every level's programs, sheets, bindings). |
-| D2 | Layering | Generic rendering / input / audio / UI pieces in `src/engine/` (opt-in, additive), game rules in `src/demo/combat/`. | Everything in `src/demo` (no sandbox-testable parts, ARCHITECTURE §6). |
+| D2 | Layering | Generic rendering / input / audio / UI pieces in `src/engine/` (opt-in, additive), game rules in `src/game/combat/`. | Everything in `src/game` (no sandbox-testable parts, ARCHITECTURE §6). |
 | D3 | Clock | Variable `dt`, **sub-stepped** into `n = ceil(dt·60 − EPS)` equal steps `h = dt/n` (≤ 1/60 s). All windows are specified in frames and stored in seconds. Bit-exact when driven by `engine.step(1/60)`. | A fixed 60 Hz accumulator (visible judder on 120/144 Hz displays because `Player.position === sprite.position` cannot be render-interpolated). |
 | D4 | Hit-stop / slow motion | **Combat-local**: a global combat freeze timer plus per-side time scales. `engine.time.timeScale` is never touched. | `timeScale` (freezes shake decay, `uTime`, particles, clock, typewriter — measured). |
 | D5 | Enemy collision | Enemies have **no TileMap colliders**; they move with `tileMap.move` against the static world and combat separates actors itself. | Dynamic colliders (block the dodge roll, every query tests them, count changes re-sign the water shore). |
 | D6 | Combat poses | Frames driven by the combat state machine with `sprite.setFrame(col, row)` (frame = hitbox frame). Locomotion keeps `play('idle')` / `play('walk')` / `play('run')`. | fps-driven `play()` (hitbox/frame desync, approximate hit-stop). |
-| D7 | Hit flash & selective glow | One opt-in Sprite3D program variant `lumina-sprite3d-lit-fx-v1` with per-sprite `uFlash` and `uGlow` uniforms, used only on combat levels. | Per-enemy materials / emissive writes (rewritten by `LightingSystem` every frame). |
+| D7 | Hit flash & selective glow | One opt-in Sprite3D program variant `luminati-sprite3d-lit-fx-v1` with per-sprite `uFlash` and `uGlow` uniforms, used only on combat levels. | Per-enemy materials / emissive writes (rewritten by `LightingSystem` every frame). |
 | D8 | VFX | One instanced atlas-quad batch (`FxQuads`) + one instanced, terrain-draped ground-marker batch (`GroundMarkers`) + 6 new override-free burst presets that add **one** burst pool (§11.3). **No new point lights.** | A Sprite3D per effect (1–4 draws each); runtime lights (count frozen after the first frame); flat markers (float / sink on steps). |
-| D9 | World-anchored UI | DOM pools under `#lumina-ui` (0 draw calls, crisp, not DOF-blurred). Not depth-occluded — accepted. | WebGL bars (draw calls, blurred, tone-mapped). |
+| D9 | World-anchored UI | DOM pools under `#luminati-ui` (0 draw calls, crisp, not DOF-blurred). Not depth-occluded — accepted. | WebGL bars (draw calls, blurred, tone-mapped). |
 | D10 | Space / pad A | Stay **confirm only** (talk / read / rest / open). Dodge has its own keys. | Context-sensitive Space dodge (rolls when trying to talk; fights `DialogBox` over the key). |
 | D11 | Stamina | Dodge costs 25 SP (needs ≥ 12). Attacks cost a little SP but are never refused: at 0 SP the player is *winded* (slower recovery). Sprinting stays free. | Attacks refused at 0 SP (least fun failure). |
 | D12 | Catalog | Three new types, all flagged `combat: true`, category `Combat`: `enemy` (actor spawn group), `chest` (prop), `waystone` (prop, checkpoint). No gate type — the boss object carries relative `arena` and `gate` fields. | A gate / trigger type (one more type to cover everywhere for one use). |
@@ -112,7 +126,7 @@ at integration (§23).
    On peaceful levels J, K, L, U, I, O, C, digits and mouse clicks do nothing and are not
    `preventDefault`ed.
 5. **Engine APIs.** No existing export, option, method, event or program key is renamed or given
-   a new meaning. New options default to the old behaviour. `lumina-sprite3d-lit-v1`,
+   a new meaning. New options default to the old behaviour. `luminati-sprite3d-lit-v1`,
    `-unlit-v1`, `-depth-v1` shader sources are untouched.
 6. **Determinism.** No `Math.random()` in any new code (including visual jitter). The existing
    song's scheduled note list and the Particles burst RNG sequence on peaceful levels are
@@ -124,7 +138,7 @@ at integration (§23).
    `SFX_NAMES` is unchanged (combat sounds are listed in a separate `COMBAT_SFX_NAMES`, §12.1).
 7. **`window.__game` / `state()`** stay backward compatible: new members only; `state()` gains a
    `combat` key **only on combat levels** (absent otherwise).
-8. **Invariants from `CLAUDE.md`**: ≤ 12 point lights fixed after the first frame, no runtime
+8. **Engine invariants ([ARCHITECTURE.md](../../ARCHITECTURE.md))**: ≤ 12 point lights fixed after the first frame, no runtime
    lights; shader warm-up against `postfx.sceneTarget`; tone mapping only in PostFX's OutputPass;
    Weather keeps rewriting grade temperature / saturation (combat applies offsets after it).
 
@@ -176,20 +190,20 @@ export function levelHasCombat(level)   // → env.combat === true
 | ui | `src/engine/ui/{UI,HUD,Minimap,TitleScreen}.js`, `ui.css` *edit* | `enableCombat`, key labels, enemy dots, destinations (§13) | ui |
 | world | `src/engine/world/props/CombatProps.js`, `Props.js` *edit* | chest and waystone props (§14.3) | level |
 | level | `src/engine/level/ObjectBuilder.js`, `LevelMap.js` *edit* | build cases, map marks | level |
-| demo | `src/demo/World.js` *edit* | chest / waystone interactables (§9.8) | level |
-| demo | `src/demo/combat/CombatSystem.js` … (§9.1, full list in §22) | orchestration, player kit, hits, loot, feel, music, hooks | combat-core |
-| demo | `src/demo/combat/{Enemy,defs}.js`, `src/demo/combat/ai/*.js` | enemy actor, stats, 8 brains (§7–§9) | enemies |
-| demo | `src/demo/{Game,Player,dialogue,levels}.js`, `src/main.js` *edit* | integration (§4.2–§4.5) | combat-core |
-| demo | `src/demo/AudioDirector.js` *edit* | `combatIntensity` bird duck | fx-audio-input |
+| game | `src/game/World.js` *edit* | chest / waystone interactables (§9.8) | level |
+| game | `src/game/combat/CombatSystem.js` … (§9.1, full list in §22) | orchestration, player kit, hits, loot, feel, music, hooks | combat-core |
+| game | `src/game/combat/{Enemy,defs}.js`, `src/game/combat/ai/*.js` | enemy actor, stats, 8 brains (§7–§9) | enemies |
+| game | `src/game/{Game,Player,dialogue,levels}.js`, `src/main.js` *edit* | integration (§4.2–§4.5) | combat-core |
+| game | `src/game/AudioDirector.js` *edit* | `combatIntensity` bird duck | fx-audio-input |
 | tools | `tools/lib/levelgen.mjs`, `tools/make-cinderwatch-pass.mjs`, `tools/make-starfall-vale.mjs` *edit* (coverage line only) | generators (§15, §16) | level |
-| sandbox | `sandbox/combat_fixture.js` | small flat test level (built in-page, played through `__lumina.playLocal`) so combat-core can verify before Cinderwatch lands (§21) | combat-core |
-| demo | `src/demo/combat/Nav.js` *(rev. 5, §27.13 R1)* | the enemies' walk grid and bounded path search | known-issues pass |
+| sandbox | `sandbox/combat_fixture.js` | small flat test level (built in-page, played through `__luminati.playLocal`) so combat-core can verify before Cinderwatch lands (§21) | combat-core |
+| game | `src/game/combat/Nav.js` *(rev. 5, §27.13 R1)* | the enemies' walk grid and bounded path search | known-issues pass |
 | ui | `src/engine/ui/combat.css` *(rev. 5, §27.14 X8)* | the combat UI's rules, split out of `ui.css` (loaded only with the combat chunk) | known-issues pass |
 | editor | `src/editor/viewport3d/SpriteBatch.js` *(rev. 5, §27.16 D7)* | the instanced batch of the editor's enemy previews | known-issues pass |
 | sandbox | `sandbox/combat_audio.{html,js,actions.json}`, `sandbox/combat.play.{fast,human,realtime}.json` *(rev. 5, §27.17 M3, §27.18 T3)* | the combat audio QA page; the play-through bot's variants | known-issues pass |
 | editor | `src/editor/…` *edit* | enemy preview, 2D glyphs, inspector stats, settings (§17) | editor |
 
-### 4.2 Frame order (Game.update, `src/demo/Game.js`)
+### 4.2 Frame order (Game.update, `src/game/Game.js`)
 
 Existing order is kept; new lines are marked. Line numbers refer to the file before the change.
 
@@ -354,7 +368,7 @@ Keyboard bindings are only **added** (J K L U I O C 1–4 were unbound); nothing
 Combat registers them at runtime with `input.addBindings(COMBAT_BINDINGS, COMBAT_PAD_BINDINGS)`:
 
 ```js
-// src/demo/combat/bindings.js
+// src/game/combat/bindings.js
 export const COMBAT_BINDINGS = {
   attack: ['KeyJ', 'Mouse0'], dodge: ['KeyK', 'Mouse2'],
   skill1: ['KeyU', 'Digit1'], skill2: ['KeyI', 'Digit2'], skill3: ['KeyO', 'Digit3'],
@@ -405,7 +419,9 @@ when it changes between `'gamepad'` and keyboard / mouse it calls
 `ui.hud.setControls(COMBAT_PAD_CONTROLS | COMBAT_CONTROLS)` and
 `ui.combat.hud.setDevice('gamepad' | 'keyboard')` (skill-slot keycaps swap, §13.2). On the first
 gamepad edge of the session on a combat level it shows `ui.hud.toast(PAD_HINT, 6)` once. Peaceful
-levels keep today's single legend.
+levels keep today's single legend. *(revision 11, §27.23 P2: the toast shows `t('combat.padHint')`,
+the page's language; `PAD_HINT` stays exported as its English source. The legend rows carry an `id`
+and translated labels.)*
 
 ### 5.3 Engine input / camera additions (`fx-audio-input` package)
 
@@ -438,7 +454,7 @@ intersection of the camera ray through `input.pointer` with the plane `y = playe
 
 ## 6. Player rules
 
-All numbers live in `src/demo/combat/rules.js` (combat-core). Constants named here are exported
+All numbers live in `src/game/combat/rules.js` (combat-core). Constants named here are exported
 under these names.
 
 ### 6.1 Stats and progression
@@ -604,7 +620,8 @@ SFX `levelup`. Excess XP carries over; several levels in one kill announce the f
    SFX `playerDown`, enemies release tokens and switch to `return`, music fades out (1.5 s).
 2. 1.2 s later (real time, counted by combat): `game.busy = true`;
    `ui.combat.death.show({ title: 'You Have Fallen', subtitle: '', prompt: 'Press any key to rise at the <checkpoint name>' })`
-   (armDelay 1.0 s) → await.
+   (armDelay 1.0 s) → await. *(revision 11: `t('combat.death.title')` and
+   `t('combat.death.prompt', { place: placeName(checkpoint) })`, translated, §27.23.)*
 3. `await ui.fader.fadeOut(0.8)`, `death.hide()`, `combat.resetEncounter()`:
    - alive non-boss enemies return to home at full HP (**killed enemies stay dead**);
    - an undefeated boss resets (full HP, phase 1, dormant kneel, adds hidden, arena open);
@@ -660,7 +677,7 @@ The initial checkpoint is the level spawn (`{ id: 'spawn', name: 'the camp' }` �
 
 ## 7. Enemies
 
-### 7.1 Roster (base stats at enemy level 1; `src/demo/combat/defs.js` → `ENEMY_DEFS`)
+### 7.1 Roster (base stats at enemy level 1; `src/game/combat/defs.js` → `ENEMY_DEFS`)
 
 | kind | Display name | Role | HP | ATK | DEF | Poise | Mass | Speed | Aggro | Leash | Hurt r | Move r | XP | Gold | Token | Sheet |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -674,6 +691,8 @@ The initial checkpoint is the level spawn (`{ id: 'spawn', name: 'the camp' }` �
 | `golem` | Cinderheart | boss (§8) | 1800 | 24 | 8 | 250 / phase | ∞ | 1.6 → 2.0 → 2.4 | arena | arena | 1.20 | 0.60 | 400 | 150 | own | monster 64×64 |
 
 *(rev. 5, §27.19 W1: `bat` HP 24, ATK 8; `golem` ATK 22.)*
+*(rev. 12, §27.24 Q2: `golem` HP 5200 — Cinderwatch Pass, the golem's one level, is balanced for a
+party of four; phases at 70 % / 35 % = 3640 / 1820 HP.)*
 
 - **Radii:** the *hurt* radius is used by every hit test (hitboxes, projectiles); the *move*
   radius by `moveGround`, separation and the stuck test. The player's hurt and move radius is 0.3.
@@ -991,7 +1010,8 @@ draws in the order gold, heart, mana, draught.
 - **Threshold clamp:** when damage would take the boss's HP below the next phase threshold, HP is
   clamped **at** the threshold (overkill is lost) and the transition starts; while a transition
   is pending or running, HP cannot drop below that threshold. Every phase therefore costs its
-  full HP share (540 / 630 / 630).
+  full HP share (540 / 630 / 630). *(rev. 12, §27.24 Q2: at 5200 HP the thresholds are 3640 and
+  1820 HP, the shares 1560 / 1820 / 1820.)*
 - **→ Phase 2 (at 70 %)**, once: interrupts the current move; brain → `ctx.emit('bossPhase', e, 2)`;
   roar 120 f, **guarded** (hits show `Guard`, SFX `guard`), shake 0.45/1.2; at f60 a shockwave
   ring r 0.5 → 5 (kb 3.0, mv 0 — no damage); glow ramps over 60 f; `ctx.spawnAdd` 3 bats at arena
@@ -1001,7 +1021,8 @@ draws in the order gold, heart, mana, draught.
 - **→ Phase 3 (at 35 %)**, once: brain → `ctx.emit('bossPhase', e, 3)` (core: hit-stop 12 f,
   look pulse, gem 3); collapse kneel **90 f** — the core is **exposed** (every hit is a forced
   crit, no attacks, not guarded), but the damage taken during the kneel is **capped at 8 % of max
-  HP** (144; further hits show numbers of 0 as `Guard`); then a guarded roar 60 f.
+  HP** (144; further hits show numbers of 0 as `Guard`; *rev. 12:* 416 of 5200); then a guarded
+  roar 60 f.
 - **Poise 250 per phase** (accumulated player poise damage; resets at each phase change): at 0 →
   **Broken** 180 f (pose `kneel`, vuln 1.3, exposed crits), then poise refills.
 - Every boss hit landed by the player: hit-stop 5 f.
@@ -1026,6 +1047,14 @@ draws in the order gold, heart, mana, draught.
   golem's HP in `defs.js` (pure data) — the thresholds are fractions. *(rev. 5, §27.19 W5: greedy
   39.9 s / phase 3 14.0 s at Lv 5, 34.7 / 11.4 s with every chest and shop ware; measured with the
   fixed-step bot's seeded human model at 30–35 % uptime: 83–114 s, mean 95.5 s.)*
+  *(rev. 12, §27.24 Q2 / Q5: the golem has 5200 HP, for the player with three companions, who add
+  their damage — the boss never targets them (§28 A3). Greedy runs, alone at Lv 5: the fixture's
+  golem 99.8 s (phases 29.4 / 37.1 / 33.4 s), Cinderwatch's 96.6 s (29.5 / 33.3 / 33.8 s), with
+  every chest and shop ware 83.5 s (24.8 / 30.1 / 28.6 s) — the floor holds (was 38.9 / 39.9 /
+  34.7 s). The human model beside the party: 85–153 s; alone it wins, barely, in 164.5 s with 5
+  draughts. A greedy run now steps ≈ 5 900 frames in one evaluate: run `combat.boss.json` and
+  `combat.boss.cw.json` alone — under a loaded GPU one can pass the harness's 180 s protocol
+  timeout.)*
 
 ---
 
@@ -1033,14 +1062,14 @@ draws in the order gold, heart, mana, draught.
 
 *(rev. 6, §27.21)* The types of this section — `CombatContext`, `PlayerView`, `EnemyInit`,
 `Brain`, `HitSpec`, `ProjectileSpec`, `MarkerSpec`, `HitInfo` and the rest — are declared as the
-code implements them in [`src/demo/combat/types.d.ts`](../../src/demo/combat/types.d.ts);
-`EnemyKind`, `EnemyDef` and `ScaledEnemyDef` in [`defs.js`](../../src/demo/combat/defs.js) (JSDoc,
+code implements them in [`src/game/combat/types.d.ts`](../../src/game/combat/types.d.ts);
+`EnemyKind`, `EnemyDef` and `ScaledEnemyDef` in [`defs.js`](../../src/game/combat/defs.js) (JSDoc,
 so the Node generator that imports it stays free of the combat code). `npm run typecheck` checks
 the core, every brain (`/** @satisfies {Brain} */`), the enemies sandbox's mock context and the
 hooks against them, so they are the checked copy of this section: a renamed member fails at every
 use. Where the text below and the code differ, the member's comment says so and §27.21 lists it.
 
-### 9.1 `CombatSystem` (`src/demo/combat/CombatSystem.js`, combat-core)
+### 9.1 `CombatSystem` (`src/game/combat/CombatSystem.js`, combat-core)
 
 ```js
 export class CombatSystem {
@@ -1075,6 +1104,9 @@ export class CombatSystem {
   tutorial: { combo: boolean, dodge: boolean, rewarded: boolean }
   events: EventEmitter                  // §9.6
   // rev. 5: nav (the walk grid, §27.13 R1), zones (the region objects, R5), purchased (Set of ware ids, W3)
+  // rev. 7 (§27.22): exportProgress / importProgress, openedChests / markChestsOpened (K2),
+  // rebuildNav(rect?) (K4); rev. 8: applyPresence(present) (K6), defeatedGroups() /
+  // markGroupsCleared(ids) (K5)
 }
 ```
 
@@ -1153,7 +1185,7 @@ resolution and from the `emit` signals. The boss arena reaches the golem through
 argument — the `bossPhase` phase —, `marker` takes a partial spec, and a mock may leave out
 `PlayerView.swing` / `sealed`.)*
 
-### 9.3 `Enemy` (`src/demo/combat/Enemy.js`, enemies)
+### 9.3 `Enemy` (`src/game/combat/Enemy.js`, enemies)
 
 ```js
 export function createEnemy(init: EnemyInit) → Enemy   // picks the brain from ai/index.js
@@ -1213,7 +1245,7 @@ is the `BossArena`, typed `EnemyArena` with the members core reaches through it.
 `Brain` members are all optional in the type, but `Enemy` calls `engage` and `attack` unguarded for
 every kind but the boss, and `update` for the boss.)*
 
-### 9.4 `ENEMY_DEFS` (`src/demo/combat/defs.js`, enemies; stub written by foundation)
+### 9.4 `ENEMY_DEFS` (`src/game/combat/defs.js`, enemies; stub written by foundation)
 
 ```js
 export const ENEMY_DEFS = {
@@ -1232,6 +1264,7 @@ export function scaledDef(kind, level = 1, elite = false)   // §7.2; returns a 
 *(rev. 6, §27.21 J5: the data also has goblin `strafeSpeed`, boar `chargeSpeed` (both unused by
 the brains), golem `epithet` and `phaseSpeeds`; `scaledDef` adds `kind`, `level`, `elite` and
 `guaranteedHeart` — typedefs `EnemyDef` / `ScaledEnemyDef` in `defs.js`.)*
+*(rev. 12, §27.24 Q2: golem `hp` 5200.)*
 
 ### 9.5 Shapes
 
@@ -1315,11 +1348,16 @@ this._interact(obj.id, built.interact.position, {
   label: 'Examine',                                // combat overwrites: 'Open' / 'Rest' (§6.12)
   radius: obj.type === 'chest' ? 1.2 : 1.5,
   prompt: <anchor: chest y + 1.2, waystone y + 2.4>,
-  text: obj.type === 'chest' ? { speaker: '', lines: ['The chest is locked tight.'] }
-                             : { speaker: obj.name, lines: ['An old waystone hums quietly.'] },
+  text: obj.type === 'chest' ? { speaker: '', lines: ['The chest is locked tight.'], linesDefault: 'chest' }
+                             : { ...(obj.name ? { speaker: String(obj.name) } : { speaker: 'Waystone', speakerDefault: 'waystone' }),
+                                 lines: ['An old waystone hums quietly.'], linesDefault: 'waystoneText' },
 });
 // the pushed item additionally carries: object: obj (the level object), prop: built.propResult.controls
 ```
+
+The text stays English in the interactable (§27.23 P12): `linesDefault` and `speakerDefault` name
+the UI strings the game shows for these code defaults (`t('game.default.<id>')`), and a named
+waystone's speaker is shown as a term ([I18N.md §4.8](../specs/I18N.md#48-call-sites)).
 
 `World._interact` accepts the two extra optional fields (`object`, `prop`) and copies them onto the
 item. Combat sets `it.onInteract = async (game, it) => …` and `it.label` at load. `Game._interact`
@@ -1353,7 +1391,7 @@ sprite.bodyOpacity = 0.45       // rev. 5 (§27.13 R8): any sprite, 0..1 (defaul
 ```
 
 - With `combatFx: true` the lit material uses `customProgramCacheKey`
-  **`lumina-sprite3d-lit-fx-v1`** and adds `uFlash` and `uGlow` (both `THREE.Vector4`, default 0)
+  **`luminati-sprite3d-lit-fx-v1`** and adds `uFlash` and `uGlow` (both `THREE.Vector4`, default 0)
   to `this._uniforms` **before** `_createLitMaterial` runs. Fragment additions (on top of the
   existing lit patch, unchanged):
   - after the existing emissive patch: `if (diffuseColor.a < 0.98) totalEmissiveRadiance += uGlow.rgb * uGlow.a * diffuseColor.rgb;`
@@ -1493,7 +1531,7 @@ export class FxQuads {
   along `(dirX, dirZ)`; `screen` = faces the camera fully.
 - Unlit: colour = texel × `(r, g, b)` (HDR, may exceed 1); alpha test 0.5, `a < 1` is a 4×4 Bayer
   dither fade (depth-writing, sharp in the DOF); fog applied. One draw call, `visible = count > 0`.
-  `customProgramCacheKey` **`lumina-fxquads-v1`**. Renders into the HDR scene target like every
+  `customProgramCacheKey` **`luminati-fxquads-v1`**. Renders into the HDR scene target like every
   material (no tone mapping in the shader).
 
 ### 11.2 `GroundMarkers` (`src/engine/fx/GroundMarkers.js`, fx-audio-input)
@@ -1538,7 +1576,7 @@ export class GroundMarkers {
   0.12 u from the height texel under it is dropped (no spikes where a grid cell spans a cliff).
   *(rev. 5, §27.14 X2: `magma` is a cellular crust — dark basalt plates split by glowing cracks,
   one plate in six molten — every colour under luminance 1.05.)*
-- Key **`lumina-groundmarkers-v1`**. `combat_fx.html` includes a stepped-terrain case (a lane
+- Key **`luminati-groundmarkers-v1`**. `combat_fx.html` includes a stepped-terrain case (a lane
   across a one-level step and down a two-level ledge, a circle on a stair) built with a sampled
   height function.
 
@@ -1707,12 +1745,12 @@ UI.useCombatUI({ CombatHUD, BossBar, WorldLabels, Announcer, DeathScreen })   //
 
 | Component | DOM parent / z | Placement (1600 × 900) | Hidden by |
 | --- | --- | --- | --- |
-| `CombatHUD` vitals `.lu-vitals` | inside `.lu-hud` (z 2) | top-left under the location plate at a **fixed** offset: plate top + the plate's two-line height, measured once in `enableCombat()` (and again only on window resize) — never moved by region name / subtitle changes or the plate's `is-empty` state, never animated | title, photo; dimmed 55 % under `lu-root--dialog`; dims to 35 % after 5 s calm at full HP / MP |
-| `CombatHUD` skill bar `.lu-skills` | `.lu-hud` | bottom-right: 3 skill slots + draught slot, gold counter above | title, photo, dialog |
+| `CombatHUD` vitals `.lu-vitals` | inside `.lu-hud` (z 2) | top-left under the location plate at a **fixed** place — *(rev. 11)* a `tl` group at (10, 36) art px (42–43 in CJK) under the pixel UI's place plate, whose box always has the two-line height — never moved by region name / subtitle changes or the plate's `is-empty` state, never animated | title, photo; dimmed 55 % under `lu-root--dialog`; dims to 35 % after 5 s calm at full HP / MP |
+| `CombatHUD` skill bar `.lu-skills` | `.lu-hud` | bottom-right: 3 skill slots + draught slot, gold counter above (*rev. 11:* a `br` group, [PIXEL_UI.md §5](../specs/PIXEL_UI.md#5-component-recipes)) | title, photo; *(rev. 11)* dimmed to 0.55 in a dialog, hidden (`is-tight`) where the dialogue window would overlap it |
 | `CombatHUD` loot feed `.lu-loot` | `.lu-hud` | right edge above the skill bar, pooled rows (8) | title, photo |
-| `BossBar` `.lu-bossbar` | `.lu-hud` | bottom-centre, width `min(52vw, 60em)`, Cinzel name plate, italic epithet, `.lu-gem` phase pips, lag fill | title, photo, dialog |
+| `BossBar` `.lu-bossbar` | `.lu-hud` | bottom-centre; *(rev. 11)* a `bc` group, the bar 334 × 11 art px (narrower on a small screen), the name on a ruby-cornered cartouche, the epithet on its baseline, ember phase gems, a pale chip; while it shows the root has `lu-root--boss` (the legend steps aside) | title, photo, dialog |
 | `WorldLabels` `.lu-worldfx` | root child, z 1, inserted **before** the prompt | world-anchored | title, photo, dialog |
-| `Announcer` `.lu-announce` | root child, z 3 | centred at 34vh; own element (never replaces the Banner) | photo |
+| `Announcer` `.lu-announce` | root child, z 3 | *(rev. 11)* a `tc` group: the level card from y 48 (compact) or 78 art px, under a showing area banner (`announce(…, { y })`); own element (never replaces the Banner) | photo |
 | `DeathScreen` `.lu-death` | root child, z 7 (shares the world map's slot; the map is force-closed on death) | full screen | — |
 
 ### 13.2 APIs
@@ -1744,19 +1782,34 @@ class WorldLabels {
   clear(); dispose()
 }
 class Announcer { announce(title, sub = '', { duration = 2.4, kind = 'level' /* | 'results' */ } = {}) → Promise }  // queued
-                // 'results': wider card, sub line in Pixelify, stays for `duration`
+                // 'results': the M-window results card (rev. 11), stays for `duration`
 class DeathScreen {
   show({ title, subtitle = '', prompt, armDelay = 1.0 }) → Promise<'key'|'pointer'|'gamepad'>
   hide(); get visible
 }
 // additive: CombatHUD.refuse(i), Announcer.clear() (§27.1 I8); rev. 4 (§27.9 G13):
 // CombatHUD.onSlotPress = (i) => …   // skill slots catch the pointer; combat presses the slot's action
-// Announcer.announce(title, sub, { …, compact: true })   // smaller card at 21vh (a level-up mid-fight)
+// Announcer.announce(title, sub, { …, compact: true })   // the card higher on the screen (a level-up mid-fight)
 // WorldLabels.number(…) stacks numbers spawned at the same anchor within 0.52 s
 //   (one line up, alternating 18 px left / right)
 // rev. 5 (§27.14 X6 / X7): WorldLabels.setPanels(list) — the HUD panels labels keep out of;
 // DeathScreen.prime({ title, subtitle, prompt }) + getter primed; HUD.locationElement / helpElement,
 // CombatHUD.skillsElement
+// rev. 11 (§27.23, the pixel UI and languages; all additive):
+// CombatHUD.configureSkills([{ …, unlock }])   // the level a locked slot opens at ("Lv N" plate)
+// CombatHUD.setSkill(i, { …, left })           // exact seconds left: one decimal under a second
+// anchorGroup(el, at, x, y, w, h, sc)          // CombatHUD.js export: anchor a kept element as a pixel-UI group, then fit it
+// Announcer.announce(title, sub, { …, y })     // the card's top in art px, a number or a function read when it shows
+// WorldLabels.setPanels([{ el, shown, box }])  // PanelSpec.box: a keep-out box of its own (the area banner's card)
+// BossBar: the root class lu-root--boss from show() until 600 ms after hide()
+// WorldLabels.setPanels([{ el, shown, merge: false }])  // PanelSpec.merge false: a keep-out zone never merged (the boss bar)
+// Announcer: the root class lu-root--results while a 'results' card shows (the legend stays aside)
+// CombatSystem: shopOffers() rows gain label, gainLabel (the shown words; name / gain stay English);
+//   wareLabel(item), displayName(enemy), upgradeText(what) — the shown name / sentence in the page's language
+//   (a ware of SHOP_WARES by its id; any other ware and a named group's name as a term: term(name))
+// Waystones.js: Checkpoint.place ('camp' | 'start' for the spawn point), Checkpoint.unnamed (a waystone with
+//   no name), placeName(cp) — the shown place name: term(name), t('game.default.waystone') when unnamed
+// the combat legend rows ({ keys, label, id }) carry a stable id; their labels arrive translated
 ```
 
 - **Performance rules:** pooled elements only (numbers 40, bars 32, alerts 8, loot rows 8); write
@@ -1764,6 +1817,15 @@ class DeathScreen {
   lagging second fill; no layout reads in the frame loop; no `void offsetWidth` per hit; CSS
   animations restarted by toggling between two identical keyframe names; `will-change` set up
   front; no `filter` / `backdrop-filter` on animated layers.
+*(Revision 11, §27.23: the look of the bullets below is superseded by the pixel UI after mockup G —
+the sizes, faces and recipes are in [PIXEL_UI.md §5](../specs/PIXEL_UI.md#5-component-recipes), the
+components in [ui.md §10](../architecture/modules/ui.md#10-combat-ui-combat-levels-only). Numbers
+are set in the type roles (`big`, a crit in Jersey 10 at twice the half-size font pixel, the words
+Guard / Perfect! translated in `name`) with G's eight-way outline and move in whole art pixels;
+the bars, pips, alert, reticle and edge arrows are pixel art at the UI root's `--px`; the vitals,
+slots, boss bar and death screen are G's. The performance rules, the behaviour and the data stay as
+written.)*
+
 - **Damage numbers:** Pixelify Sans 400 (no new font weight), 4-way 1 px dark text-shadow outline,
   rise ~24 px and fade over 0.8 s (CSS, wall clock); seeded ±12 px scatter (own `RNG(0x6d6e)`).
   Colours: `dmg` cream `#f3ead7`; `crit` gold `#f3cf7a`, ×1.5 size with a pop; `hurt` `#f08a6a`;
@@ -1800,11 +1862,13 @@ class DeathScreen {
   `chestFound`). Waystone and boss markers are always shown. Secret and branch-reward chests are
   not spoiled by the map.
 - `TitleScreen.show({ ..., destinations, current })`: optional `destinations: [{ value, label }]`
-  draws a `◂ label ▸` row under the prompt.
+  draws a `◂ label ▸` row under the prompt (*rev. 11:* the pixel title's chooser — a plate with ◀ ▶
+  and the key hint; [ui.md §5](../architecture/modules/ui.md#5-titlescreen)).
   - **Cycling:** only ArrowLeft / ArrowRight, d-pad left / right, and clicks on the `◂` / `▸`
     glyphs (which stop propagation) change the selection. **A / D do not cycle** (they are the
     first keys many players press).
-  - While the selection differs from `current`, the prompt reads `Enter / A — Travel to <label>`.
+  - While the selection differs from `current`, the prompt reads `Enter / A — Travel to <label>`
+    (*rev. 11:* the Enter / A keycaps and `t('title.travelTo', { label })`).
     Only confirm (Enter, Space, pad A, or a click on the label) resolves with the new destination.
     Any other key or button first resets the selection to `current` and dismisses as today.
   - Getter `title.destination` → the selected `value` at resolve time. Without `destinations`
@@ -1812,7 +1876,7 @@ class DeathScreen {
 
 ### 13.4 Level selection wiring (combat-core)
 
-- `src/demo/levels.js`: `export const SHIPPED_LEVELS = [{ value: 'emberfall', label: 'Emberfall' },
+- `src/game/levels.js`: `export const SHIPPED_LEVELS = [{ value: 'emberfall', label: 'Emberfall' },
   { value: 'cinderwatch-pass', label: 'Cinderwatch Pass' }, { value: 'starfall-vale', label: 'Starfall Vale' },
   { value: 'gildhaven', label: 'Gildhaven' }, { value: 'brightwater-crossing', label: 'Brightwater Crossing' },
   { value: 'sample-hamlet', label: 'Willowmere' }]` (Gildhaven added 2026-10-02).
@@ -1948,7 +2012,7 @@ type, x, z, defaults, overrides); generators pin it with `canonicalObject`.
 | size | 96 × 120 (x 0–96, z 0–120; z = 0 is north / up-screen) |
 | spawn | `{ x: 48.5, z: 113.5, facing: 'up' }` |
 | generator | `tools/make-cinderwatch-pass.mjs` (+ `tools/lib/levelgen.mjs`) |
-| environment | `timeOfDay 16.8`, **`clock: false`** (a 20-minute run would otherwise reach night after ~5.5 min; T still cycles the hour by hand), weather clear, border forest, outerScenery, godRays, dust, music; `camera { distance: 28, pitch: 34 }`; `highGround { minY: 3.4, pitch: 38 }`; `title { title: 'CINDERWATCH PASS', subtitle: 'Where the Old Fires Wake', prompt: 'Press any key', credit: 'A Lumina HD-2D action demo · three.js' }`; `titleCamera { x: 48, z: 64, y: 0.6, driftX: 4, driftZ: 3, distance: 44 }` *(rev. 4, §27.10
+| environment | `timeOfDay 16.8`, **`clock: false`** (a 20-minute run would otherwise reach night after ~5.5 min; T still cycles the hour by hand), weather clear, border forest, outerScenery, godRays, dust, music; `camera { distance: 28, pitch: 34 }`; `highGround { minY: 3.4, pitch: 38 }`; `title { title: 'CINDERWATCH PASS', subtitle: 'Where the Old Fires Wake', prompt: 'Press any key', credit: 'A Luminati 2.5D action demo · three.js' }`; `titleCamera { x: 48, z: 64, y: 0.6, driftX: 4, driftZ: 3, distance: 44 }` *(rev. 4, §27.10
 P4: `{ x: 78, z: 52, y: 1, driftX: 4, driftZ: 2, distance: 34 }`, over the Hollow Mire; §27.7 L4
 adds `fogScale: 0.7` and `scenery.southGap: 8`)*; `godRayAreas` (glade, caldera); `foliage` flower areas (camp, glade) and shrub areas (ruins, mire edges); `forest.areas` (pine north of z 44, oak / birch south); `scenery.southGap`; **no `combat` key** (auto) |
 
@@ -1980,34 +2044,42 @@ caldera's south cliff; the caldera keeps embers only (the brazier campfires make
 
 ### 15.3 Combat objects (explicit ids)
 
-**Enemy groups** (49 hostile + boss + 3 dummies):
+**Enemy groups** (54 hostile + boss + 3 dummies; *rev. 12, §27.24 Q2:* counts and levels for the
+player with three companions, [Party balance](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass)):
 
 | id | kind | count | level | x, z | radius | extra |
 | --- | --- | --- | --- | --- | --- | --- |
 | `dummies` | dummy | 3 | 1 | 40.5, 106.5 | 2 | `spotOffsets [[-2.5,0],[0,0],[2.5,0]]` |
-| `glade_slimes_w` | slime | 3 | 1 | 26.5, 90.5 | 3 | |
-| `glade_slimes_n` | slime | 4 | 1 | 40.5, 87.5 | 3.5 | |
-| `glade_slimes_e` | slime | 3 | 1 | 70.5, 90.5 | 3 | |
-| `glade_goblins` | goblin | 2 | 1 | 60.5, 86.5 | 2.5 | |
-| `ruins_gate_goblins` | goblin | 3 | 2 | 30.5, 69.5 | 2.5 | |
-| `ruins_slimes` | slime | 2 | 2 | 36.5, 62.5 | 2 | |
-| `ruins_court` | goblin | 2 | 3 | 25.5, 58.5 | 2.5 | |
-| `ruins_shaman` | shaman | 1 | 3 | 21.5, 60.5 | 1.5 | |
-| `ruins_archers_w` | archer | 2 | 2 | 12.5, 54.5 | 2 | on the level-6 ledge |
-| `ruins_archers_n` | archer | 2 | 3 | 19.5, 47.5 | 2 | on the level-6 ledge |
-| `mire_bats_s` | bat | 3 | 2 | 66.5, 69.5 | 3 | |
-| `mire_slimes` | slime | 3 | 2 | 61.5, 61.5 | 2.5 | |
-| `mire_bats_islet` | bat | 3 | 3 | 77.5, 58.5 | 3 | |
-| `mire_bats_n` | bat | 3 | 3 | 69.5, 50.5 | 3 | |
-| `mire_shaman` | shaman | 1 | 3 | 84.5, 65.5 | 1.5 | |
-| `mire_goblins` | goblin | 2 | 3 | 60.5, 53.5 | 2.5 | guards the foot of the Mire → quarry stair |
-| `quarry_boar_w` | boar | 1 | 4 | 20.5, 40.5 | 1.5 | |
-| `quarry_boar_e` | boar | 1 | 4 | 76.5, 40.5 | 1.5 | |
-| `quarry_boar_elite` | boar | 1 | 4 | 55.5, 32.5 | 1.5 | `elite: true`, `name: 'Old Ironhide'`; on the terrace east of the arena stair, ≥ 6 u clear of the arena (rule 17) |
-| `quarry_goblins` | goblin | 3 | 4 | 28.5, 31.5 | 2.5 | |
-| `quarry_archers` | archer | 2 | 4 | 68.5, 30.5 | 2 | on the terrace (level 6) above the lip (level 5) |
-| `quarry_bats` | bat | 2 | 4 | 34.5, 34.5 | 2.5 | |
+| `glade_slimes_w` | slime | 4 | 2 | 26.5, 90.5 | 3 | |
+| `glade_slimes_n` | slime | 5 | 2 | 40.5, 87.5 | 3.5 | |
+| `glade_slimes_e` | slime | 4 | 2 | 70.5, 90.5 | 3 | |
+| `glade_goblins` | goblin | 3 | 2 | 60.5, 86.5 | 2.5 | |
+| `ruins_gate_goblins` | goblin | 3 | 7 | 30.5, 69.5 | 2.5 | |
+| `ruins_slimes` | slime | 2 | 7 | 36.5, 62.5 | 2 | |
+| `ruins_court` | goblin | 3 | 8 | 25.5, 58.5 | 2.5 | |
+| `ruins_shaman` | shaman | 1 | 8 | 21.5, 60.5 | 1.5 | |
+| `ruins_archers_w` | archer | 2 | 7 | 12.5, 54.5 | 2 | on the level-6 ledge |
+| `ruins_archers_n` | archer | 2 | 8 | 19.5, 47.5 | 2 | on the level-6 ledge |
+| `mire_bats_s` | bat | 3 | 6 | 66.5, 69.5 | 3 | |
+| `mire_slimes` | slime | 3 | 6 | 61.5, 61.5 | 2.5 | |
+| `mire_bats_islet` | bat | 3 | 7 | 77.5, 58.5 | 3 | |
+| `mire_bats_n` | bat | 3 | 7 | 69.5, 50.5 | 3 | |
+| `mire_shaman` | shaman | 1 | 7 | 84.5, 65.5 | 1.5 | |
+| `mire_goblins` | goblin | 2 | 7 | 60.5, 53.5 | 2.5 | guards the foot of the Mire → quarry stair |
+| `quarry_boar_w` | boar | 1 | 8 | 20.5, 40.5 | 1.5 | |
+| `quarry_boar_e` | boar | 1 | 8 | 76.5, 40.5 | 1.5 | |
+| `quarry_boar_elite` | boar | 1 | 8 | 55.5, 32.5 | 1.5 | `elite: true`, `name: 'Old Ironhide'`; on the terrace east of the arena stair, ≥ 6 u clear of the arena (rule 17) |
+| `quarry_goblins` | goblin | 3 | 8 | 28.5, 31.5 | 2.5 | |
+| `quarry_archers` | archer | 2 | 8 | 68.5, 30.5 | 2 | on the terrace (level 6) above the lip (level 5) |
+| `quarry_bats` | bat | 2 | 8 | 34.5, 34.5 | 2.5 | |
 | `cinderheart` | golem | 1 | 6 | 48.5, 14.5 | 1 | `name: 'Cinderheart'`, `arena { minX: -12, maxX: 12, minZ: -6.5, maxZ: 8.5 }`, `gate [-2.5, 8.5, 2.5, 8.5]` |
+
+*(rev. 12, §27.24 Q2: the solo table before it had 49 hostile foes — the glade's slimes 3 / 4 / 3
+and goblins 2 at Lv 1, the Ruins at Lv 2–3 with two court goblins, the Mire at Lv 2–3, the quarry
+at Lv 4. The glade is fought by three (Rook and Ilse join at the camp), the rest by four (Sela at
+the Crossroads); the Ruins stay the harder branch (Lv 7–8), the Mire the gentler (Lv 6–7). Ids,
+kinds, positions and radii are unchanged; Cinderheart's level stays 6 (display only), its HP is
+5200, §7.1.)*
 
 **Waystones:** `waystone_camp` (53.5, 107.5) `Camp Waystone`; `waystone_crossroads` (48.5, 77.5)
 `Crossroads Waystone`; `waystone_quarry` (48.5, 42.5) `Quarry Waystone`.
@@ -2019,7 +2091,8 @@ gold 30, potions 1, upgrade `maxMp`.
 
 Branch balance: the Ruins give ATK +3 (ledge chest) + the ridge pocket's gold and draught, ≈ 189
 XP; the Mire gives max HP +20 (islet chest), ≈ 189 XP (with `mire_goblins`); both reach the
-quarry chest's max MP +10.
+quarry chest's max MP +10. *(rev. 12, §27.24 Q2: the Ruins give 395 XP, the Mire 321 — the
+Ruins are the harder branch.)*
 
 **NPCs:** `maren` "Captain Maren" (swordsman, post, `script: 'drillmaster'`, (43.5, 109.5), 2
 fallback pages; post-victory pages from the script, §6.12) · `bram` "Bram" (merchant, post,
@@ -2029,6 +2102,30 @@ naming what each branch offers: "west, the ruins — archers on the walls, and a
 cache on the ledge; east, the mire — bats over the water, and something that hardens the heart
 on the islet") · `odo` "Odo" (guard, post, (44.5, 42.5), 3 pages: bait the charge into a
 brazier; roll *through* the rings, toward it; the magma burns while you stand in it).
+*(additive, 2026-10-08 — the party demo, [PARTY.md §9](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass):)*
+`sela` "Sela" (guard with `spec` overrides — bare-headed, the spear —, post, (50.8, 78.1) by the
+Crossroads Waystone, a `talk` script: she joins the party, `party join sela as warden balanced`)
+and two background story events, `ev_sela_lip` (the quarry lip, x 3–93, z 37–44: *Guard Me*) and
+`ev_sela_caldera` (the caldera stair, x 45.5–51.5, z 23.2–27: *Support*), both `if: party:sela`,
+`once`. The level thereby has a story (`levelHasStory`: the story runtime, the journal key B);
+the fixed-step bot's digest is unchanged.
+*(rev. 12, §27.24 Q1 — three companions, the party the enemies are balanced for:)* `ilse` "Sister
+Ilse" is now `post`, facing down, `title: 'Keeper of the Waystones'`, with a `talk` script: her
+three pages on waystones, then an offer, `party join ilse as mystic support` (the party's healer:
+the cleric's staff makes her a mystic); her 3 `dialogue` pages stay as the plain fallback. `rook`
+"Rook" is new (hunter with `spec` overrides — an ember-red hood with a gold feather tuft, a
+leather tunic, Sela's short charcoal cape —, post, facing right, (40.5, 112.5) south of the
+sparring yard, `title: 'Scout of the Cinderwatch'`, 2 fallback pages, a `talk` script:
+`party join rook as ranger balanced` — his bow makes him a ranger). Both talk scripts follow
+Sela's: as a member *Tactics…* (`party menu`), *Part ways* (asked twice: `party leave`, `home`)
+and *Lead on*; a full party (`if party >= 3`) hears no offer — Sela's included. Sela's join line
+has two forms (`if party = 1`: "Then it's the two of us…", else "Then the watch marches with
+you…"). Two more background events: `ev_rook_ruins` (the Bramble Ruins inside their outer wall,
+x 4–41, z 44–71.5, `if: party:rook`: a bark and `party rule rook hunter`, *Hunt Casters*) and
+`ev_ilse_caldera` (the caldera stair, `if: party:ilse`: a bark); `ev_sela_caldera` now runs
+`if: party:sela and not party:ilse` (Sela turns to *Support* only when Ilse is not there to heal).
+The level has 7 villagers, 4 events and 283 objects; Ilse, Rook and Sela fill the party (at most 3
+companions, PARTY.md).
 
 **Light descriptors — exactly 12 (static mode):** `campfire_camp` (47.5, 109.5),
 `lamppost_camp_w` (43.5, 103.5), `lamppost_camp_e` (55.5, 112.5), `lamppost_crossroads`
@@ -2047,12 +2144,20 @@ waterfall `fall_mire`; bridges (2 brook, ≥ 3 mire).
 Crossroads" · `region_ridge` "Cinder Ridge" · `region_glade` "Mossy Glade" · `region_ruins`
 "Bramble Ruins" · `region_mire` "Hollow Mire" · `region_quarry` "Cinder Quarry" · `region_pass`
 "Cinderwatch Pass" (whole map). Banners on camp, glade, ruins, mire and quarry, each naming the
-danger (e.g. `Slimes and goblins · Lv 1`).
+danger (e.g. `Slimes and goblins · Lv 1`). *(rev. 12, §27.24 Q2 / Q3: `Slimes and goblins · Lv 2`,
+`Goblins, archers and a shaman · Lv 7–8`, `Bats, slimes and a shaman · Lv 6–7`,
+`Ironhide boars and archers · Lv 8`; the camp's `Straw dummies and a warm fire · Safe` is
+unchanged. Rule 16 checks each level range against the packs.)*
 
 XP pacing (§6.1, per-enemy XP rounded): the glade gives 84 XP (→ Lv 2), either branch 189
 (273 cumulative → Lv 3), the quarry 370 (643 → Lv 5, Radiant Nova learned on the way at 295);
 doing both branches gives 832, still Lv 5. The player meets Cinderheart at Lv 5 either way. The
 fight's length is checked by the greedy run of §8.3 (target ≈ 90–120 s for a real player).
+*(rev. 12, §27.24 Q2: the whole glade gives 149 XP (→ Lv 3), the Ruins 395 (544 → Lv 4) or the
+Mire 321 (470 → Lv 4), the quarry 581 (1125 / 1051 → Lv 6); both branches 1446, still Lv 6;
+Cinderheart 400. The player meets Cinderheart at Lv 6 either way. The play-through bot on the
+Ruins route — the glade's north and west packs only — is Lv 2 after the glade, Lv 4 after the
+branch, Lv 6 after the quarry, and ends at Lv 6 with 483 XP into it.)*
 
 **Positions** are the design; the generator may move a combat object, NPC or chest by **≤ 3 u**
 only when a validation rule requires it (and prints the move). Anything larger goes back to the
@@ -2131,8 +2236,12 @@ on the marsh light; Bram and Odo run the `shopkeeper` script.)*
     at no more than 15 % of the samples. (The DOM aggro pips of §13.2 cover the rest of the leash
     area.)
 15. Density: ≤ 30 non-dummy enemy start points inside any disc of radius 28 u (centres on a
-    2 u grid).
-16. Regions: all 9 exist with their ids; banners as listed.
+    2 u grid). *(rev. 12, §27.24 Q2: the peak is now exactly 30, at (56, 70) by the Crossroads —
+    why the party-of-four table adds foes only to the glade and the Ruins court and carries the
+    rest in levels.)*
+16. Regions: all 9 exist with their ids; banners as listed. *(rev. 12, §27.24 Q3: a banner's
+    `· Lv a–b` (or `· Lv a`) must be the level range of the hostile groups — not the dummies or
+    the boss — at home in its zone, the first region holding the home, as in the game.)*
 17. **Arena buffer:** every non-boss group's home disc (radius + 2) is ≥ 6 u from every boss arena
     rect, and every flier group's clamp rect (home ± (radius + 8)) does not intersect it. (The
     runtime exclusion of §7.6 keeps chasers out; this rule keeps them from pressing against it.)
@@ -2143,7 +2252,7 @@ on the marsh light; Bram and Odo run the `shopkeeper` script.)*
     1.5 u of one group's start spots (3 u for fliers) must not wake the other group — its spots
     and 8 points at 0.7 × its radius round each — by the rule-5 sight test (within 3 u, or within
     the aggro range with line of sight by the projectile model, at a height difference < 1.5).
-    The generator imports `ENEMY_DEFS` from `src/demo/combat/defs.js` (pure data) for it.
+    The generator imports `ENEMY_DEFS` from `src/game/combat/defs.js` (pure data) for it.
 20. *(rev. 5, §27.15 K5)* **Chase and group-wake margins:** (a) no roaming member of a pack of
     another region within 6 u in line of sight of a roaming member (the group wake); (b) the
     fight ring of rule 19 plus a walked 3 u drift (walls and cliffs stop it) stays out of another
@@ -2167,16 +2276,21 @@ value except `none` on some chest plus ≥ 1 gold-only chest; ≥ 3 waystones; a
 `shopkeeper` NPC at the camp and at the Quarry Waystone)*; emitters
 include mist, fireflies, embers, smoke, dust, leaves, petals; ≥ 1 waterfall, ≥ 3 bridges; the
 environment keys of §15.1 present, `environment.clock === false` and `environment.combat` absent.
+*(additive, 2026-10-08:)* a villager whose talk script holds `party join` and `party menu`, and a
+background event with `party rule` (the party demo, PARTY.md §9); the story's checks
+(`StoryChecks.storyIssues`) pass before the level is written. *(rev. 12, §27.24 Q3:)* the full
+party of four the enemies are balanced for — a villager who joins as a warden, one as a ranger
+and one as a mystic (`party join … as <class>` in its talk script; Sela, Rook, Ilse).
 
-**Coupling rule (goes into `CLAUDE.md` and TASK_PLAYBOOKS §0):** a new `OBJECT_TYPES` type with
+**Coupling rule (see [AGENTS.md](../../AGENTS.md) and TASK_PLAYBOOKS §0):** a new `OBJECT_TYPES` type with
 `combat: true`, a new `ENEMY_KINDS` value or a new `CHEST_UPGRADES` value makes
 `make-cinderwatch-pass.mjs` fail its `coverage()` until placed there; every other new
 `OBJECT_TYPES` type must still be placed in Starfall as today.
 
 ### 15.7 Reachability
 
-`index.html?level=cinderwatch-pass`, the title-screen destination row (§13.4), the error-screen
-link, `editor.html?open=cinderwatch-pass`.
+`game.html?level=cinderwatch-pass`, the title-screen destination row (§13.4), the error-screen
+link, `editor.html?open=cinderwatch-pass`, the launcher's Play and Edit links (`index.html`).
 
 ---
 
@@ -2269,7 +2383,9 @@ file); the editor package documents the dialog in `EDITOR.md` and `LEVEL_EDITOR_
 - **Colliders:** none added or removed at runtime (enemies have none; chests / waystones are
   static props built at load).
 - **Load:** sheets + atlas ≤ 150 ms; marker height texture ≤ 40 ms; Cinderwatch total load ≤ 6 s
-  on the reference machine. *(rev. 5, §27.14 X1: the height texture bakes in ≤ 6 ms slices, never
+  under the historical desktop benchmark conditions in
+  [PERFORMANCE.md](../architecture/PERFORMANCE.md#2-measurements). Re-measure for the target
+  browser and hardware. *(rev. 5, §27.14 X1: the height texture bakes in ≤ 6 ms slices, never
   a long task; §27.13 R1: the walk grid ≈ 20 ms at load.)*
 - *(rev. 5, §27.13 R1)* **Path searches:** ≤ 2 per combat sub-step (`NAV_SEARCHES`), each ≤ 6000
   expanded cells (≈ 1.5 ms warm for the longest), allocation-free; ≤ 3 sub-steps after a hitch give
@@ -2329,7 +2445,7 @@ file); the editor package documents the dialog in `EDITOR.md` and `LEVEL_EDITOR_
             action, actionFrame, invulnerable, combo, winded, lock /* uid|null */,
             checkpoint /* id */, cooldowns: [s1, s2, s3], deaths, perfectDodges },
   engaged, time, frame, seed, kills, bossDefeated, device /* input.lastDevice */,
-  enemies: { total, alive, active, aggro },
+  enemies: { total, alive, active, aggro, absent },   // rev. 8 (§27.22 K6): absent = foes of groups the story has away (not in the others)
   boss: { uid, hp, hpMax, phase, state, broken, defeated, fightTime, phaseTimes: [t1, t2, t3] } /* or null */,
   projectiles, markers, pickups, fx, edgeArrows,
   tokens: { melee, ranged },
@@ -2346,7 +2462,7 @@ Documented in `docs/specs/AUTOMATION_API.md` §3 by combat-core.
 ## 21. Test recipes and scripts
 
 All assertions throw asynchronously (`setTimeout(() => { throw … })`) so the harness exits 1
-(TOOL-01). Every game script first polls `window.__lumina.loadMs`, then locks the resolution
+(TOOL-01). Every game script first polls `window.__luminati.loadMs`, then locks the resolution
 governor (`__game.game.resolution.enabled = false; __game.engine.renderScale = 1`).
 
 **Combat fixture (combat-core, `sandbox/combat_fixture.js`).** Combat-core must be able to verify
@@ -2356,7 +2472,7 @@ level 2) and `FIXTURE` (named coordinates for scripts). It contains: 3 dummies; 
 a bat, a boar and a shaman group on open ground; a 2-level ledge (level 4, with a stair) holding a
 2-archer group; a chest and two waystones; a golem group whose arena (≥ 22 × 14 u, rim 2 levels
 up, gate with stairs) holds two campfires as braziers. Scripts load it with
-`__lumina.playLocal(makeCombatFixture(), 'combat-fixture')` (then wait for the new page's
+`__luminati.playLocal(makeCombatFixture(), 'combat-fixture')` (then wait for the new page's
 `loadMs`); nothing is written to `public/levels/`. Until the level package lands, chests and
 waystones build nothing (no `ObjectBuilder` case yet) — use the `checkpoint` / `rest` hooks.
 
@@ -2386,137 +2502,82 @@ they must be identical.
 | `combat.fight.json` | combat-core | fixture | stepped combo (above); SP / MP costs; cooldown refusal; level-up (`setPlayer({ xp: xpNext − 1 })` + `damage(uid, 9999)` → level +1 and `.lu-announce` visible); **ledge shots** (ledge archer hits the player on the floor; the player's Ember Bolt from the floor hits the ledge archer; melee from below does not); photo mode on a combat level freezes the player (P, `move(1, 0)`, step 30 → position unchanged); resume guard (open map, close with a held B → no dodge until released); `input.lastDevice = 'gamepad'` → pad legend, swapped keycaps, one toast *(rev. 5: also `tests.zones()`, `tests.shop()` and a shop-menu shot; the combo and costs tests wait with `stepUntil`)* |
 | `combat.iframes.json` | combat-core | fixture | slime lunge: dodge pressed when its windup has ≤ 4 f left → HP unchanged and `perfectDodges` +1; control run without dodge → HP lower |
 | `combat.death.json` | combat-core | fixture | `damagePlayer(9999)` → wait 2.5 s → `press` a key → wait 3 s → player within 1.5 u of the checkpoint, HP full, gold −10 %, killed enemies still dead |
-| `combat.boss.json` | combat-core | fixture (then Cinderwatch at integration) | `setPlayer({ level: 6 })`, teleport into the arena → intro, barrier, a goblin woken beforehand is sent home and never enters the arena; `setBossHp(0.69)` → phase 2 adds; `setBossHp(0.34)` → phase 3 kneel damage cap; charge into a brazier → stun, into the rim → 45 f skid; Shockwave ring: standing still → hit, roll inward timed in the 8 f window → no damage (stepped); kill → arena open, victory, results card; **greedy run** (Lv 5, `god(true)`, move toward the boss + attack + skills every step): greedy fight time ≥ 30 s and phase 3 ≥ 7 s (§8.3), times logged |
+| `combat.boss.json` | combat-core | fixture (then Cinderwatch at integration) | `setPlayer({ level: 6 })`, teleport into the arena → intro, barrier, a goblin woken beforehand is sent home and never enters the arena; `setBossHp(0.69)` → phase 2 adds; `setBossHp(0.34)` → phase 3 kneel damage cap; charge into a brazier → stun, into the rim → 45 f skid; Shockwave ring: standing still → hit, roll inward timed in the 8 f window → no damage (stepped); kill → arena open, victory, results card; **greedy run** (Lv 5, `god(true)`, move toward the boss + attack + skills every step): greedy fight time ≥ 30 s and phase 3 ≥ 7 s (§8.3), times logged *(rev. 12, §27.24 Q5: at 5200 HP the greedy run steps ≈ 5 900 frames in one evaluate — run it, and `combat.boss.cw.json`, alone)* |
 | `combat.programs.json` | combat-core | Cinderwatch | `stats().programs` after load == after `showcase()` + a scripted tour of every zone + boss fight + death + respawn; rAF gap recorder: no frame > 45 ms after warm-up |
 | `combat.perf.json` | combat-core | Cinderwatch | `wake('all')` in the busiest zones; `drawCalls` at zoom 30 / 42, yaw ±60°; `postfx.enableTimings(true)`; `stats().tickMsP95` ≤ 1.0 |
-| `combat.peaceful.json` | combat-core | `index.html?autostart=1` (Emberfall), then `?level=starfall-vale&autostart=1` | `state().combat === undefined`, `__game.combat === undefined`; J / K / L / 1 / C and a canvas click change nothing; programs 57 (Starfall 59) |
-| `cinderwatch.tour.json` | level | `index.html?level=cinderwatch-pass&autostart=1` | teleport to each zone (yaw 0 and ±60°, zoom 42), screenshots, baseline `drawCalls` with enemies hidden ≤ 200; yaw ±60° shots of the Ruins' east edge and the arena edges; a boar charge lane across the z 37 step and a ledge-archer lane (draped markers) screenshotted; an attuned and an unattuned waystone by day; **night readability** shots after `setTime(21.5)` in the camp, the Ruins and the arena (T lets players choose night) |
+| `combat.peaceful.json` | combat-core | `game.html?autostart=1` (Emberfall), then `?level=starfall-vale&autostart=1` | `state().combat === undefined`, `__game.combat === undefined`; J / K / L / 1 / C and a canvas click change nothing; programs 57 (Starfall 59) |
+| `cinderwatch.tour.json` | level | `game.html?level=cinderwatch-pass&autostart=1` | teleport to each zone (yaw 0 and ±60°, zoom 42), screenshots, baseline `drawCalls` with enemies hidden ≤ 200; yaw ±60° shots of the Ruins' east edge and the arena edges; a boar charge lane across the z 37 step and a ledge-archer lane (draped markers) screenshotted; an attuned and an unattuned waystone by day; **night readability** shots after `setTime(21.5)` in the camp, the Ruins and the arena (T lets players choose night) |
 | `editor_shell.combat.json` | editor | `editor.html?open=cinderwatch-pass` | 2D glyphs, 3D enemy previews, inspector stats, settings dialog, place / move / delete an enemy group, save under a temporary name and delete it *(rev. 5, §27.16: the enemy batch's draw cost and look, the boss Count cap, the 2D-only dots, the graded 2D hits)* |
-| `combat.play.json` (§27.1) | lead | `index.html?level=cinderwatch-pass&autostart=1` | a bot (`sandbox/combat_play.js`) plays the whole level in real time with real key events: the drill and its reward, 5 chests, a rest, the Ruins branch, the quarry, a death and the respawn, Cinderheart, the results card; `verify()` fails the run on a missed goal *(rev. 5, §27.18: in **fixed step** — its first step loads `…&fixedstep=1` — deterministic, compared by its `summary` / `digest`; also `combat.play.fast.json`, `combat.play.human.json`, `combat.play.realtime.json`)* |
+| `combat.play.json` (§27.1) | lead | `game.html?level=cinderwatch-pass&autostart=1` | a bot (`sandbox/combat_play.js`) plays the whole level in real time with real key events: the drill and its reward, 5 chests, a rest, the Ruins branch, the quarry, a death and the respawn, Cinderheart, the results card; `verify()` fails the run on a missed goal *(rev. 5, §27.18: in **fixed step** — its first step loads `…&fixedstep=1` — deterministic, compared by its `summary` / `digest`; also `combat.play.fast.json`, `combat.play.human.json`, `combat.play.realtime.json`)* *(rev. 12, §27.24 Q4: it recruits the party — Rook and Sister Ilse at the camp after the drill reward, Sela at the Crossroads after the rest — and `verify()` wants the party of three at the end; `start({ party: false })` plays alone; digests `cf165213` (= `.fast`), human `8c4ef71b`)* |
 | `combat_audio.actions.json` *(rev. 5, §27.17 M3)* | known-issues pass | `combat_audio.html` | the combat audio QA: 12 checks over offline renders of every combat SFX, the stingers, the music sections, dense scenes and the victory sequence; `identity()` of the peaceful audio |
 
-Combat-core also writes `combat.fight.cw.json` and `combat.boss.cw.json`: the same steps against
-`index.html?level=cinderwatch-pass&autostart=1` with Cinderwatch coordinates (the camp dummies,
-the Ruins ledge archers, Cinderheart). They are run at integration, once the level has landed.
+`combat.fight.cw.json` and `combat.boss.cw.json` repeat the fixture steps against
+`game.html?level=cinderwatch-pass&autostart=1` with Cinderwatch coordinates (the camp dummies,
+the Ruins ledge archers, Cinderheart). Run them when changing either the combat rules or the level.
 
 ---
 
 ## 22. Work breakdown
 
-### 22.1 Foundation (written by the lead before the packages start)
+### 22.1 Foundation
 
-The stubs are **shape-complete placeholders**, not inert shells: every dependent package must be
-able to run its sandbox or the game against them on day one.
+Combat is opt-in. The level catalog detects combat levels; the game loads the combat runtime,
+sprites, effects, audio and UI only when needed. Keep the module interfaces in §9 and the typed
+copies in `src/game/combat/types.d.ts` consistent when changing these dependencies. Peaceful
+levels must retain their existing render and loading behavior (§2).
 
-1. This document.
-2. `src/engine/level/ObjectCatalog.js` — **complete** implementation of §14.1 (enums,
-   `ENEMY_INFO`, the three types, `objectBounds` case, `enemyStartPoints`, `isCombatType`,
-   `levelHasCombat`, `'Combat'` category, `'drillmaster'` script).
-3. `src/engine/index.js` — exports: `FxQuads`, `GroundMarkers`, `createFxAtlas`, `FX_FRAMES`,
-   `createEnemySheet`, `ENEMY_SHEET_KINDS`, `CombatHUD`, `BossBar`, `WorldLabels`, `Announcer`,
-   `DeathScreen`.
-4. `tools/make-starfall-vale.mjs` — the one-line coverage change of §16.1 (so the generator stays
-   green from the moment the catalog gains the combat types); verify with `--out=<scratch>.json`
-   and `cmp` that the output equals the committed `starfall-vale.json`.
-5. **Placeholders** (final export names, signatures and return shapes):
-   - `src/engine/pixel/MonsterSprites.js`: `ENEMY_SHEET_KINDS`; `createEnemySheet(kind)` returns a
-     real `SpriteSheet` with the §10.3 frame size, column count and 4 direction rows, painted as
-     flat-colour silhouettes (one colour per kind, dark outline, a 1 px facing mark per row), the
-     `idle_` / `walk_` / `run_` animations, the **full** `poses` map (with every alias) and valid
-     `spriteOptions`; throws on an unknown kind.
-   - `src/engine/pixel/CharacterSprites.js` (additive only, inside `if (opts.combat)` after the
-     plain sheet is built): `COMBAT_POSE_NAMES` export; `createCharacterSheet(spec, { combat: true })`
-     returns a separate sheet (own canvas copy) named `character:<preset>:combat` with the plain
-     6 columns and a `poses` map in which `idle0…walk3` are 0–5 and every combat pose is 0.
-     Without the option nothing changes.
-   - `src/engine/sprite/Sprite3D.js`: option `combatFx` accepted and ignored; `setFlash()` /
-     `setGlow()` no-op methods (no shader change).
-   - `src/engine/pixel/FxSprites.js`: `FX_FRAMES` (the §10.4 table) and `createFxAtlas()` returning
-     a real 512² texture with packed rects (white placeholder frames) and `frames`.
-   - `src/engine/fx/FxQuads.js`, `src/engine/fx/GroundMarkers.js`: constructors accept the final
-     options; `object` is a real, empty `THREE.Group`; `alloc()` returns −1; `set / free / clear /
-     update / dispose` are no-ops; `count` is 0.
-   - `src/engine/fx/Particles.js`: the six presets of §11.3 as data (final values).
-   - `src/engine/audio/AudioSystem.js`: `COMBAT_SFX_NAMES`; `playSfx` returns `null` for those
-     names without a warning; `startMusic({ track })` with a non-default track is a no-op;
-     `musicTrack` getter; `setMusicSection` / `playStinger` no-ops. The default song is untouched.
-   - `src/engine/core/Input.js`: a working `addBindings` (it is ~10 lines, including the
-     preventDefault-cache invalidation); `enableMouseButtons` no-op; `lastDevice = 'keyboard'`.
-   - `src/engine/core/CameraRig.js`: the `stickZoom = 0` field (no behaviour yet).
-   - `src/engine/ui/UI.js`: `enableCombat()` creating the placeholder components as `ui.combat`;
-     `src/engine/ui/{CombatHUD,BossBar,WorldLabels,Announcer,DeathScreen}.js` with every §13.2
-     method (no-ops; `bar()` / `edge()` return a shared no-op handle; `announce` resolves after
-     `duration`; `DeathScreen.show` resolves `'key'` on the next keydown after `armDelay`).
-   - `src/demo/combat/defs.js`: the **full** `ENEMY_DEFS` data of §7.1 / §7.8 / §9.4 and `scaledDef`.
-   - `src/demo/combat/Enemy.js`: `createEnemy` returns a minimal but functional `Enemy` — every
-     §9.3 field, `pose / anim / face` working through the sheet, `update` idles in place facing the
-     player, `receiveHit` without reaction, `die` fades out over 30 f, `reset / wake / sleep`,
-     `targetable`.
+### 22.2 Implementation map
 
-   After the foundation each placeholder belongs to the package listed in §22.2.
-6. Verify: `npm run build`; Emberfall, Willowmere, Brightwater and Starfall fingerprints unchanged
-   (the placeholders only add code paths peaceful levels never take). The sprites package records
-   its hash baseline (§10) at its start — valid because the foundation's CharacterSprites edit is
-   confined to the `opts.combat` branch.
+| Area | Implementation | Reference |
+| --- | --- | --- |
+| Core rules and player | `src/game/combat/` | §4–§6, §9 |
+| Enemies and boss | `Enemy.js`, `ai/`, `defs.js`, `BossArena.js` | §7–§9 |
+| Sprites | `src/engine/pixel/`, `src/engine/sprite/Sprite3D.js` | §10 |
+| Effects and audio | `src/engine/fx/`, `src/engine/audio/AudioSystem.js` | §11–§12 |
+| UI | `src/engine/ui/`, `src/game/combat/strings.js` | §13 |
+| Level and editor | `tools/make-cinderwatch-pass.mjs`, `src/engine/level/`, `src/editor/` | §14–§17 |
+| Companions | `src/game/party/MemberCombat.js` | §28, [PARTY.md](../specs/PARTY.md) |
 
-### 22.2 Packages (disjoint file ownership)
-
-| Key | Title | Owns | Depends on |
-| --- | --- | --- | --- |
-| `sprites` | Combat sprite art and Sprite3D fx variant | `src/engine/pixel/CharacterSprites.js`, `src/engine/pixel/MonsterSprites.js`, `src/engine/pixel/FxSprites.js`, `src/engine/sprite/Sprite3D.js`, `sandbox/sprite_art.js`, `sandbox/sprite_art.html`, `sandbox/sprite_art.combat.json`, `sandbox/sprite_art.hashes.json`, `docs/architecture/modules/pixel.md`, `docs/architecture/modules/sprite.md` | — |
-| `fx-audio-input` | FX batches, particles, audio, input, camera | `src/engine/fx/FxQuads.js`, `src/engine/fx/GroundMarkers.js`, `src/engine/fx/Particles.js`, `src/engine/audio/AudioSystem.js`, `src/demo/AudioDirector.js`, `src/engine/core/Input.js`, `src/engine/core/CameraRig.js`, `sandbox/combat_fx.html`, `sandbox/combat_fx.js`, `sandbox/combat_fx.actions.json`, `docs/architecture/modules/fx.md`, `docs/architecture/modules/audio.md`, `docs/architecture/modules/core.md`, `docs/specs/INPUT_AND_CONTROLS.md` | — |
-| `ui` | Combat UI components | `src/engine/ui/UI.js`, `src/engine/ui/HUD.js`, `src/engine/ui/Minimap.js`, `src/engine/ui/TitleScreen.js`, `src/engine/ui/ui.css`, `src/engine/ui/CombatHUD.js`, `src/engine/ui/BossBar.js`, `src/engine/ui/WorldLabels.js`, `src/engine/ui/Announcer.js`, `src/engine/ui/DeathScreen.js`, `sandbox/ui.html`, `sandbox/ui.js`, `sandbox/ui.combat.actions.json`, `docs/architecture/modules/ui.md` | — |
-| `enemies` | Enemy actor, stats and AI brains | `src/demo/combat/Enemy.js`, `src/demo/combat/defs.js`, `src/demo/combat/ai/index.js`, `src/demo/combat/ai/slime.js`, `…/goblin.js`, `…/archer.js`, `…/shaman.js`, `…/bat.js`, `…/boar.js`, `…/dummy.js`, `…/golem.js`, `sandbox/enemy_ai.html`, `sandbox/enemy_ai.js`, `sandbox/enemy_ai.actions.json` | sprites (sheets), fx-audio-input (markers in the sandbox) — placeholders suffice to start |
-| `combat-core` | Combat system, player kit and game integration | `src/demo/combat/CombatSystem.js`, `CombatInput.js`, `PlayerCombat.js`, `Targeting.js`, `Hitboxes.js`, `Projectiles.js`, `Pickups.js`, `Loot.js`, `Waystones.js`, `BossArena.js`, `CombatFx.js`, `Feel.js`, `CombatMusic.js`, `rules.js`, `bindings.js`, `hooks.js` (all under `src/demo/combat/`), `src/demo/Game.js`, `src/demo/Player.js`, `src/demo/dialogue.js`, `src/demo/levels.js`, `src/main.js`, `sandbox/combat_fixture.js`, `sandbox/combat.fight.json`, `sandbox/combat.fight.cw.json`, `sandbox/combat.iframes.json`, `sandbox/combat.death.json`, `sandbox/combat.boss.json`, `sandbox/combat.boss.cw.json`, `sandbox/combat.programs.json`, `sandbox/combat.perf.json`, `sandbox/combat.peaceful.json`, `docs/specs/AUTOMATION_API.md`, `docs/architecture/GAME.md` | all others at integration; works against the placeholders and the fixture level from day one |
-| `level` | Chest / waystone props, Cinderwatch Pass generator and level | `src/engine/world/props/CombatProps.js`, `src/engine/world/Props.js`, `src/engine/level/ObjectBuilder.js`, `src/engine/level/LevelMap.js`, `src/demo/World.js`, `tools/lib/levelgen.mjs`, `tools/make-cinderwatch-pass.mjs`, `public/levels/cinderwatch-pass.json`, `sandbox/props.js`, `sandbox/cinderwatch.tour.json`, `docs/design/levels/cinderwatch-pass.md`, `docs/design/levels/starfall-vale.md`, `docs/architecture/modules/world.md`, `docs/architecture/modules/level.md`, `docs/specs/OBJECT_CATALOG.md`, `docs/specs/LEVEL_FORMAT.md`, `docs/contracts/LEVEL_EDITOR.md` | — (catalog from the foundation) |
-| `editor` | Editor support for combat types | `src/editor/viewport3d/ActorPreview.js`, `src/editor/viewport3d/Ghost.js`, `src/editor/viewport3d/Viewport3D.js`, `src/editor/viewport3d/Overlays.js`, `src/editor/map2d/Map2DView.js`, `src/editor/tools/SelectTool.js`, `src/editor/tools/common.js`, `src/editor/ui/Inspector.js`, `src/editor/ui/dialogs.js`, `src/editor/EditorApp.js`, `sandbox/editor_shell.combat.json`, `docs/architecture/EDITOR.md`, `docs/user/LEVEL_EDITOR_GUIDE.md` | sprites (`createEnemySheet`) — placeholder suffices to start |
-
-Lead-owned (foundation and integration; nobody else edits them): `README.md`, `CLAUDE.md`,
-`ARCHITECTURE.md`, `docs/README.md`, `docs/index.html`, `docs/contracts/README.md`,
-`docs/contracts/COMBAT.md`, `docs/ai/*.md`, `docs/architecture/PERFORMANCE.md`,
-`docs/architecture/modules/README.md`, `docs/features/FEATURES.md`,
-`docs/user/PLAYING_THE_GAME.md`, `docs/user/shortcuts.html`,
-`docs/development/TESTING_AND_VERIFICATION.md`, `sandbox/index.html` (links to `combat_fx.html`
-and `enemy_ai.html`, the `mode=combat` / `mode=hashes` sprite views and `ui.html?combat=1`),
-`src/engine/level/ObjectCatalog.js`, `src/engine/index.js`, `tools/make-starfall-vale.mjs`.
-`public/levels/starfall-vale.json` and the other shipped levels are owned by nobody in this change
-(they must not change).
-
-A package that needs a change in a file it does not own writes the exact request in its report;
-the lead applies it.
+Update a shared interface and its callers together. The executable fixtures and scripts in §21
+exercise these boundaries; no placeholder implementation is required.
 
 ---
 
-## 23. Integration and verification sequence (lead)
+## 23. Integration and verification sequence
 
-1. Land the foundation (§22.1); start all packages.
-2. Merge in dependency order: sprites, fx-audio-input, ui, level, editor, enemies, combat-core.
-   After each merge: `npm run build`; Emberfall fingerprint (57 programs, 229–231 calls, 12
-   lights, identical photo-mode screenshot).
+1. Check the affected module interfaces and typed copies (§9, §22.1).
+2. Run `npm run typecheck` and `npm run build`, then compare the peaceful-level fingerprints
+   against the documented baselines (TASK_PLAYBOOKS §16).
 3. Regenerate: `node tools/make-cinderwatch-pass.mjs`, then `--check` for Cinderwatch and
    sample-hamlet; `node tools/make-starfall-vale.mjs --out=<scratch>.json` and `cmp` with the
    committed Starfall file (identical).
 4. Run every script of §21 (including the `*.cw.json` variants) and read the PNGs; zero page
-   errors, console errors, warnings and failed requests.
+   errors, console errors, warnings and failed requests. *(rev. 12, §27.24 Q4: the play-through
+   bot (`sandbox/combat_play.js`) recruits the party by talking — a `join` task each for Rook
+   and Ilse at the camp and Sela at the Crossroads — and plays beside it; compare its digests:
+   `combat.play.json` = `combat.play.fast.json` `cf165213`, `combat.play.human.json` `8c4ef71b`.
+   A chunk the game loads mid-run (the party's, at the first join) is awaited between two frames
+   (`chunkLoads`), so the two expert scripts agree. In the planned fall beside Old Ironhide the
+   members hold back; with no Old Ironhide left the fall is skipped.)*
 5. Fingerprints (TASK_PLAYBOOKS §16): Emberfall / Willowmere / Brightwater / Starfall unchanged;
    record Cinderwatch's values. Editor open / save round trip of every shipped level leaves
    `git diff` empty.
 6. Docs (§24), `npm run build`, `npm run docs:check`; check `git status public/levels` (no stray
-   test levels); commit.
+   test levels).
 
 ---
 
 ## 24. Docs to update
 
-| Doc | Owner | Change |
+| Doc | Area | Change |
 | --- | --- | --- |
-| `docs/architecture/modules/{pixel,sprite,fx,audio,core,ui,world,level}.md` | module packages | new APIs, options, presets, program keys |
-| `docs/specs/{INPUT_AND_CONTROLS,AUTOMATION_API,OBJECT_CATALOG,LEVEL_FORMAT}.md` | fx-audio-input / combat-core / level | bindings (incl. the pad legend), hooks, types, optional fields |
+| `docs/architecture/modules/{pixel,sprite,fx,audio,core,ui,world,level}.md` | engine modules | new APIs, options, presets, program keys |
+| `docs/specs/{INPUT_AND_CONTROLS,AUTOMATION_API,OBJECT_CATALOG,LEVEL_FORMAT}.md` | input / combat / level | bindings (incl. the pad legend), hooks, types, optional fields |
 | `docs/contracts/LEVEL_EDITOR.md` §1–§2, §5 | level | `environment.combat`, the 3 types and their optional fields, the editor's `Combat: Auto / On / Off` setting (text from §17) |
 | `docs/architecture/{GAME,EDITOR}.md` | combat-core / editor | frame order, combat wiring; editor enemy preview |
 | `docs/design/levels/{cinderwatch-pass,starfall-vale}.md` | level | new level page; Starfall's coverage now "every non-combat object type" |
 | `docs/user/LEVEL_EDITOR_GUIDE.md` | editor | placing enemies, chests, waystones; Combat setting |
-| `ARCHITECTURE.md` §4.1 / §4.3 / §4.8, `README.md`, `CLAUDE.md` (coupling rule, levels on disk), `docs/README.md`, `docs/index.html`, `docs/contracts/README.md` (this contract), `docs/ai/{AGENT_ONBOARDING,TASK_PLAYBOOKS,KNOWN_ISSUES}.md` (level table, §0 / §1 / §16 fingerprints, COMBAT-xx traps), `docs/architecture/PERFORMANCE.md`, `docs/features/FEATURES.md`, `docs/user/{PLAYING_THE_GAME.md,shortcuts.html}`, `sandbox/index.html` | lead | integration pass |
+| `ARCHITECTURE.md` §4.1 / §4.3 / §4.8, `README.md`, `AGENTS.md` (coupling rule, levels on disk), `docs/README.md`, `docs/index.html`, `docs/contracts/README.md` (this contract), `docs/ai/{AGENT_ONBOARDING,TASK_PLAYBOOKS,KNOWN_ISSUES}.md` (level table, §0 / §1 / §16 fingerprints, COMBAT-xx traps), `docs/architecture/PERFORMANCE.md`, `docs/features/FEATURES.md`, `docs/user/{PLAYING_THE_GAME.md,shortcuts.html}`, `sandbox/index.html` | shared documentation | integration notes |
 
 ---
 
@@ -2525,8 +2586,8 @@ the lead applies it.
 | Risk | Mitigation |
 | --- | --- |
 | `Player.update` stomps combat poses | `player.action` returns early before any `play` / `faceVector` / `speed` write (including the frozen idle branch); combat sets the next action in the same sub-step. |
-| Program-key collision | The fx variant only under `lumina-sprite3d-lit-fx-v1`; the peaceful fingerprint (exact program count) catches a leak. |
-| Glow texels (alpha 204) not surviving upload | Verified in the sprite sandbox; fallback: a second glow-mask texture under a new key `lumina-sprite3d-lit-fx-v2` (lead decision). |
+| Program-key collision | The fx variant only under `luminati-sprite3d-lit-fx-v1`; the peaceful fingerprint (exact program count) catches a leak. |
+| Glow texels (alpha 204) not surviving upload | Verified in the sprite sandbox; fallback: a second glow-mask texture under a new key `luminati-sprite3d-lit-fx-v2` (lead decision). |
 | Mid-fight shader compiles | Warm-up list (§19), `combat.programs.json`, dev warning. |
 | Readability (DOF tilt-shift, occlusion, off-screen attackers) | Engaged DOF offsets; validation rules 9 and 14 at yaws −60 / 0 / +60; DOM aggro pips and edge arrows (not depth-occluded, by design); the on-screen rule for wind-ups; boss framing. |
 | Markers on stepped terrain | Markers are draped over a height texture (§11.2); the tour screenshots a lane across a step and down a ledge. |
@@ -2536,7 +2597,6 @@ the lead applies it.
 | Two copies of generator helpers | `tools/lib/levelgen.mjs` vs Starfall's inline helpers until a later, byte-verified migration. |
 | Pad rebinding on combat levels | Device-aware legend and skill keycaps, a one-time pad hint toast, the drillmaster's pad text; every moved function keeps a pad button (zoom on the right stick, photo on LS with a deflection guard). |
 | Balance | First-pass numbers; `defs.js` and `rules.js` are pure data; the boss length has a measurable greedy-run floor (§8.3). *(rev. 5, §27.19: tuned against the bot's expert and human settings; a human play-test remains.)* |
-| Combat-core on the critical path | Shape-complete placeholders and the fixture level let it verify from day one (§21, §22.1). |
 
 
 ---
@@ -2554,7 +2614,7 @@ in the section named; the **Decisions** column explains every rejection or chang
 | A3 / B1 | Projectiles fly flat; ledge archers can never hit; the player's bolt is blocked by the ledge; melee reaches across a cliff | Accepted — one height model for LOS, projectiles and rule 8 (§7.6); `ProjectileSpec.vy`, release at ground + 0.9, aim at the body middle, body bands (§7.1, §9.5); melee needs grounds within 0.6 u (§6.4, `HitSpec.dy`); ledge cases in `enemy_ai`, `combat.fight` (§21) | — |
 | A4 / B3 | Markers at one sampled height float or sink on steps; "flat by validation" was not enforced | Accepted, option (a) — markers are draped over a height texture in the vertex shader, one draw call (§11.2); §25 corrected; stepped cases in `combat_fx` and the tour | Draping also covers editor-authored levels, which no generator rule could keep flat. |
 | A5 | Photo mode freezes AI but not the player, so encounters and the boss trigger can be skipped | Accepted — on combat levels photo mode freezes the player (§4.2, §4.4); tested in `combat.fight` | Keeping combat live in photo mode was the alternative; freezing is simpler and keeps photo mode a pure pause. |
-| A6 | Stubs too inert for dependants; combat-core cannot verify until Cinderwatch exists | Accepted — shape-complete placeholders (§22.1) and the in-page fixture level via `__lumina.playLocal` (§21) | **Rejected:** splitting combat-core into "integration" and "player kit". PlayerCombat, Hitboxes, Projectiles and CombatSystem share the sub-step order, hit resolution, i-frames and hit-stop; a split needs a second internal contract and leaves both halves unverifiable until they merge. The placeholders and the fixture remove the blocking instead. |
+| A6 | Stubs too inert for dependants; combat-core cannot verify until Cinderwatch exists | Accepted — shape-complete placeholders (§22.1) and the in-page fixture level via `__luminati.playLocal` (§21) | **Rejected:** splitting combat-core into "integration" and "player kit". PlayerCombat, Hitboxes, Projectiles and CombatSystem share the sub-step order, hit resolution, i-frames and hit-stop; a split needs a second internal contract and leaves both halves unverifiable until they merge. The placeholders and the fixture remove the blocking instead. |
 | A7 | Separation: fixed 80 / 20 lets the player shove dummies; hurt vs move radius unspecified | Accepted — inverse-mass split for every pair, `PLAYER_SEP_MASS = 4`, ∞ never moves; move radius for movement / separation, hurt radius for hits (§7.1, §7.6) | — |
 | A8 | `reset()` / `seed()` leave state that breaks "run twice, identical" | Accepted — full `reset()` list, RNG re-creation rule, hook presses obey the guards (§20.1, §4.4, §7.8) | — |
 | A9 | `play()` animations keep running during hit-stop and pauses | Accepted — combat writes `sprite.speed` per frame (§4.3) | — |
@@ -2593,7 +2653,8 @@ row is additive to the sections above; where a row and the text above disagree, 
 the code. The package rows condense the builders' reports. §27.9–§27.12 (revision 4) record the
 three fix passes after the code and play review and the final regression pass; §27.13–§27.20
 (revision 5) the known-issues pass; §27.21 (revision 6) what the typed copy of §9 records where the
-text and the code differ.
+text and the code differ; §27.22 the campaigns (revisions 7 and 8); §27.23 (revision 11) the pixel UI
+and the languages; §27.24 (revision 12) Cinderwatch Pass balanced for a party of four.
 
 ### 27.1 Integration pass (lead)
 
@@ -2730,7 +2791,7 @@ fixed. Rows that change contract text:
 
 | # | Section | Change | Why |
 | --- | --- | --- | --- |
-| P1 | §10.1 | `Sprite3D.setHighlight(r, g, b, a)`, getter `highlight`, uniform `uHighlight` (Vector4) in the **same** program `lumina-sprite3d-lit-fx-v1` (63 programs, unchanged): after `opaque_fragment`, before the `uFlash` mix, `c += (c · rgb · (1 − smoothstep(0.45, 1.2, lum(c))) + rgb · 0.035) · a`; `clone()` copies it. | A mix toward an HDR colour flattens a sprite into a silhouette (COMBAT-03); a highlight keeps the pose — the tell — readable. |
+| P1 | §10.1 | `Sprite3D.setHighlight(r, g, b, a)`, getter `highlight`, uniform `uHighlight` (Vector4) in the **same** program `luminati-sprite3d-lit-fx-v1` (63 programs, unchanged): after `opaque_fragment`, before the `uFlash` mix, `c += (c · rgb · (1 − smoothstep(0.45, 1.2, lum(c))) + rgb · 0.035) · a`; `clone()` copies it. | A mix toward an HDR colour flattens a sprite into a silhouette (COMBAT-03); a highlight keeps the pose — the tell — readable. |
 | P2 | §7.2, §7.3, §11.4, I3 | The wind-up pulse is a highlight (1.6, 0.7, 0.3), strength 0.45 ↔ 0.9 at 8 Hz, restarted per wind-up; the elite shimmer (1.6, 1.3, 0.5), 0.12 ↔ 0.24 at 1 Hz; the **boss's** hit flash a white highlight (2.2), 0.6 then 0.3. Other enemies keep the hit-flash mix (0.85 / 0.4, 2 + 2 f); the boss's death flash and the player's hurt flash stay `uFlash`. | Wind-up poses kept outlines, tusks, bows and eyes on every sheet; the boss hit reads as a blanched stone golem instead of a bloom blob. |
 | P3 | §14.1 | The chest's `upgrade` field options are `{ value, label }`: None / Max HP +20 / Max MP +10 / Attack +3. Stored values are unchanged. | The editor showed raw ids. |
 | P4 | §15.1 | `titleCamera { x: 78, z: 52, y: 1, driftX: 4, driftZ: 2, distance: 34 }` — over the Hollow Mire's falls, ponds, boardwalks and reeds. | Caldera framings were dark, flat stone. |
@@ -2759,7 +2820,7 @@ listed in EDITOR.md §10 as duplicated logic and checked on all 24 Cinderwatch g
 
 | # | Section | Change / result |
 | --- | --- | --- |
-| V1 | §18 | `vite.config.js` sets `server.watch.ignored: ['**/.check/**', '**/dist/**']`: Vite's watcher walked `.check/` (≈ 19 GB of harness output) at every dev-server start and served the first module ≈ 3.8 s late (KNOWN_ISSUES TOOL-16). Measured load to the first gameplay frame: production build Emberfall 2.7–2.8 s (as before combat), Cinderwatch 3.6–3.7 s; cold dev server 3.4 s / 4.5 s — inside the 6 s budget. |
+| V1 | §18 | `vite.config.js` sets `server.watch.ignored: ['**/.check/**', '**/dist/**']`: Vite's watcher walked a large `.check/` directory of generated harness output at every dev-server start and served the first module ≈ 3.8 s late (KNOWN_ISSUES TOOL-16). Measured load to the first gameplay frame: production build Emberfall 2.7–2.8 s (as before combat), Cinderwatch 3.6–3.7 s; cold dev server 3.4 s / 4.5 s — inside the 6 s budget. |
 | V2 | §21 | `greedy()` in `sandbox/combat_fixture.js` clears the announcer after its setup kills (their "Level 2" card showed over the victory shot). Greedy runs unchanged: fixture 38.933 s, Cinderwatch 39.083 s (12.5 / 12.983 / 13.6 s). |
 | V3 | §2, §23 | Regression results: the 4 shipped levels byte-identical to the baseline hashes; `make-cinderwatch-pass --check` and `make-sample-hamlet --check` byte-identical, Starfall `--out` `cmp`-identical; round trip byte-stable for all 5 levels; Willowmere, Brightwater and Starfall fingerprints identical, Emberfall 230 calls (inside 229–231), 57 programs, 12 lights; every §21 script clean (combo goldens 21 · 13 · 23 = 57; 63 programs at load and after the full tour, max frame gap 16.9 ms; worst 230 draw calls, tick p95 0.4 ms); Cinderwatch fingerprint 165–166 calls, ≈ 617 600 triangles, 12 lights for 12 descriptors, 63 programs, 278 objects; the play-through bot beat Cinderheart in 64.3 s, results card `5:54 · 36 foes · 1 fall · 3 perfect dodges · Lv 6`. |
 
@@ -2774,7 +2835,7 @@ pass changed are also amended in place above, marked *(rev. 5, §27.x Nn)*.
 
 | # | Section | Change | Why |
 | --- | --- | --- | --- |
-| R1 | §7.6, §9.2 | **Walk grid** `Nav` ([`src/demo/combat/Nav.js`](../../src/demo/combat/Nav.js)), built once by `CombatSystem.load()` and on the context as `ctx.nav`: 0.5 u cells (`CELL`, two per tile) holding the ground height at the cell centre; a cell is **open** when it is a walkable tile or walk surface, not open water, ≥ 0.2 u (`CLEAR`) from every static collider (villagers are dynamic and ignored), ≥ 0.3 u (`EDGE`) from the map edge and outside every boss arena grown by 0.5 u. Neighbours connect when their heights differ by ≤ 0.55 (`STEP`, `tileMap.move`'s step: one level or a stair, never a cliff); a diagonal needs both orthogonal cells open; a **tight** cell (an enemy body of r 0.3 does not fit on its centre) is passable but costs +20 and is never cut through. `findPath` is a bounded A* (costs 10 / 14, +6 next to a wall or cliff, ≤ 6000 cells expanded, a path longer than the caller's `maxCostU` counts as unreachable) string-pulled with a body-width line test (`LOOK` 32 cells) into ≤ 24 waypoints; a start or goal in a closed cell snaps to an open one within 1.5 u. Every array is allocated at build time (a search allocates nothing); integer costs and a fixed heap order make it deterministic. `beginStep(n)` / `spend()` ration the searches: `NAV_SEARCHES` = 2 per combat sub-step (a refused enemy keeps its old path or walks straight and asks again); `warm()` runs one throw-away search at load. Cinderwatch: 192 × 240 = 46 080 cells, ≈ 24 250 open, built in ≈ 20 ms (16–48 ms on a shared machine); searches 0.01–0.4 ms, ≤ 868 cells. A context without `nav` (an old mock) chases and returns in straight lines. | Chasers followed the player's recorded footsteps across level changes (§27.5 E2) and gave up on a player already standing on a ledge (KNOWN_ISSUES COMBAT-06). |
+| R1 | §7.6, §9.2 | **Walk grid** `Nav` ([`src/game/combat/Nav.js`](../../src/game/combat/Nav.js)), built once by `CombatSystem.load()` and on the context as `ctx.nav`: 0.5 u cells (`CELL`, two per tile) holding the ground height at the cell centre; a cell is **open** when it is a walkable tile or walk surface, not open water, ≥ 0.2 u (`CLEAR`) from every static collider (villagers are dynamic and ignored), ≥ 0.3 u (`EDGE`) from the map edge and outside every boss arena grown by 0.5 u. Neighbours connect when their heights differ by ≤ 0.55 (`STEP`, `tileMap.move`'s step: one level or a stair, never a cliff); a diagonal needs both orthogonal cells open; a **tight** cell (an enemy body of r 0.3 does not fit on its centre) is passable but costs +20 and is never cut through. `findPath` is a bounded A* (costs 10 / 14, +6 next to a wall or cliff, ≤ 6000 cells expanded, a path longer than the caller's `maxCostU` counts as unreachable) string-pulled with a body-width line test (`LOOK` 32 cells) into ≤ 24 waypoints; a start or goal in a closed cell snaps to an open one within 1.5 u. Every array is allocated at build time (a search allocates nothing); integer costs and a fixed heap order make it deterministic. `beginStep(n)` / `spend()` ration the searches: `NAV_SEARCHES` = 2 per combat sub-step (a refused enemy keeps its old path or walks straight and asks again); `warm()` runs one throw-away search at load. Cinderwatch: 192 × 240 = 46 080 cells, ≈ 24 250 open, built in ≈ 20 ms (16–48 ms on a shared machine); searches 0.01–0.4 ms, ≤ 868 cells. A context without `nav` (an old mock) chases and returns in straight lines. When the story brings or takes away colliders or walk surfaces, only the cells that change can reach are rebuilt (`buildRect`, [§27.22 K4](#2722-campaigns-revision-7)). | Chasers followed the player's recorded footsteps across level changes (§27.5 E2) and gave up on a player already standing on a ledge (KNOWN_ISSUES COMBAT-06). |
 | R2 | §7.4, §7.6 (E2) | **Chase:** straight at the player while \|dy\| ≤ 0.3 and the grid line is clear (checked every 6 f, `NAV_EVERY`), otherwise along a path; the path is renewed after 60 f (`REPLAN_F`), when the player moved 1.5 u from its goal (`REPLAN_D`) or when the walk is stuck, never within 20 f of the last search (`REPLAN_MIN_F`). A waypoint counts as passed within 0.4 u (`WP_REACH`) only when the next waypoint is in a clear straight line for the body, or the enemy stands in the waypoint's own cell; a walk blocked 6 f (`CUT_BACK_F`) right after such a pass goes back and passes that waypoint exactly; every 6 f a way to the current waypoint that is no longer clear forces a new search (`_pathBad`, chase and return alike). The seek anchor restarts when the quarry moves 1.5 u (`ANCHOR_GOAL`), so kiting on a stair does not make enemies give up; a cornered archer strafes 60 f instead of pushing into a wall. **Unreachable:** no path within max(24, 2.5 × (leash + home radius)) u (`CHASE_COST`) sets `Enemy.unreachable`; the engage state gives up at once (home, calm 6 s), and touch aggro (< 3 u) respects that calm until the player is back within melee height. The footstep trail is removed. | COMBAT-06. The fix pass added the waypoint rules and `_pathBad` after the review saw a Ruins ledge archer stuck at the stair foot (its path cut a corner along the cliff), and the touch-aggro rule after a notice → give-up → return loop. |
 | R3 | §7.7 | `Enemy.canMelee(ctx)`: the player within `MELEE_DY` (0.6 u) of the enemy's ground and a clear straight way on the grid (re-tested every 6 f). Goblin, slime and boar wind up or strafe only while it holds, and otherwise chase along a path. | The review saw melee enemies wind up below a ledge edge they could not reach. |
 | R4 | §7.4, §7.6 (E2, G7) | **Return:** along a path home within max(40, 4 × (leash + home radius)) u (`HOME_COST`), searched again when stuck (60 f) or at the end of a truncated path. The fade-and-snap of §27.9 G7 stays only as a last resort: no path home, or `stuck` (90 f blocked / the 4 s watchdog) after 150 f, or 30 s. | Enemies walked home in a straight line; an archer stuck under a ledge visibly faded away (COMBAT-18). Probes: `ruins_archers_n#0` walks home from four spots at the Ruins stair foot in 129–162 f with no snap and opacity 1 (`tests.nav()`). |
@@ -2794,7 +2855,7 @@ pass changed are also amended in place above, marked *(rev. 5, §27.x Nn)*.
 | X3 | §11.3, §19 | Three more override-free burst presets in the existing pools: `victoryEmbers` (streak pool; the `emberBurst` colours at hdr 1.5, peak luminance ≈ 1.03; slow and rising), `victorySparkle` and `levelSparkle` (sparkle pool; `#fff0c8` at hdr 1.15, ≈ 1.01). The active burst pools stay 4. They are primed in `warmup()` and fired by `showcase()`. | At the boss's kill, 3 × 24 `emberBurst` + 24 hdr-6 `sparkle` + the 14 level-up sparkles whited the player out (COMBAT-16). The fix pass lowered the two star presets from hdr 1.3 (they still bloomed at head height). |
 | X4 | §8.1, §8.3 | `BossArena.deathBursts(boss)` — 3 × 12 `victoryEmbers` across the screen at the boss's top − 1.4 (the middle one + 0.5) and 12 `victorySparkle` at top + 0.2, centred 1 u beyond the boss from the player and 0.5 u away from the camera — replaces the 3 × 24 `emberBurst` + 24 `sparkle` of §8.3 (`_bossDefeated` calls it; the old bursts remain as a fallback for an arena without it). The boss's death flash is a warm ember tint (1, 0.5, 0.2) at 0.55 for 6 f (`BOSS_DEATH_FLASH`, was white at 1.0); its 150 gold and core drop 1.2 u beyond it from the player. | COMBAT-16. Kill-frame probe: 1 200–1 300 near-white pixels round the player's head in the flash frames (mostly the player's own slash arc), 2 100–4 950 before; the collapsing boss reads briefly as a flat warm silhouette behind the player (the short `uFlash` of KNOWN_ISSUES COMBAT-03). |
 | X5 | §11.5 (G9), §6.10 | The `pillar` is gold (1.05, 0.82, 0.32) (was (1.2, 1.05, 0.5), whose base read as white wings at the player's shoulders); the level-up plays 14 `levelSparkle` at y + 1.9 (was `sparkle` at y + 1); core and upgrade pickups play 12 `levelSparkle` at y + 1.9 (was 16 hdr-6 `sparkle` on the chest). | COMBAT-16. |
-| X6 | §13.2, D9 | `WorldLabels.setPanels(list)` (each an `HTMLElement` or `{ el, shown() }`), called by `UI.enableCombat()` with the location plate, clock, minimap, controls legend (while shown), vitals, skill bar and boss bar (while visible): numbers, bars, pips, alerts and the reticle move to the nearest spot on screen clear of every shown panel (6 px gap); edge arrows slide inward along their ray and keep pointing at their enemy. Panels < 48 px apart merge into one zone only when their union is ≤ 1.5 × their summed areas (`ZONE_MERGE_AREA`). Panel rects are read only in a `ResizeObserver` callback (re-armed by class / style changes, transition / animation ends, resizes) — never in the frame loop. New getters `HUD.locationElement`, `HUD.helpElement`, `CombatHUD.skillsElement`. `WorldLabels.update` 0.14 ms mean in the sandbox (was 0.04–0.06). Depth occlusion stays declined (D9). | Labels sat under the HUD panels (COMBAT-07). The fix pass added the area rule: merging every near pair made one legend + boss-bar box that pushed numbers in the open lower middle next to the player during the boss fight. |
+| X6 | §13.2, D9 | `WorldLabels.setPanels(list)` (each an `HTMLElement` or `{ el, shown() }`), called by `UI.enableCombat()` with the location plate, clock, minimap, controls legend (while shown), vitals, skill bar and boss bar (while visible): numbers, bars, pips, alerts and the reticle move to the nearest spot on screen clear of every shown panel (6 px gap); edge arrows slide inward along their ray and keep pointing at their enemy. Panels < 48 px apart merge into one zone only when their union is ≤ 1.5 × their summed areas (`ZONE_MERGE_AREA`) and neither is given `merge: false` (rev. 11, P10: the boss bar). Panel rects are read only in a `ResizeObserver` callback (re-armed by class / style changes, transition / animation ends, resizes) — never in the frame loop. New getters `HUD.locationElement`, `HUD.helpElement`, `CombatHUD.skillsElement`. `WorldLabels.update` 0.14 ms mean in the sandbox (was 0.04–0.06). Depth occlusion stays declined (D9). | Labels sat under the HUD panels (COMBAT-07). The fix pass added the area rule: merging every near pair made one legend + boss-bar box that pushed numbers in the open lower middle next to the player during the boss fight. |
 | X7 | §13.2 | `DeathScreen.prime({ title, subtitle, prompt })` (getter `primed`): draws the hidden screen for 3 frames at opacity 0.004 (`.lu-death.is-prime`), then back to `display: none`; a `show()` during priming takes over. `UI.enableCombat()` calls it with `'You Have Fallen'` / `'Press any key to rise at the camp'`. | The first show cost one long frame (≈ 36 ms alone, 54–90 ms in the death sequence; COMBAT-02). Primed, every frame of it stays at 16–18.7 ms. |
 | X8 | §13.1 | Additive **`UI.useCombatUI({ CombatHUD, BossBar, WorldLabels, Announcer, DeathScreen })`** (a static registry); `enableCombat(classes = registered)` builds the components from it (or from `classes`; it throws when neither holds them). `UI.js` no longer imports the combat UI; it and the barrel re-export the five classes from their own files. The combat UI's CSS moved from `ui.css` to `src/engine/ui/combat.css`, imported by those five modules. `CombatSystem.load()` calls `UI.useCombatUI(COMBAT_UI)`, then `ui.enableCombat()`. | COMBAT-17: with R10 the combat UI, its CSS and the FX modules load only with the `CombatSystem` chunk. A first version required `enableCombat(classes)` (a contract change); the review restored the argument-free call through the registry. |
 
@@ -2814,7 +2875,7 @@ pass changed are also amended in place above, marked *(rev. 5, §27.x Nn)*.
 
 | # | Section | Change | Why |
 | --- | --- | --- | --- |
-| D7 | §17 | Enemy previews go through an editor-only instanced batch, [`SpriteBatch.js`](../../src/editor/viewport3d/SpriteBatch.js) (`ActorPreview.enemyBatch`): per sheet and look one colour draw and one shadow-pass draw (none for bats), one engine `BlobBatch` draw (capacity 512) for all blobs; the instance buffers are filled per render pass from `intersectsFrustum` with the sprites in that pass's frustum, so a kind with nothing in view draws nothing. The sprites stay Sprite3D objects (animation, billboarding, picking, visibility, the selection outline). New groups compile in the background (the view's `compile` hook) and draw themselves until ready; `ActorPreview.primeEnemies()` spends the driver's one-time 40–110 ms first draw when the *Enemy group* tool is picked. The batch mirrors Sprite3D's lit material (keys `lumina-editor-sprite-batch-v1` / `-depth-v1`) and skips sprites with `opacity` or `bodyOpacity` < 1, `combatFx` or `lit: false`. Cinderwatch: 53 enemy sprites 145 → 15 calls, the level 580 → 455, programs 62 → 66; peaceful levels create no batch until an enemy is placed or the tool is picked. | "Enemy previews ≈ 2–3 calls each" (COMBAT-10). The fix pass added the per-pass culling (the first batch was never frustum-culled) and `editor_shell.combat.json` step 5 (look and far-view cost). |
+| D7 | §17 | Enemy previews go through an editor-only instanced batch, [`SpriteBatch.js`](../../src/editor/viewport3d/SpriteBatch.js) (`ActorPreview.enemyBatch`): per sheet and look one colour draw and one shadow-pass draw (none for bats), one engine `BlobBatch` draw (capacity 512) for all blobs; the instance buffers are filled per render pass from `intersectsFrustum` with the sprites in that pass's frustum, so a kind with nothing in view draws nothing. The sprites stay Sprite3D objects (animation, billboarding, picking, visibility, the selection outline). New groups compile in the background (the view's `compile` hook) and draw themselves until ready; `ActorPreview.primeEnemies()` spends the driver's one-time 40–110 ms first draw when the *Enemy group* tool is picked. The batch mirrors Sprite3D's lit material (keys `luminati-editor-sprite-batch-v1` / `-depth-v1`) and skips sprites with `opacity` or `bodyOpacity` < 1, `combatFx` or `lit: false`. Cinderwatch: 53 enemy sprites 145 → 15 calls, the level 580 → 455, programs 62 → 66; peaceful levels create no batch until an enemy is placed or the tool is picked. | "Enemy previews ≈ 2–3 calls each" (COMBAT-10). The fix pass added the per-pass culling (the first batch was never frustum-culled) and `editor_shell.combat.json` step 5 (look and far-view cost). |
 | D8 | §17, §14.1 | A boss group's *Count* stops at 1 in the Inspector (a number field without a slider, a hint); Kind → golem or a Count edit clamps it to 1 in the same undo step (`clampBossCount`); a count above 1 from a file shows a warning and a *Check for problems* line (`bossExtraCount`). The catalog's Count (1–8), `normalizeLevel` and the files are unchanged. | COMBAT-10. |
 | D9 | §17 (D5) | `Viewport3D.enemyStartTest(flier, { lazy })` answers in every layout: the built test while the 3D view is shown; while it is hidden (or before a new document's first build) `levelStartTest` — now with box colliders — plus the real TileMap colliders of the props within 4 u of each group's scatter rect (from the view's builds, or a colliders-only build, cached). With `lazy` (the 2D map's source) it returns `null` while a build of the document is due, and the dots are placed again when it is done. The D5 rule "otherwise the data-only `levelStartTest`" now applies only without a 3D view (no WebGL). | 2D-only dots could sit in a rock (COMBAT-10). The fix pass added `lazy`: the first version built ≈ 60 props for their colliders at every open, the default split layout included. |
 | D10 | §17 | `Map2DView.hitTest` grades enemy hits: a click only near a group (its ring, arena edge, the 6 px round a start dot, its centre below zoom 7) yields to a **point** prop right under the click or to another group's drawn dot / badge; never to a canopy, an area marker or a bridge / boardwalk / fence the ring crosses. | Zoomed-out clicks preferred enemy groups over props (KNOWN_ISSUES ED-25). The fix pass limited the yield to point props (a ring over a bridge selected the bridge). |
@@ -2833,8 +2894,8 @@ pass changed are also amended in place above, marked *(rev. 5, §27.x Nn)*.
 | --- | --- | --- | --- |
 | T1 | §21 (I11) | Engine additions, opt-in: `Engine#manualStep` (getter / setter; `opts.manualStep`; the URL flag `?fixedstep` — any value but `0` — honoured only with `?autostart` or `?debug`): no animation loop is installed, `start()` / `stop()` only mark the state, frames advance only through `step()`; `step(realDt, { render = true })` (`render: false` runs a frame without drawing it) and `redraw()` (the render step alone, dt 0). Without the flag the engine behaves exactly as before. | The real-time bot's path and fights changed with frame pacing; it had to run alone (COMBAT-14). The fix pass restricted the URL flag (a stray `?fixedstep` froze any page). |
 | T2 | §21 (I11) | The bot (`sandbox/combat_play.js`) runs in **fixed step** when the page has the flag: it steps the engine at dt = 1/60 from the level's first frame, 30 frames per real task, with a virtual page clock (`FixedClock`: `setTimeout`, `setInterval`, `requestAnimationFrame` and `performance.now()` from a fixed origin of 1e6 ms follow the stepped frames; 16 microtask turns per frame let promises settle), so the death screen's arm delay, the fades, the dialog close and the results card land on the same frame every run. The game stays on the frame that asked for a screenshot. `verify()` returns `{ summary, verdict, result, … }`: one line of exact numbers with a `digest` (the float bits of the player's and every enemy's state, every frame), `trace` (the digest every 10 s of game time) and `pace` (real ms per 10 s). `until()` stops a loop left over from an eval the harness gave up on; budgets 120 s (`until`) / 150 s (`verify`). | The same tree now gives the same digest on any GPU load (proved on frozen copies of the tree, with and without a concurrent run). |
-| T3 | §21 | Scripts: `combat.play.json` starts with a `goto` to `index.html?level=cinderwatch-pass&autostart=1&fixedstep=1` (any `--page` / `--query` works); `combat.play.fast.json` = `start({ renderEvery: 4 })` (the same digest, about twice as fast; keep the program check on the full script); `combat.play.human.json` (W6); `combat.play.realtime.json` = `start({ fixed: false })`, the old real-time run for feel checks (run it alone). | — |
-| T4 | §21 | Caveats: in fixed step the combat tick timings read 0 and `__lumina.loadMs` is meaningless (eval steps measure real time with `Date.now()`); CSS transitions still run on the wall clock; a fixed-step run is not the same run as a real-time one. | KNOWN_ISSUES TOOL-17. |
+| T3 | §21 | Scripts: `combat.play.json` starts with a `goto` to `game.html?level=cinderwatch-pass&autostart=1&fixedstep=1` (any `--page` / `--query` works); `combat.play.fast.json` = `start({ renderEvery: 4 })` (the same digest, about twice as fast; keep the program check on the full script); `combat.play.human.json` (W6); `combat.play.realtime.json` = `start({ fixed: false })`, the old real-time run for feel checks (run it alone). | — |
+| T4 | §21 | Caveats: in fixed step the combat tick timings read 0 and `__luminati.loadMs` is meaningless (eval steps measure real time with `Date.now()`); CSS transitions still run on the wall clock; a fixed-step run is not the same run as a real-time one. | KNOWN_ISSUES TOOL-17. |
 
 ### 27.19 Balance and shop (revision 5)
 
@@ -2859,9 +2920,9 @@ pass changed are also amended in place above, marked *(rev. 5, §27.x Nn)*.
 
 ### 27.21 Type-check pass (revision 6)
 
-The type-check pass (2026-09-30, [ADR-044](../history/DECISIONS.md#adr-044--jsdoc-types-checked-by-tsc-instead-of-a-typescript-conversion))
-wrote the §9 and §20 interfaces as types from the code — [`src/demo/combat/types.d.ts`](../../src/demo/combat/types.d.ts)
-and the typedefs of [`defs.js`](../../src/demo/combat/defs.js) — and checked the core, the brains,
+The type-check pass (2026-09-30, [JSDoc type checking](../development/CONVENTIONS.md))
+wrote the §9 and §20 interfaces as types from the code — [`src/game/combat/types.d.ts`](../../src/game/combat/types.d.ts)
+and the typedefs of [`defs.js`](../../src/game/combat/defs.js) — and checked the core, the brains,
 the hooks and the enemies sandbox's mock against them. It changed no runtime code; these rows
 record where the text above and the code differ (each is also noted on the member in
 `types.d.ts`).
@@ -2878,3 +2939,113 @@ record where the text above and the code differ (each is also noted on the membe
 | J8 | §20.1 | `boss.info()` also returns `alive` (AUTOMATION_API.md §3.4 lists it; the `hooks.js` comment did not); `press()` / `hold()` accept any string and return false for a name that is not a `CombatAction`. `window.__game.combat` is checked against `CombatHooks`. | — |
 | J9 | §7.4, §9.3 | The `Brain` type has every member optional (the golem has no `engage` / `attack`, the other kinds no `update`), but `Enemy` calls `engage` and `attack` unguarded for every kind except the boss, and `update` for the boss: a new non-boss brain must have `engage` and `attack`. Each brain is `/** @satisfies {Brain} */`, its methods typed `@type {Brain['…']}`. | — |
 | J10 | §7.7 | Not a type error, found by the contract review and confirmed: the goblin's back-hop pattern `MELEE_ACTION` never matches Whirl Slash (action `skill1`), and there is no `rollslash` action (the roll slash runs as `attack`). So goblins do not back-hop from Whirl Slash. Not fixed by the pass (it changed no runtime code) — KNOWN_ISSUES COMBAT-24. **Fixed 2026-10-01:** `MELEE_ACTION` is `/^(attack\|skill1\|a[123])$/` (combo steps and the roll slash, Whirl Slash, the sandbox mock's swings). | — |
+
+### 27.22 Campaigns (revision 7)
+
+Additive (2026-10-07, [CAMPAIGN_FORMAT.md](../specs/CAMPAIGN_FORMAT.md),
+[Campaign lifecycle](../specs/CAMPAIGN_FORMAT.md)): a
+campaign switches between combat and peaceful levels inside one page, so the combat system can now
+be created and disposed more than once per page.
+
+| # | Section | Change | Why |
+| --- | --- | --- | --- |
+| K1 | §4.5, §9.1 | `CombatSystem.dispose()` undoes what `load()` installed on the shared objects: the key and pad bindings it replaced (`input.saveBindings()` before `addBindings`, `restoreBindings` on dispose), the mouse buttons (`input.disableMouseButtons()`), `rig.stickZoom` (0) and the combat UI (`ui.disableCombat()`). `Game.swapLevel` disposes combat before the next level is built, so a next combat level installs its own. | A peaceful level after a combat level must not notice combat: no combat HUD, bindings or `window.__game.combat` (the campaign tour checks it). |
+| K2 | §6.1 | `exportProgress()` → `{ level, xp, gold, potions, upgrades, wares }` and `importProgress(p)` (clamped; full HP / MP / SP): the campaign carries the player's progress from one combat level to the next. `openedChests()` / `markChestsOpened(ids)`: chests opened on an earlier visit stay open and empty. Enemies are back on every visit *(revision 8, K5: a defeated group stays defeated until a waystone rest)*. | — |
+| K3 | §19 | A combat level reached by travel gets the warm-up `init` gives the first level (`combat.warmup`, both compiles, five frames, `endWarmup`), behind the fader: the quarry of the demo campaign keeps 63 programs through `showcase()`. | No program may compile during play. |
+| K4 | §7.6 | **Partial walk-grid rebuild** (2026-10-07, KNOWN_ISSUES STORY-04). `Nav.build(blocked)` remembers `blocked` (`nav.blocked`); `Nav.buildRect(minX, maxX, minZ, maxZ)` (world units; returns the cells whose flags it recomputed) recomputes the heights and open bits of the cells whose centre lies within `CLEAR` (0.2 u) of the rect, plus one cell, and the wall / tight bits one cell further (the wall test reads the 8 neighbours, the tight test the ground 0.3 u from the centre) — 2 cells (1 u) beyond the rect grown by 0.2 u — and keeps `stats.open` / `stats.tight` by difference: `h`, `flags` and the counts end byte-identical to a full `build` of the TileMap as it is (a rect that is not one — NaN, min > max — rebuilds everything). The search state needs nothing (each search starts a new generation of `_seen` / `_closed`). `CombatSystem.rebuildNav(rect = null)`: with `{ minX, maxX, minZ, maxZ }` — the union of the changed colliders and walk surfaces, as `World.applyStory` returns it — `buildRect` on it; without, the full build as before. Measured (`sandbox/combat.navrect.json`): 0 mismatches against a fresh full build in 300 random changes on Cinderwatch and 150 each on Gildhaven and Starfall Vale (colliders and walk surfaces added and removed, bridges with posts, at cliffs, stairs, water, the boss arena and the map edge); a 10 × 3 u bridge with four posts (275 cells) 0.05–0.1 ms against a full build of 5 ms on Cinderwatch (warm; ≈ 20 ms cold at load) and 14–20 ms on the 128 × 128 levels. The fixed-step bot's digest is unchanged (no story there). | A presence change on a combat level rebuilt the whole grid at once: 14–42 ms on a big level, one hitch per change. |
+| K5 | §6.12, §9.1 | **Defeated groups stay defeated** (revision 8, 2026-10-07, KNOWN_ISSUES CMP-03). `defeatedGroups()` → the ids of the level's enemy groups whose every foe has fallen (a boss's adds do not count; present or not); `markGroupsCleared(ids)` → those foes are simply not there: `Enemy.vanish()` (hp 0, state `dead`, not drawn — no brain call, burst or fade), no XP, loot, `kill` event (so no story `cleared` event) or kill count; a boss among them sets `bossDefeated`, leaves the map and its arena stays open. The campaign saves the list per base level (`CampaignState.cleared`, [CAMPAIGN_FORMAT.md §7](../specs/CAMPAIGN_FORMAT.md#7-saved-games)) whenever it saves in the level or leaves it, and gives it back as the level is entered (`CampaignRuntime._restoreCombat`, after the chests). A waystone rest (`resetEncounter({ full: true })`) brings the fallen back in place as before, so their groups leave the list; a defeated boss stays on it. Checked by [`sandbox/campaign.cleared.json`](../../sandbox/campaign.cleared.json): the quarry's floor pack killed, gone after a travel out and back (no kill, drop, XP or story run), back after a rest, gone again after a reload and Continue. | A place started over on every visit (KNOWN_ISSUES CMP-03). |
+| K6 | §4.5, §7.6, §9.1, §20.2 | **Live enemy groups, chests and waystones** (revision 8, KNOWN_ISSUES CMP-04). `enemy`, `chest` and `waystone` are `LIVE_STORY_TYPES` (`Travel.js`): a campaign keeps every one in the level it builds, so `load()` creates every group (all kinds' sheets, every sprite, warmed by §19) and the World builds conditioned chests and waystones as story groups. `applyPresence(present)` (StoryRunner.applyPresence, after `World.applyStory`; only objects with a `when` / `unless` are read: 0.1 ms median, ≤ 1 ms in the check) keeps the absent ones out of play: an absent group's foes are hidden and dormant (`_absent`, in `_hidden` like the unspawned adds: no AI, hits, minimap dot, `state().combat.enemies` count — `absent` counts them —, `enemies()` / `wake` / `kill` / `damage` hooks skip them); one taken mid-fight drops the lock-on, aggro, tokens, markers and projectiles, the living are put back home at full HP, and its boss's fight ends (`_resetBoss`: gate open, adds hidden, bar off); a boss's arena of an absent group closes nothing (`BossArena.present`: no exclusion in `_moveGround` / `_moveFly`, the walk grid's `blocked` test opens it — `nav.buildRect` on its rect —, its map marker `hidden`). A group that comes back spawns at home (`reset`, no reward); its fallen stay fallen. `resetEncounter` and the `reset` hook keep absent groups hidden. Chests: `absent` (not discovered, opened or on the maps — the marker's `hidden` getter —; an opened chest that comes back stays `disabled`, which `World.applyStory` would otherwise clear); waystones: `Waystones.setAbsent` (not attuned or rested at; the checkpoint it held falls back to the spawn). Checked by [`sandbox/combat.presence.json`](../../sandbox/combat.presence.json) on the combat fixture with conditions (54 programs at load = after every change). | Enemy groups, chests and waystones followed their conditions only on entering. |
+| K7 | §4.5, §19 | **Combat's burst pools released** (revision 8, KNOWN_ISSUES CMP-05). `warmup(far)` records the burst pools its bursts created (`Particles.burstPools()` before and after: the `hitSpark` streak pool and the `healGlow` star pool, plus `splash` / `sparkle` on a level without waterfalls) and `dispose()` releases them (`Particles.releaseBurstPools`: meshes out of the scene, geometry and material disposed, the cached configs forgotten), so their programs go: the demo's Mill Road keeps 58 programs after the quarry (60 before the fix). A combat level reached again re-creates them in its travel warm-up (`showcase()` compiles nothing). The fixed-step bot's digest is unchanged (`1d81f069`). | Leaving a combat level for a peaceful one kept the combat bursts' pools. |
+
+### 27.23 The pixel UI and languages (revision 11)
+
+Additive (2026-10-09 / 10, [PIXEL_UI.md](../specs/PIXEL_UI.md), [I18N.md](../specs/I18N.md)): the
+combat UI redrawn after mockup G · Gilded Today in English, Japanese and Simplified Chinese, then
+re-fitted after the review. Every class name, getter, test hook and pool of §13 is kept; the
+look described in §13.2's bullets is superseded by PIXEL_UI.md §5 and
+[ui.md §10](../architecture/modules/ui.md#10-combat-ui-combat-levels-only). The fixed-step bot's
+digest is unchanged (`1d81f069`) and the program count after warm-up equals the count after a full
+fight (63 = 63).
+
+| # | Section | Change | Why |
+| --- | --- | --- | --- |
+| P1 | §13.1, §13.2, U2 | The five components are pixel art at the UI root's scale (`--px`, `--fpx` = ⌈px / 2⌉; U2's private `--lu-px` is gone), placed as groups in art px of G's 640 × 360 frame: the vitals a `tl` group under the place plate (36 art px down, 42–43 in CJK), the skill bar a `br` group, the boss bar a `bc` group, the cards `tc`, the death screen `mc`. `CombatHUD.js` exports `anchorGroup(el, at, x, y, w, h, sc)` for elements the components keep. | The mockup. |
+| P2 | §5.2, §13.2 | Every combat string is in `src/game/combat/strings.js` (the `combat` namespace, registered by the `CombatSystem` constructor before `ui.enableCombat()`): the legend rows (`{ keys, label, id }`), the pad hint (`t('combat.padHint')`; `PAD_HINT` stays as its English source), toasts, the death screen, cards, the shop's menu. Enemy, ware and place names are translated by id; identities stay English (`buy(name)`, `state().combat`). Additive: `shopOffers()` rows gain `label` and `gainLabel`; `wareLabel(item)`, `displayName(e)` (an elite's bar), `upgradeText(what)` (`upgraded.*` sentences per language), `Checkpoint.place` and `placeName(cp)`. Chinese loot gold reads `+{n} G`. `pixelSvg` / `svgUrl` (U10) stay exported, unused. | Three languages. |
+| P3 | §6.11, X7 | `UI.enableCombat()` primes the death screen once `fontsReady` has resolved, with the translated title and prompt; the stepped vignette costs ≈ 18 ms per screen size (KNOWN_ISSUES COMBAT-02). | The prime must render the texts and faces the screen will show. |
+| P4 | §13.1 | `BossBar` sets the root class `lu-root--boss` from `show()` until 600 ms after `hide()` (at once on `dispose()`); the controls legend steps aside under it and under the death screen; `WorldLabels` stops counting a panel CSS hides. | G's combat screen has no legend; it ran under the boss's cartouche and bar. |
+| P5 | §13.2 | `Announcer.announce(…, { y })`: the card's top in art px (a number, or a function read when the card shows). Combat puts a level card at 108 while the area banner shows and the results card at 104 (`CombatSystem._announceAt`). | Cards covered the area banner. |
+| P6 | §13.1 | The skill bar and the purse dim to 0.55 in a dialogue (no clicks); `is-tight` hides them only where the dialogue window would overlap (below 632 art px wide: 1024 × 768). The dialogue window narrows clear of a shown skill bar (`DIALOG_RIGHT` follows it). | The dialogue and the skill bar shared a corner on small screens. |
+| P7 | §13.2 | At an odd px (1920 × 1080) the English slot names and keycap digits take G's 5-art-px cap in Jersey 15 at one device px a font pixel (`slotNameFace`, `keyDigitFace`); the slots stay 30 art px apart unless their names need more. A crit is Jersey 10 at twice the half-size font pixel, a 4 : 3 step over a hit. A Japanese or Chinese gains line has the numbers' `ol8` outline. | At px 3 names ran into each other, a digit outgrew its keycap and a crit was the size of a hit. |
+| P8 | §13.1 | The boss bar is max(220, min(334, artW − 260)) art px wide; a long boss name is cut to keep room for the epithet and the gems. | It ran under the skill bar at 1024 × 768. |
+| P9 | §13.2, X6 | Edge arrows stay at least 19 art px apart along the border; the area banner's card is a keep-out zone while it shows (`PanelSpec.box`); the labels' boxes are their drawn art and line boxes at every step of the motion, so `panelOverlaps()` passes at px 2 and 3. | Two arrows read as one; labels ran over 'MOSSY GLADE'. |
+| P10 | §13.2, X6 | `PanelSpec.merge` (additive): `false` keeps a panel's keep-out zone apart from every near panel's; `UI` passes it for the boss bar. | The skill bar + boss bar union measured 1.39–1.50 × their areas (1024 × 768 in every language: the boxes overlap by 20 px; Chinese at 1280 × 720: the CJK cartouche is 12 px taller), under the 1.5 rule, and the merged zone covered the open lower middle in boss fights (numbers, bars and the reticle there pushed 16–49 px off their anchors: COMBAT-07 again). Kept apart: drift ≤ 0.42 px at 1024 × 768, 1280 × 720 (zh), 1600 × 900 and 1920 × 1080. |
+| P11 | §13.1, P4 | `Announcer` sets the root class `lu-root--results` while a results card shows; the controls legend steps aside under it as under `lu-root--boss`. | The boss bar hides 2 s after the kill but the results card stays 7 s: the legend came back in the middle of the results, and at 1024 × 768 the card's lower left corner covered its top right. |
+| P12 | §9.8, §13.2, P2 | **Names by identity** (content text keys, [I18N.md §4](../specs/I18N.md#4-content-text)). `displayName(e)` shows a named group's name as a term (`term`; a group named as its kind, Cinderwatch's *Cinderheart*, reads as the kind's name where no table has the term), else the kind's name; `wareLabel(item)` a ware of `SHOP_WARES` by its id, any other item as a term; the results card's level name is a term. `Checkpoint.unnamed` (additive): a waystone whose object has no name (`name` keeps the English `Waystone`); `placeName(cp)` shows it as `t('game.default.waystone')`, a named one as a term. The chest's and an unnamed waystone's examine texts are the UI strings `game.default.chest` / `waystoneText` (`InteractText.linesDefault`, `speakerDefault`). Identities stay English (`state().combat`, `buy(name)`, the save). The fixed-step bot's digest is unchanged (`1d81f069`). | Names are identities: translated by the name, not by where it is written; code defaults are UI vocabulary. |
+
+Checked by `sandbox/combat.hud.tour.json` (in the game, en / ja / zh at 1024 × 768, 1280 × 720 and
+1920 × 1080: the legend beside the boss bar, the results card and under the death screen, cards vs the banner, the
+banner keep-out, skill-name gaps, edge spacing) and `ui.combat.actions.json` (the open-lower-middle
+probe expects 6 panels: the legend steps aside under the boss bar).
+
+### 27.24 A party of four (revision 12)
+
+Additive (2026-10-11,
+[Party balance](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass)):
+Cinderwatch Pass gains two companions, and its data is balanced for the player with all three —
+a static table, no scaling by the party's size; alone the pass is hard by design. No rule of the
+combat code changes: the level's enemy groups and banners (`tools/make-cinderwatch-pass.mjs`)
+and the golem's HP (`defs.js`) are data. The companions' side of the fight is §28.
+
+| # | Section | Change | Why |
+| --- | --- | --- | --- |
+| Q1 | §15.3 | **Two more companions** ([PARTY.md §9](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass), [cinderwatch-pass.md](../design/levels/cinderwatch-pass.md#the-companions-and-the-story)). Sister Ilse (`ilse`, cleric preset — her staff makes her a mystic) stays at (50.5, 111.5) as a `post` villager facing down (her wander 1.0 and speed 0.7 kept: her keep-clear disc, so the scatter, is unchanged), `title: 'Keeper of the Waystones'`, with a talk script (`ILSE_TALK`): her three pages on waystones and an offer, `party join ilse as mystic support` (the party's healer). Rook (`rook`, new; `hunter` preset with the `spec` `ROOK_LOOK` — his bow makes him a ranger) stands at (40.5, 112.5), south of the sparring yard, `post`, facing right, name plate `#a58ad8`, `title: 'Scout of the Cinderwatch'`, two fallback pages and `ROOK_TALK`: `party join rook as ranger balanced`. Both scripts have Sela's shape: as a member *Tactics…* (`party menu`), *Part ways* (asked twice: `party leave`, `home`), *Lead on*; a full party (`if party >= 3`) hears no offer. Sela's offer gains that full-party line, and her join line an `if party = 1` / `else` pair ("Then the watch marches with you…" when Ilse and Rook joined first). Story events: `ev_rook_ruins` (the Bramble Ruins inside their outer wall, x 4–41, z 44–71.5, `if: party:rook`: `emote rook !`, a bark, `party rule rook hunter` — *Hunt Casters*), `ev_ilse_caldera` (the caldera stair, `if: party:ilse`: a bark); `ev_sela_caldera` runs `if: party:sela and not party:ilse` (Sela turns to *Support* only when Ilse is not there to heal). 283 objects (was 280: Rook and the two events); nothing of the scatter moved. | The camp's sister should join, with an archer beside her; with Sela the party is full (at most 3 companions) and holds one member of each class. |
+| Q2 | §7.1, §8.3, §15.3, §15.5 | **Balanced for a party of four.** The glade is fought by three (Rook and Ilse join at the camp), the rest by four (Sela at the Crossroads). Groups (count × level), before → after: the glade's slimes 3 / 4 / 3 → 4 / 5 / 4 and goblins 2 → 3, Lv 1 → 2; the Ruins' gate goblins and slimes Lv 2 → 7, the court 2 goblins Lv 3 → 3 goblins Lv 8, the shaman Lv 3 → 8, the archers Lv 2 → 7 (west) and 3 → 8 (north); the Mire's south bats and slimes Lv 2 → 6, the islet and north bats, the shaman and the goblins Lv 3 → 7; the quarry Lv 4 → 8 (Old Ironhide too); Cinderheart Lv 6 (display only), **HP 1800 → 5200** (`ENEMY_DEFS.golem.hp` — Cinderwatch is the golem's only level). Hostile foes 50 → 55 with the boss; more would break rule 15 (its peak is now exactly 30, at (56, 70)), so the levels carry the rest (`scaledDef` unchanged: HP +20 %, ATK +12 %, XP +25 % a level). The Ruins stay the harder branch (Lv 7–8), the Mire the gentler (Lv 6–7). XP: the whole glade 149 (was 84), the Ruins 395 (189), the Mire 321 (189), the quarry 581 (370), Cinderheart 400; the player meets Cinderheart at Lv 6 (was 5). **Nothing scales with the party:** `ENEMY_DEFS` (but the golem's HP), `scaledDef`, the token budgets (melee 3 / ranged 2) and the companions' numbers (`ALLY` — its `partyAtk` included —, `CLASS_STATS`) are unchanged. Ferryman's Lantern's two slimes are unaffected (the slime's data is unchanged). | The solo table was too easy for the full party. Measured beside it (the bot's human model, §27.19 W6): the Ruins 59.6 s / 0.27 of max HP (the companions took 11 of 12 kills), the Mire 52.3 s / 0.20, the quarry no damage taken on either route, Cinderheart 42–45 s — about half the solo targets of KNOWN_ISSUES COMBAT-12 — and the companions killed Old Ironhide before the bot's planned fall. Balanced for four, not scaled by the party's size: solo play is meant to be hard. |
+| Q3 | §15.5, §15.6 | `validate()` rule 16 also checks each banner's `· Lv a–b` against the level range of the hostile packs at home in its zone (the first region holding the home). The four banners: `Slimes and goblins · Lv 2`, `Goblins, archers and a shaman · Lv 7–8`, `Bats, slimes and a shaman · Lv 6–7`, `Ironhide boars and archers · Lv 8` (translated anew in ja / zh). `coverage()` gains three rows: a villager who joins as a warden, a ranger and a mystic (`party join … as <class>`) — Sela, Rook, Ilse. The level's `description` says it is balanced for a party of four. | The banners name the danger and can no longer drift from the table; the coverage rows keep the party the balance assumes. |
+| Q4 | §21, §23 | **The play-through bot plays beside the party** (`sandbox/combat_play.js`). New task `join`: talk to the villager (every page, its offer's *Walk with me*); it fails unless the villager is a member then. The plan recruits Rook and Ilse at the camp after the drill reward and Sela at the Crossroads after the rest (tasks marked `party: true`). Start option `party` (default true; `false`: alone, no `join` task, `/solo` in the summary). `verify()` wants the party of three at the end (with `party`). `summary().line` adds `\| party 3 kills <n> downs <n>`; `report()` gains `party` (`members`, `kills`, `dmg`, `hurt`, `downs`, `healed`, `playerDmg`, `playerKills`) and per zone `allyKills` / `allyDowns`. The planned fall beside Old Ironhide: with a party its members hold back (`__game.party.rule(id, 'passive')`, the test hook — a player would pick *Hold Back*) while the player falls, and the respawn task gives them their rules back; with no Old Ironhide left (a fight woke and killed him first — the expert alone does) the fall and its respawn check are skipped, a note, not a failure (`verify()` still wants a death and a respawn on the Ruins route). Fixed step: a chunk the game loads mid-run (the party's, at the first join: `Game.ensureParty` → `_partyLoad`) arrives in real time; `runFixed` now waits for it between two frames (`chunkLoads`), so the run no longer depends on how fast frames go. | The level is balanced for the party, so its play-through recruits it. Before `chunkLoads`, `combat.play.json` and `combat.play.fast.json` gave different digests (`f0646668` vs `60e442e4`). |
+| Q5 | §8.3, §18, §21 | **Measured** (fixed step). The human model beside the party, three runs (seed 1 and 2 on the Ruins route, seed 1 on the Mire; per zone time / damage taken in shares of max HP): the glade 28–35 s / 0–0.06, the Ruins 65 s / 0.46 and 99 s / 0.32, the Mire 61 s / 0.18, the quarry 77–98 s / 0.19–0.32, Cinderheart 87 s (1 draught), 95 s and 153 s (5 draughts; all three companions down in phase 3; won); companions down 0–3 per run in the boss fight, never elsewhere; the player's own kills 46–51 % (18–20 of 39–41). `combat.play.human.json`: 477.1 s, Lv 6, 39 kills, Cinderheart in 85.1 s, no companion down, digest `8c4ef71b` (was `920a4269`). `combat.play.json` = `combat.play.fast.json`: `ok`, f 21924 (365.400 s), Lv 6 xp 483, kills 39 (companions 9), deaths 1 (the planned fall), chests 5, pickups 133, Cinderheart down in 57.917 s [16.083 22.000 19.833], digest `cf165213` (was `1d81f069`, alone). Alone (`start({ party: false })`, report only): the human model on the Ruins route drinks 4 draughts in the Ruins (219 s, 3.0 max HP of damage) and 5 for Cinderheart (164.5 s, 2.82) and wins, barely; the expert drinks 2 in the Ruins (1.89) and falls once to Cinderheart (phase 2) before winning (153.8 s). Greedy runs (§8.3, alone at Lv 5): the fixture 99.8 s (29.4 / 37.1 / 33.4 s), Cinderwatch 96.6 s (29.5 / 33.3 / 33.8 s), with every chest and shop ware 83.5 s (24.8 / 30.1 / 28.6 s); was 38.9 / 39.9 / 34.7 s. A greedy run steps ≈ 5 900 frames in one evaluate: run `combat.boss.json` / `combat.boss.cw.json` alone (under a loaded GPU it can pass the harness's 180 s protocol timeout). At the spawn (`sandbox/fingerprint.json`): 175 draw calls (was 166: Rook and the glade's extra foes in view), 611 932 triangles, 12 lights, 63 programs, 283 objects, 373 colliders, story on; `combat.perf.json` worst 240 draw calls (≤ 300), tick p95 0.4 ms, 63 programs; `combat.programs.json` 63 = 63. `combat.fight.cw`, `combat.navrect`, `cinderwatch.tour`, `editor_shell.combat` (the round trip) and the other Cinderwatch suites pass unchanged. | Solo is hard by design; a human play-test remains (KNOWN_ISSUES COMBAT-12). |
+
+## 28. Party allies
+
+Revision 9 (2026-10-08); revision 10 (2026-10-08) after the play-test review: heal reservation,
+the warden's approach off the player's screen spot, holding still, the shooters' leash and lead, the
+party level on arrival, sleeping elites, ledges, the player in the way, more threat and lower
+companion stats (PARTY.md §11 PC15–PC26). The party's members (the villagers who joined the player,
+[PARTY.md](../specs/PARTY.md)) fight beside the player on a combat level: the binding text is
+PARTY.md §5 (with its as-built §5.5 and the deviation rows PC1–PC26 of its §11); this section is the
+combat's side of it. Code: [`src/game/party/MemberCombat.js`](../../src/game/party/MemberCombat.js)
+(one member's fight), [`src/game/party/rules.js`](../../src/game/party/rules.js) (`ALLY`, `KIT`,
+`CLASS_STATS`, `DISTANCE`, `HEAL_AT`, `RETREAT_AT`), `CombatSystem.js`, `Enemy.js`,
+`Projectiles.js`, `Hitboxes.js`, `hooks.js`; types `AllyState`, `AllyAction` and the widened
+records in [`types.d.ts`](../../src/game/combat/types.d.ts).
+
+**Nothing changes without a companion.** Every addition below is a loop over `allies` (empty), a
+field that is never read without one (`Enemy.target` stays null, `allyHits` stays empty,
+`LiveProjectile.ally` / `ProjectileContact.ally` stay null) or an early return. The fixed-step bot
+(`combat.play.fast.json`) keeps its digest `1d81f069`; Cinderwatch keeps 165 draw calls, 12 lights,
+63 programs; `combat.programs.json` is unchanged. MemberCombat is imported by CombatSystem (the
+combat chunk; a peaceful level loads neither). *(rev. 12, §27.24: the rule still holds, but those
+numbers were measured at revision 9 — since then Cinderwatch's data changed and the bot recruits
+the party: its digest is `cf165213`, the spawn shows 175 draw calls with Rook in view.)*
+
+**Cinderwatch Pass is tuned for a full party** *(rev. 12, §27.24 Q2,
+[Party balance](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass))*: its
+enemy groups' counts and levels and Cinderheart's HP (5200) assume the player with three
+companions — Rook and Sister Ilse from the camp, Sela from the Crossroads
+([PARTY.md §9](../specs/PARTY.md#9-the-demo-the-companions-of-cinderwatch-pass)). Nothing scales
+with the party's size: no enemy number reads how many companions there are, and the rules below,
+`ALLY` and `CLASS_STATS` are unchanged — with fewer companions the same foes stand, and alone the
+pass is hard by design.
+
+| # | Section | Addition |
+| --- | --- | --- |
+| A1 | §9.1 | **Allies.** `addAlly(member)` → a `MemberCombat` (also `member.combat`; null before `load`; the same one again for the same member; its sheet texture uploaded at once), kept in `allies` (join order); `removeAlly(member)` → the foes after it turn to the player, its shots in flight go, its sprite's flash / blink / speed are plain again; **`healAllies()`** → every companion full HP / MP and up again (the story's `heal`, PARTY.md §7.3), returns how many; `dispose()` releases every companion (`member.combat = null`). Also `sealedArena()` (the closed arena or null), `bossFight` (the running boss fight), `isTargeted(a)`, `targetedBy(a)`, `hurtAlly(a, n)`, `addAllyHit(a, spec, source)`, `spawnAllyProjectile(a, spec)`, `allyNumber(x, y, z, text)`, `onAllyDown(a)`; `refreshLegend()` builds the combat legend again at once (after the game changed `legendExtra`, e.g. the party's *G — Party* line; it replaces setting the private `_device = null`). `legendExtra` lines are `{ keys, label, pad? }`: with the gamepad the legend leaves out those with `pad: false` (no pad button). |
+| A2 | §4.2 | **Frame order.** In `_substep`, after the player's kit (`pc.step`, `cin.tick`, the player's view): `allies[i].step(hp)` (player-scaled; one walk-grid search per sub-step for all of them, `allySearches`), then the enemies, projectiles, `_resolve`. Hit-stop and inactive frames stop the companions with everything else. `afterPlayer`: `_allySeparation()` after `_separation()`, the closed arena clamps the companions inside it (`_arenaClamp`), then `allies[i].afterFrame(dt, active, playing, realAdvanced)` (velocity for its view, the pose row after camera turns, hurt flash, i-frame blink, sprite speed). |
+| A3 | §9.2 | **Targets.** `Enemy.target` (null: the player; else a companion), `targetHold`, `targetCheck`, `playerHitAt` — core-owned, cleared by `reset`, `sendHome`, `die`, `vanish`. Before an enemy's update core sets `ctx.player = target.view` (the companion's `PlayerView`: live position, radius 0.3, body [0, 1.8], facing, velocity, alive = not down, invulnerable, dodging, action in the player's names, swing, sealed = the player's) and back to `_pv` after it — in a `finally`, so a throwing brain cannot leave the next enemies seeing the companion; brains are unchanged. A companion's hit switches a foe to it when the companion is nearer to it than `ALLY.threat` (1.25) × the player's distance — an archer or a shaman (token `ranged`) also when the companion's shot came from within `ALLY.rangedAggro` (10 u) — (held 2.5 s, renewed by its hits; not a foe held on another companion); `_retarget` turns it back to the player at once when the companion is down or gone, the player fell or the foe walks home, else every 0.5 s once the hold is over when the player is nearer than 0.6 × the companion's distance — and a companion falling back behind the player (`mode` 'retreat') is let go at that check as soon as the player is the nearer, hold or not. The boss and its adds never switch. `engaged` stays the player's (§6.12). Events `allyTargeted` (enemy, id), `allyDown` (id). |
+| A4 | §6.3, §9.1 | **Their hits.** `allyHits` (a HitQueue, owner the MemberCombat) resolved after the player's hitboxes (`_resolve` step 1b); a companion's shots are player shots owned by it (`Projectiles.spawn('player', spec, ally)`: `LiveProjectile.owner` / `.ally`, `ProjectileContact.ally`) resolved in the player-shot loop (step 2) — both through `_allyHitEnemy`: the player's formula with the companion's ATK, the roll and crit (base, rear, exposed) from its own RNG, the boss's floors (`_bossClamp`), the kill through `_kill` (XP and loot for the player, the kill counted; event `allyKill`), `receiveHit` and the switch of A3; the number in `ALLY_NUMBER` (`'ally'`: WorldLabels' teal kind, `.lu-num--ally`), a star at scale 0.55, quieter sounds, **no hit-stop and no shake**; event `allyHit` (id, enemy, damage, crit). Splashes: `_allySplash`. No friendly fire (they test enemies only). A companion's attacks show no ground marker. `_hitEnemy` records `e.playerHitAt` (the `assist` rule). |
+| A5 | §6.3 | **Hits on them.** `_resolveAllies` after the player's steps 3 and 4: every enemy hitbox against each companion that is up and attached (`present`), one hit per tag per companion (`TagRegistry` targets may be a MemberCombat), passed while it is invulnerable (down, i-frames, rolling f1–13, knocked down, the player fallen, `allyGod`); enemy shots test the companions after the player (`Projectiles._contactAllies`: a shot passes through one with i-frames, marked for it). `_hitAlly`: flat damage → `hurtFlat` (HP only); mv 0 → a shove; else `atk · mv · roll · mitigation(def)` (its own RNG) → `takeHit` (hit stun, knockdown at kb ≥ 2.5 or `knockdown`, down at 0 HP); a number in `hurt`, sparks, a sound — no hit-stop, shake or vignette. Event `allyHurt` (id, damage). |
+| A6 | §7.6 | **Separation** (`_allySeparation`): companions the combat drives, up and not rolling — against ground enemies by inverse mass (`ALLY.mass` 3; armoured enemies infinite), against each other evenly; they yield to the player entirely (a companion never pushes the player). |
+| A7 | §8.1 | **The boss arena.** On `bossIntro` (`_alliesIntoArena`) every companion within 12 u of the player is placed inside, behind the player; while the arena is closed those are clamped inside (also by their own moves) and fight the boss (a candidate only during its fight) and its adds; the others wait at the gate and never enter (`MemberCombat._move`, `_enterable`). Tokens and the sealed rule (§27.9 G4) are unchanged. |
+| A8 | §6.11, §6.12 | **Death, respawn, rest.** `onPlayerDeath`: every foe's target back to the player, every companion stops (idle, invulnerable). `resetEncounter` (respawn and rest): targets cleared, `healAllies()`; the respawn's `game.teleport` moves them (`party.onTeleport` → `member.combat.onTeleport()`). The player's level-up fills their HP and MP. Any change of the player's level — a level-up, `importProgress` on a campaign's arrival (the companions were added at the fresh combat's level 1), the `setPlayer` hook — scales their HP and MP to the new maxima keeping the fractions (`MemberCombat.syncLevel`, also run each sub-step and by `info()`). |
+| A9 | §20.1, §20.2 | **Hooks and state.** `allies()`, `allyHurt(id, n)`, `allyTarget(uid, who?)`, `allySet(id, { hp, mp })`, `allyGod(on)`, `healAllies()`; `seed(n)` reseeds the companions' RNGs, `reset()` resets them (`MemberCombat.reset`: full, counters, cooldowns, plans, facing +z, RNG). `state().combat.allies` (`AllyState[]`, only once a companion was added). [AUTOMATION_API.md §3.4](../specs/AUTOMATION_API.md#34-window__gamecombat-combat-levels-only). |
+| A10 | §18, §19 | **Budgets.** Per companion and sub-step: a 48-slot marker scan (evade), one walk-grid line test per move, a target pick every 0.25 s (each at its own phase; between those beats only when the target it has stops being valid — none while it has none), the 8 spots of a shooter's or a warden's approach on the same beat (a stand test, a line test, a projection each), at most one path search per sub-step for all of them (≤ 36 u). Its sprite is the member's (the player's lit `combatFx` material: no new program — 63 before a join = after every fight of `party.combat.json`), its effects the combat's warmed FX, bursts and projectiles; no light, no marker. `warmup()` uploads the sheets of the companions already there. |
+| A11 | §21 | **Tests.** [`sandbox/party.combat.json`](../../sandbox/party.combat.json) (helpers [`sandbox/party_combat.js`](../../sandbox/party_combat.js)) on Cinderwatch, manual stepping: each class fights a glade pack alone (the player in god mode never attacks: every kill is the companion's, XP and kill count credited; the warden's foes turn on it and hit back), presets `passive` (no attack in 10 s) and `guardian` (≤ leash + reach from the player), heals by threshold (the player at 25 %, then itself), evade (a filling circle and lane under it; no roll with `evade: off`), the shaman's hex forced onto it (it rolls; less damage than with evade off), down → foes back to the player → up with 30 % → full, rest / `healAllies` / the player's death and respawn, the boss arena inside and at the gate, determinism (one fight twice: one digest), programs; and the review fixes (PARTY.md §11 PC15–PC26): one Mend at a time from three Support healers, Hold Back members holding still, Guard Me shooters within the leash while the player walks off, the lead on a crossing foe, the party level kept through `setPlayer` / `importProgress`, a sleeping elite never targeted, a ledge given up and the player gone round. The balance probe [`sandbox/party.combat.balance.json`](../../sandbox/party.combat.balance.json) (report only) has the fixed-step bot of `combat_play.js` play as a careful human beside one companion of each class and preset, and the full party, in the Ruins and the quarry: kills, damage dealt and taken, downs, foes turned, HP healed, screen cover. |

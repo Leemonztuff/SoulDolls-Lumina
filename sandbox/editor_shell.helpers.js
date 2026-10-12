@@ -10,8 +10,11 @@
 /**
  * Pointer options of the stroke helpers.
  * @typedef {object} StrokeOpts
- * @property {number} [button]  of pointerdown / pointerup (0)
- * @property {boolean} [down]  holds the button on moves
+ * @property {number} [button]  of pointerdown / pointerup (0); its `buttons` bit is held on
+ *   pointerdown and on `down` moves (left 1, middle 4, right 2)
+ * @property {boolean} [down]  holds the button on moves (a move without it carries `buttons: 0`,
+ *   which the 2D map reads as a lost release and ends an open stroke, cancelled — ED-27)
+ * @property {number} [buttons]  overrides the event's `buttons` bitmask
  * @property {boolean} [shift]
  * @property {boolean} [ctrl]
  * @property {boolean} [alt]
@@ -61,9 +64,11 @@ export function install() {
   /** @param {string} type @param {number} x @param {number} z @param {StrokeOpts} [o] */
   function fire(type, x, z, o = {}) {
     const s = screen(x, z);
+    const bit = [1, 4, 2][o.button ?? 0] ?? 1;
     canvas().dispatchEvent(new PointerEvent(type, {
       bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', isPrimary: true,
-      button: type === 'pointermove' ? -1 : (o.button ?? 0), buttons: type === 'pointerup' ? 0 : (type === 'pointermove' && !o.down ? 0 : 1),
+      button: type === 'pointermove' ? -1 : (o.button ?? 0),
+      buttons: o.buttons ?? (type === 'pointerup' || (type === 'pointermove' && !o.down) ? 0 : bit),
       shiftKey: !!o.shift, ctrlKey: !!o.ctrl, altKey: !!o.alt, ...s,
     }));
   }

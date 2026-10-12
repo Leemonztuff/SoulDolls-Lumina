@@ -1,25 +1,29 @@
-# Game architecture — `src/main.js` + `src/demo/`
+# Game architecture — `src/main.js` + `src/game/`
 
-> **Purpose.** How the playable game is put together: how a level file becomes a running HD-2D
+> **Purpose.** How the playable game is put together: how a level file becomes a running 2.5D
 > diorama, what runs every frame and in which order, how the player, villagers, critters,
 > conversations, weather, ambience and the performance governor work, and which tunables live
-> where. Read this before changing anything in `src/demo/` or `src/main.js`.
+> where. Read this before changing anything in `src/game/` or `src/main.js`.
 >
 > **Audience.** Developers and AI agents working on gameplay, level loading, the demo's look or
 > its performance.
 >
 > **Source of truth.** [`src/main.js`](../../src/main.js),
-> [`src/demo/Game.js`](../../src/demo/Game.js), [`src/demo/World.js`](../../src/demo/World.js),
-> [`Player.js`](../../src/demo/Player.js), [`Npc.js`](../../src/demo/Npc.js),
-> [`Critters.js`](../../src/demo/Critters.js), [`dialogue.js`](../../src/demo/dialogue.js),
-> [`Weather.js`](../../src/demo/Weather.js), [`WeatherLook.js`](../../src/demo/WeatherLook.js),
-> [`AudioDirector.js`](../../src/demo/AudioDirector.js),
-> [`ResolutionGovernor.js`](../../src/demo/ResolutionGovernor.js),
-> [`Scenery.js`](../../src/demo/Scenery.js), [`GroundDetail.js`](../../src/demo/GroundDetail.js),
-> [`SnowCover.js`](../../src/demo/SnowCover.js), [`AtmosphereFog.js`](../../src/demo/AtmosphereFog.js),
-> [`DebugControls.js`](../../src/demo/DebugControls.js), [`config.js`](../../src/demo/config.js),
-> [`levels.js`](../../src/demo/levels.js) and the combat modules in
-> [`src/demo/combat/`](../../src/demo/combat/) ([§15](#15-combat-combat-levels-only)).
+> [`src/game/Game.js`](../../src/game/Game.js), [`src/game/World.js`](../../src/game/World.js),
+> [`Player.js`](../../src/game/Player.js), [`Npc.js`](../../src/game/Npc.js),
+> [`Critters.js`](../../src/game/Critters.js), [`dialogue.js`](../../src/game/dialogue.js),
+> [`Weather.js`](../../src/game/Weather.js), [`WeatherLook.js`](../../src/game/WeatherLook.js),
+> [`LevelLook.js`](../../src/game/LevelLook.js),
+> [`AudioDirector.js`](../../src/game/AudioDirector.js),
+> [`ResolutionGovernor.js`](../../src/game/ResolutionGovernor.js),
+> [`Scenery.js`](../../src/game/Scenery.js), [`GroundDetail.js`](../../src/game/GroundDetail.js),
+> [`SnowCover.js`](../../src/game/SnowCover.js), [`AtmosphereFog.js`](../../src/game/AtmosphereFog.js),
+> [`DebugControls.js`](../../src/game/DebugControls.js), [`config.js`](../../src/game/config.js),
+> [`levels.js`](../../src/game/levels.js), the combat modules in
+> [`src/game/combat/`](../../src/game/combat/) ([§15](#15-combat-combat-levels-only)) and the
+> campaign modules in [`src/game/campaign/`](../../src/game/campaign/) ([§3.9](#39-campaigns-the-level-half-and-swaplevel)),
+> the story runtime in [`src/game/story/`](../../src/game/story/StoryRunner.js) ([§3.10](#310-the-story-runtime)),
+> the party in [`src/game/party/`](../../src/game/party/Party.js) ([§3.11](#311-the-party)).
 > Where this page and the code disagree, the code wins.
 >
 > **Related.** [OVERVIEW.md](OVERVIEW.md) (the whole system) ·
@@ -27,7 +31,7 @@
 > [EDITOR.md](EDITOR.md) · engine modules: [level](modules/level.md), [world](modules/world.md),
 > [lighting](modules/lighting.md), [ui](modules/ui.md), [core](modules/core.md) ·
 > [specs/LEVEL_FORMAT.md](../specs/LEVEL_FORMAT.md) (every level field) ·
-> [specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md) (`window.__game`, `window.__lumina`) ·
+> [specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md) (`window.__game`, `window.__luminati`) ·
 > [specs/INPUT_AND_CONTROLS.md](../specs/INPUT_AND_CONTROLS.md) ·
 > [user/PLAYING_THE_GAME.md](../user/PLAYING_THE_GAME.md) · binding contract:
 > [contracts/LEVEL_EDITOR.md §5](../contracts/LEVEL_EDITOR.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md).
@@ -39,7 +43,7 @@
 ## 1. The big picture
 
 The game is a thin layer over the engine (`src/engine/`, public API in
-[`src/engine/index.js`](../../src/engine/index.js)). It plays **any** `lumina-level` JSON file.
+[`src/engine/index.js`](../../src/engine/index.js)). It plays **any** `luminati-level` JSON file.
 The only Emberfall-specific pieces are the default level name (`DEFAULT_LEVEL = 'emberfall'` in
 `main.js`), the eight hand-written conversations in `dialogue.js`, and a few tunables that were
 tuned on Emberfall but apply to every level (`config.js`, `AUTO_BOUNDS_MARGINS` in `Game.js`, the
@@ -47,25 +51,25 @@ automatic tree-kind mix in `Scenery.js`).
 
 ```mermaid
 flowchart LR
-  subgraph Page["index.html"]
+  subgraph Page["game.html"]
     L["loading screen (div id loading)"]
     APP["canvas container (div id app)"]
   end
   MAIN["src/main.js<br/>boot()"] -->|"resolveLevelFromURL / loadProjectLevel"| LS["engine/level/LevelStorage"]
-  MAIN -->|"new Game(level)"| GAME["demo/Game"]
+  MAIN -->|"new Game(level)"| GAME["game/Game"]
   GAME --> ENG["Engine loop<br/>(systems)"]
-  GAME --> WORLD["demo/World<br/>terrain + props + scenery"]
+  GAME --> WORLD["game/World<br/>terrain + props + scenery"]
   GAME --> ACT["Player · Npc · Critters"]
   GAME --> WX["Weather · AudioDirector<br/>ResolutionGovernor"]
   GAME --> UI["engine UI<br/>(dialog, HUD, maps, title)"]
   WORLD -->|"buildLevelTerrain<br/>LevelObjectBuilder"| OB["engine/level/ObjectBuilder"]
-  WORLD --> SC["demo/Scenery<br/>demo/GroundDetail"]
-  GAME -->|"conversationFor(obj) per NPC"| DLG["demo/dialogue"]
+  WORLD --> SC["game/Scenery<br/>game/GroundDetail"]
+  GAME -->|"conversationFor(obj) per NPC"| DLG["game/dialogue"]
 ```
 
 | Layer | Owns | Does not own |
 | --- | --- | --- |
-| `src/main.js` | URL → level resolution, the loading screen (progress bar, error screen with links), `window.__lumina` | anything that renders |
+| `src/main.js` | URL → level resolution, the loading screen (progress bar, error screen with links), `window.__luminati` | anything that renders |
 | `Game` | wiring of every engine module, modes (loading / title / play), input shortcuts, interaction and dialogue flow, camera framing, maps, `window.__game` | how the world is built |
 | `World` | building the level into the scene and wiring every `BuiltObject` (lights, emissives, emitters, colliders, walk surfaces, updaters), scenery, foliage, snow cover, big-level batching | actors, input, UI |
 | `Player`, `Npc`, `Critters` | movement, behaviour and animation of sprites | camera, dialogue text |
@@ -81,36 +85,59 @@ flowchart LR
 
 `boot()` runs once per page load:
 
-1. `exposeHook()` installs `window.__lumina` = `{ storage: { saveLocalLevel, loadLocalLevel,
+0. **Language, strings and fonts first** ([I18N.md](../specs/I18N.md)): `setLang(resolveLang())`
+   (`?lang=`, the saved choice, else English; `<html lang>` follows), `registerCoreStrings()` (the
+   loading screen's steps and error page are `t('game.load.*')` / `t('game.error.*')`), and
+   `startFonts({ lang, px })` — the UI fonts start loading (Google first, else `dist/`) in parallel
+   with the level; `window.__luminati.fonts` is their report.
+1. `exposeHook()` installs `window.__luminati` = `{ storage: { saveLocalLevel, loadLocalLevel,
    listLocalLevels, loadProjectLevel, PLAYTEST_SLOT }, playLocal(level, slot = 'test', query =
    'autostart=1') }` — a test hook that stores a (possibly partial) level in browser storage and
    reloads the tab on `?level=local:<slot>`.
-2. `progress(0.03, 'Reading the map')`, then `loadLevel()`:
+2. `progress(0.03, t('game.load.map'))`; the **content tables** start loading
+   (`loadContentTables(lang, …)`, English fetches nothing) — a campaign's and the default level's
+   at once, a requested level's once its source is known, plus `&i18n=<table>`; then `loadLevel()`:
    `resolveLevelFromURL(location.search)` (see the table), else `loadProjectLevel('emberfall')`.
 3. Load failures become a user-facing error `Could not load <what>: <why>` (`err.levelLoad =
-   true`). A missing project level is normally caught by `loadProjectLevel` itself, which treats
+   true`; the loading screen shows it in the page's language, `t('game.error.*')`, the console
+   in English). A missing project level is normally caught by `loadProjectLevel` itself, which treats
    a non-OK response or an HTML answer (the dev server answers unknown paths with `index.html`) as
    `Level "<name>" not found`. A missing browser slot gives `No level "<slot>" in this browser's
-   storage`. `main.js` rewrites a `SyntaxError` as follows. If the request was not a `local:` slot
-   and the error text looks like HTML, the message becomes "`levels/<slug>.json` does not exist".
-   Otherwise it becomes "the file is not valid level JSON (…)". Any failure of `boot()` (a load
+   storage`. `main.js` rewrites two cases: that `not found` of a project level (no HTTP status, or
+   404; not for a campaign or a `local:` slot) becomes "`levels/<slug>.json` does not exist", and a
+   `SyntaxError` (a file or slot that came back but does not parse) becomes "the level is not
+   valid JSON (…)". Any failure of `boot()` (a load
    error or an exception while building the game) then switches the loading screen to `.is-error`,
-   shows the message and offers links: **Play Emberfall** (only when another level was requested),
-   **Play Cinderwatch Pass** (unless that is the level that failed) and **Open the level editor**. Load errors are logged with `console.warn`, other failures with
+   shows the message and offers links: **Play Emberfall** (`game.html`; only when another level
+   was requested), **Play Cinderwatch Pass** (`game.html?level=cinderwatch-pass`; unless that is
+   the level that failed) and **Open the level editor** (`editor.html`). Load errors are logged with `console.warn`, other failures with
    `console.error`.
 4. A blank level name becomes `Untitled`; normalisation warnings and `validateLevel` problems go
-   to the console as `[Lumina] <source>: …` (they never stop the game).
-5. `new Game({ container: #app, level, source, autostart })`, `await game.init(progress)`,
-   `game.start()`, `await game.warmedUp` (five real frames drawn behind the loader), then
-   `window.__lumina.loadMs` (navigation start → first gameplay frame) is set and the loader fades
-   out (`is-done`, removed after 900 ms). `window.__lumina` also carries `level`, `source` and
-   `warnings` once the level is loaded.
+   to the console as `[Luminati] <source>: …` (they never stop the game).
+5. The content tables are awaited (before anything shows the level's text: prose by its key,
+   `loc(key, english)`, names as terms, `term(name)`; [I18N.md §4](../specs/I18N.md)), then
+   `window.__luminati.content` (`lang, tables, strings, units, terms, warnings`, and live getters
+   `misses`, `missCount`, `missDropped`, `clearMisses()`: what was shown untranslated); the loading
+   screen's name and the tab title are translated (`term(name)`, `t('game.page.title', { name })`);
+   `new Game({ container: #app, level, source, autostart, campaign, lang, fonts })` (a play-test's
+   `&i18n=<table>` only adds that table to the chain: the keys are in the level's data),
+   `await game.init(progress)`, `game.start()`, `await game.warmedUp`
+   (five real frames drawn behind the loader), then `window.__luminati.loadMs` (navigation start →
+   first gameplay frame) is set and the loader fades out (`is-done`, removed after 900 ms).
+   `window.__luminati` also carries `level`, `source` and `warnings` once the level is loaded.
+6. Japanese and Chinese: once play starts, `prefetchGlyphs` loads the glyphs of every translated
+   text the page can show (the content tables and the core UI tables) in idle time, so a dialogue
+   opened later lays out at once. Not awaited.
 
-| URL query | Level loaded | `source` string |
+The game's page is `game.html`; the front page, `index.html`, is the launcher (a list of every
+campaign and level with links here; it ignores any query,
+[Launcher architecture](OVERVIEW.md)).
+
+| `game.html` query | Level loaded | `source` string |
 | --- | --- | --- |
 | *(none)* | `public/levels/emberfall.json` | `levels/emberfall.json` |
 | `?level=<name>` | `public/levels/<slugify(name)>.json` (dev and production builds) | `levels/<slug>.json` |
-| `?level=local:<slot>` | browser storage slot (`localStorage` key `lumina.level.<slot>`); the editor's play-test uses `local:__playtest__` | `local:<slot>` |
+| `?level=local:<slot>` | browser storage slot (`localStorage` key `luminati.level.<slot>`); the editor's play-test uses `local:__playtest__` | `local:<slot>` |
 | `?autostart=1` (any value but `0`) | skips the title screen (play-tests, the check harness) | — |
 | `?debug` or `?autostart` | the `Engine` also exposes `window.__engine` | — |
 
@@ -121,15 +148,20 @@ The canonical description of storage and slugs is
 
 ## 3. `Game` — lifecycle and modes
 
-`Game` ([`src/demo/Game.js`](../../src/demo/Game.js)) is constructed with a **normalised** level
-(`LevelFormat.normalizeLevel` / the `LevelStorage` loaders). The constructor only derives
-configuration; `init()` builds everything; `start()` begins the loop.
+`Game` ([`src/game/Game.js`](../../src/game/Game.js)) is constructed with a **normalised** level
+(`LevelFormat.normalizeLevel` / the `LevelStorage` loaders) and, for a campaign, its
+`CampaignRuntime`. The constructor only derives configuration (`_applyLevel`); `init()` builds
+everything — the persistent half itself, the level half through `_buildLevel` — and `start()`
+begins the loop. A campaign later replaces the level half with `swapLevel` ([§3.9](#39-campaigns-the-level-half-and-swaplevel)).
 
 ### 3.1 Construction (no GPU work)
 
 - **Camera framing** `this.camera` = `CAMERA` from `config.js` merged with
   `environment.camera`: `distance` (default 30, clamped 8–80), `pitch` (default 32°, clamped
   10–80), `minDistance = min(18, distance)`, `maxDistance = max(42, distance)`, fov 28.
+- **Fog start** `setFogStart(distance − 7)` writes the shared uniform `uFogStart`
+  ([§11.4](#114-atmospherefogjs--fog-that-starts-in-front-of-the-player)) — a campaign's
+  `swapLevel` runs `_applyLevel` again, so every level gets its own.
 - **Focus bounds** `_resolveCameraBounds(environment.camera.bounds)`: three rects `near / mid /
   far` (one rect or `{ near, mid, far }` in the file; swapped min/max are accepted). Without
   bounds they are computed from the walkable area (`computeCameraBounds(level, 0)`) shrunk by
@@ -145,7 +177,7 @@ configuration; `init()` builds everything; `start()` begins the loop.
   - distance: `clamp(max(level.width, level.depth) × 0.8, 22, 35)` (the level size in tiles); any
     distance, given or computed, is finally clamped to 8–80.
 - `regions` = every `region` object (HUD plate, arrival banners, world-map names).
-- State: `mode` (`'loading' | 'title' | 'play'`), `photoMode`, `mapOpen`, `busy` (a conversation
+- State: `mode` (`'loading' | 'title' | 'play' | 'travel'` — `travel` while a campaign switches levels), `photoMode`, `mapOpen`, `busy` (a conversation
   or fade is running — the player is frozen), `inventory` (`{ apples: 0 }` plus shop items; a
   null-prototype object, since item names are level data), `visits` (per-NPC talk counter),
   `warmedUp` (a promise).
@@ -158,19 +190,19 @@ configuration; `init()` builds everything; `start()` begins the loop.
 ```mermaid
 sequenceDiagram
   autonumber
-  participant HTML as index.html loader
+  participant HTML as game.html loader
   participant Main as main.js boot()
   participant Store as LevelStorage
   participant Game
   participant World
   participant GL as renderer.compileAsync
   HTML->>Main: module script runs
-  Main->>Main: exposeHook() sets window.__lumina
+  Main->>Main: exposeHook() sets window.__luminati
   Main->>Store: resolveLevelFromURL() or loadProjectLevel('emberfall')
   Store-->>Main: level, warnings, source
   Main->>Game: new Game({ container, level, source, autostart })
   Main->>Game: await init(progress)
-  Game->>Game: installFogStart(distance - 7), Engine, TextureLibrary, LightingSystem
+  Game->>Game: installFogStart(), Engine, TextureLibrary, LightingSystem
   Game->>Game: Particles, GodRays, SpriteManager, CameraRig, PostFX, ResolutionGovernor, UI, AudioSystem
   Game->>World: await build() with progress scaled by 0.9
   World-->>Game: tileMap, lights, interactables, fires, falls, batching
@@ -179,7 +211,7 @@ sequenceDiagram
   Game->>Game: Weather, AudioDirector, HUD and dialog setup, debug panel, maps
   Game->>Game: addSystem lighting (-10), game (0), audio (20), render fn
   Game->>GL: 0.96 rain and snow on, one-particle bursts far below, await both compiles
-  Game->>Game: postfx.warmup(), precipitation off, start weather, window.__game
+  Game->>Game: postfx.warmup(), shadow primer (one proxy per depth variant), precipitation off, start weather, window.__game
   Main->>Game: start() draws 5 warm frames, title or gameplay
   Main->>Game: await warmedUp
   Main->>HTML: fade the loader out
@@ -189,25 +221,26 @@ Step by step (progress fractions are those shown on the loading bar):
 
 | Progress | Label | Work |
 | --- | --- | --- |
-| — | — | `installFogStart(camera.distance − 7)` patches three's `fog_vertex` chunk **before any material compiles** (see [§11.4](#114-atmospherefogjs--fog-that-starts-in-front-of-the-player)). |
+| — | — | `installFogStart()` patches three's fog chunks to read the fog start from the uniform `uFogStart` **before any material compiles** (the constructor's `_applyLevel` already set it to `camera.distance − 7`; see [§11.4](#114-atmospherefogjs--fog-that-starts-in-front-of-the-player)). |
 | — | — | `Engine({ container, maxPixelRatio: 1.25 })`; `TextureLibrary({ seed: 1337, anisotropy: 4 })`; `LightingSystem(engine, { timeOfDay: environment.timeOfDay ?? 17.2 (wrapped into 0–24), shadowExtent: 26, sunPath: SUN_PATH, moonPath: MOON_PATH, keyframes: DEFAULT_KEYFRAMES + KEYFRAME_OVERRIDES })`, `sky.lowerClouds = 0.25`, `timeSpeed = environment.clock === false ? 0 : TIME_SPEED`, clock **paused** until gameplay. |
 | — | — | `Particles(scene)`, `GodRays({ gain: 0.2 })`, `SpriteManager(camera)`, `CameraRig(camera, { ...camera, yaw: 0, lookAhead: 1.3 })` with `bounds = mid`. |
 | — | — | `PostFX(renderer, scene, camera, { maxTaps: 64, samples })` — 2× MSAA when the drawing buffer exceeds 1.8 MP, else 4× — then `_tunePost()` (the demo's DOF / bloom / grade values), a resize listener, `ResolutionGovernor`. |
-| — | — | `UI(document.body)`, `AudioSystem({ volume: 0.6 })`. |
-| ≈ 0.07–0.79 | World labels (World fraction × 0.9) | `World.build()` ([§4](#4-world--building-a-level-into-the-scene)). Big levels then call `lighting.setShadowDepthRange(60, 45)`. |
+| — | — | `UI(document.body, { lang, fonts })`, `AudioSystem({ volume: 0.6 })`; the wait for `ui.fontsReady` starts here (awaited after the villagers, below). |
+| ≈ 0.07–0.79 | World labels (`t('game.load.textures' … 'merge')`; World fraction × 0.9) | `World.build()` ([§4](#4-world--building-a-level-into-the-scene)). Big levels then call `lighting.setShadowDepthRange(60, 45)`. |
 | — | — | `earlyCompile = _compileScene()` — the world's programs start compiling in parallel (`KHR_parallel_shader_compile`) while actors are created. |
-| 0.92 | Waking the villagers | `Player` (combat levels: the sword and the combat sheet, [§5](#5-player)) (added to the scene and the `SpriteManager`, `lighting.followTarget(player.sprite)`), `_ensureStandingSpawn()`, one `Npc` per `npc` object (sheets cached per preset; a failing NPC is skipped with a warning), `Critters`, the chicken "threats" list, the far-actor throttle (big levels). |
-| 0.94 | Sharpening blades | Combat levels only: `await import('./combat/CombatSystem.js')` (dynamic: peaceful levels never download or parse the combat code — Vite puts it in its own chunk; only the import-free `combat/bindings.js` is static), `new CombatSystem({ game })`, `await combat.load()` — enemy sheets, the FX atlas, `FxQuads`, `GroundMarkers` (its height texture bakes in ≤ 6 ms slices), every enemy (and the boss's adds, hidden), the enemies' walk grid (`Nav`, ≈ 20 ms on Cinderwatch) and zones, `UI.useCombatUI(…)` + `ui.enableCombat()`, the combat bindings, `rig.stickZoom` ([§15](#15-combat-combat-levels-only)). |
+| 0.92 | `t('game.load.villagers')` (Waking the villagers) | `Player` (combat levels: the sword and the combat sheet, [§5](#5-player)) (added to the scene and the `SpriteManager`, `lighting.followTarget(player.sprite)`), `_ensureStandingSpawn()`, one `Npc` per `npc` object (sheets cached per preset; a failing NPC is skipped with a warning), `Critters`, the chicken "threats" list, the far-actor throttle (big levels). |
+| — | — | **The fonts** (`_fontsIn`): `await ui.fontsReady` (`loadStats.fontsWait`: what the build still waited) and, in Japanese and Chinese, the glyphs of what the level shows first (`fonts.ensure`, started with the world build by `_glyphsFor`, which looks `_shownTexts()` up inside `quietly()`: nothing is shown yet, so an untranslated text records no miss; `loadStats.glyphsWait`) — before the HUD's first layout. |
+| 0.94 | `t('game.load.blades')` (Sharpening blades) | Combat levels only: `await import('./combat/CombatSystem.js')` (dynamic: peaceful levels never download or parse the combat code — Vite puts it in its own chunk; only the import-free `combat/bindings.js` is static), `new CombatSystem({ game })`, `await combat.load()` — enemy sheets, the FX atlas, `FxQuads`, `GroundMarkers` (its height texture bakes in ≤ 6 ms slices), every enemy (and the boss's adds, hidden), the enemies' walk grid (`Nav`, ≈ 20 ms on Cinderwatch) and zones, `UI.useCombatUI(…)` + `ui.enableCombat()`, the combat bindings, `rig.stickZoom` ([§15](#15-combat-combat-levels-only)). |
 | — | — | `BlobBatch` (big levels and combat levels), `registerEmissive(sprite.material, SPRITE_FILL)` on every character, critter and enemy sprite, `makeShadowOnly(shadowProxy)` on big levels and combat levels, `Weather`, `AudioDirector`. |
-| — | — | HUD (`setControls`; combat levels then `combat.setupUI()`: the combat legend, vitals and skill slots), `setLocation(name, subtitle)`, prompt key hint `Space`, dialog speed 55 chars/s with a `blip` on every second non-space character, `buildDebugControls(this)`, `_setupMaps()` (combat levels end it with `combat.attachMaps(map)`: enemy dots, chest markers only once discovered, the boss marker). |
+| — | — | HUD (`setControls` with translated rows `{ keys, label, id }`; combat levels then `combat.setupUI()`: the combat legend, vitals and skill slots), `setLocation(..._levelPlate())` (`term(level.name)`, `loc(textKeyOf(level, 'subtitle'), subtitle)`), prompt key hint `Space`, dialog speed 55 chars/s with a `blip` on every second non-space character, `buildDebugControls(this)`, `_setupMaps()` (combat levels end it with `combat.attachMaps(map)`: enemy dots, chest markers only once discovered, the boss marker). |
 | — | — | Frame wiring ([§3.4](#34-the-frame)). |
-| 0.96 | Warming up the lanterns | Rig snapped to the player; rain and snow intensity forced to 1; one `particles.update`; one-particle `splash` / `sparkle` (only when a waterfall splashes) and `footstep` bursts at y = −1000 (their pools are created on first use); combat levels: `combat.warmup(far)` (combat textures, one FX quad and one marker far below, one particle of every combat burst); `await earlyCompile`; `await _compileScene()`; `postfx.warmup()`; precipitation back to 0; the level's starting weather applied instantly; `_exposeGlobal()`. |
-| 1 | Ready | `loadStats = { engine, world, characters, compile, map }` (milliseconds). |
+| 0.96 | `t('game.load.warmup')` (Warming up the lanterns) | Rig snapped to the player; rain and snow intensity forced to 1; one `particles.update`; one-particle `splash` / `sparkle` (only when a waterfall splashes) and `footstep` bursts at y = −1000 (their pools are created on first use); combat levels: `combat.warmup(far)` (combat textures, one FX quad and one marker far below, one particle of every combat burst); `await earlyCompile`; `await _compileScene()`; `postfx.warmup()`; `_primeShadows()` — one shadow-only proxy per depth-program variant of the level's casters (`ShadowCasters.primeShadowPrograms`, KNOWN_ISSUES REN-13: `compileAsync` builds no shadow-pass programs, and three.js builds a caster kind's depth program when one first enters the sun's shadow frustum), far below the world and drawn only by the shadow pass of the warm-up frames, disposed when `warmedUp` resolves; precipitation back to 0; the level's starting weather applied instantly; `_exposeGlobal()`. |
+| 1 | `t('game.load.ready')` | `loadStats = { engine, world, characters, compile, map }` (milliseconds), plus `shadowVariants` (the primer's proxy count), `fontsWait` and `glyphsWait`. |
 
 > **Why compile against `postfx.sceneTarget`?** three.js keys programs by the render target they
 > draw into. The scene renders into PostFX's linear HDR target; compiling for the canvas would
 > build unused sRGB variants and leave the real ones to stall the first frame (or the first rain).
-> See [RENDER_PIPELINE.md](RENDER_PIPELINE.md) and the invariant in [CLAUDE.md](../../CLAUDE.md).
+> See [RENDER_PIPELINE.md](RENDER_PIPELINE.md) and the invariant in [AGENTS.md](../../AGENTS.md).
 
 ### 3.3 Modes: title and gameplay
 
@@ -222,15 +255,21 @@ stateDiagram-v2
 
 - `start()` sets `_warmFrames = 5` and starts the engine loop. During those frames `update()`
   keeps rain and snow at full intensity, because ANGLE finishes some programs only at their first
-  real draw and the shadow-depth variants are built by the shadow pass; the fifth frame calls
+  real draw and the shadow-depth variants are built by the shadow pass (the shadow primer's proxies give it
+  every caster kind of the level, wherever it stands); the fifth frame calls
   `combat.endWarmup()` (frees the warm instances, records `programsAtLoad`) and resolves
   `warmedUp`.
 - **Title** (`showTitle`): `mode = 'title'`, the player's x-ray silhouette off, clock paused, the
   rig follows a drifting cinematic target (`_updateCinematic`: slow sine drift, yaw ±18°,
-  distance ±3). `ui.title.show({ title, subtitle, prompt, credit })` uses `environment.title`
-  (defaults: the level name in capitals, `level.subtitle` or "A Lumina HD-2D Level", "Press any
-  key", "Lumina HD-2D Engine · three.js"). A level loaded from `levels/<slug>.json` whose slug is
-  one of `SHIPPED_LEVELS` ([`levels.js`](../../src/demo/levels.js)) also passes
+  distance ±3). `ui.title.show({ title, subtitle, prompt, credit, titleSource, languages, lang,
+  onLanguage })` uses `environment.title` by the keys the level holds (`_titleTexts`:
+  `loc(textKeyOf(level, 'title.<k>'), text)`; defaults: the level name as a term in capitals, `level.subtitle` by its key,
+  else the UI strings `game.default.subtitle` "A Luminati 2.5D Level", `game.default.prompt` "Press any
+  key" and `game.default.credit` "Luminati 2.5D Pixel-Art Engine · three.js"; a blank title or prompt takes its
+  default, a subtitle or credit set to `''` stays blank; `titleSource` the English name for the
+  wordmark under a translated logo), and the language row (`TITLE_LANGUAGES`; `onLanguage` = `setLanguage`: save the choice
+  and reload, [I18N.md §1](../specs/I18N.md#1-choosing-the-language)). A level loaded from `levels/<slug>.json` whose slug is
+  one of `SHIPPED_LEVELS` ([`levels.js`](../../src/game/levels.js)) also passes
   `destinations: SHIPPED_LEVELS, current: slug` (the ◂ label ▸ row); when the title resolves on
   another destination the page navigates to `?level=<destination>` (other query parameters kept,
   `autostart` dropped). Dismissing it unlocks WebAudio and calls `enterGameplay()`.
@@ -282,7 +321,10 @@ flowchart TD
    silhouette brightness `lerp(1, 0.5, nightFactor)`.
 4. **Interaction prompt** (play, not talking, not photo, map closed, no combat lock): `_findInteractable()`;
    show the prompt over the NPC (`Talk`, 2.35 u up, 1.9 for the `child` preset) or at the
-   object's prompt point with its label; on `confirm` (and no cooldown) the press is consumed
+   object's prompt point with its label (`promptLabel(it)`: a built-in verb —
+   `BUILTIN_LABELS`, also an exit's or event's data label that is one — as `t('game.prompt.<id>')`,
+   any other exit or event label by the key its object holds, `textKeyOf(it.object, 'label')`; the
+   interactable keeps its English `label`); on `confirm` (and no cooldown) the press is consumed
    (`input.consumeAction('confirm')`, so the dialog does not also see it) and `_interact()`
    starts.
 5. **Villagers and critters**: every NPC `update(dt, ctx)`; on big levels far actors are
@@ -320,8 +362,11 @@ is skipped:
 
 `_interact(target)` sets `busy`, hides the prompt, and runs the conversation (the player turns
 toward the NPC, the object's position, or — for a door — the nearest point of its leaf); objects
-simply show their text (`{ speaker, lines, sfx? }`, "Nothing of note." when empty) — unless the
-item has an `onInteract(game, it)` (combat levels: waystones rest, chests open), which is awaited
+show their text (`_examineText(it)`: each page by the key its object holds, `text.keys[k]` —
+`World.textPagesOf`'s `pageKeyOf`; an interactable without `keys` shows its lines as they are —,
+the plate a term, a code default standing in for a blank one — `speakerDefault`,
+`linesDefault` — as `t('game.default.<id>')`, and `t('game.default.nothing')` "Nothing of note."
+for none; [§4.3](#43-interactables-fires-and-falls)) — unless the item has an `onInteract(game, it)` (combat levels: waystones rest, chests open), which is awaited
 instead. `finally` always ends the
 NPC's talk state, clears `busy` and starts the cooldown, so a throwing script never locks the game.
 
@@ -354,8 +399,16 @@ sequenceDiagram
   G->>G: busy = false, 0.8 s cooldown
 ```
 
-`say(lines, opts?)` opens `ui.dialog` with `speaker = opts.speaker ?? npc.name` and the NPC's
-`portraitColor`; lines are strings or `{ text, choices }`; `{word}` renders in gold. The promise
+`say(lines, opts?)` opens `ui.dialog` with the speaker — the villager's own plate,
+`villagerName(npc)` (`term(npc.name)`, or `t('game.default.villager')` for a villager the level
+left unnamed: `def.unnamed`), else `term(opts.speaker)` —, the NPC's `portraitColor`, and for its
+own plate its character sheet (`sheet: npc.sheet.canvas`: the portrait) and its title
+(`speakerTitle(npc)`: the villager's data `title` by the key its object holds, `def.titleKey` =
+`textKeyOf(obj, 'title')`, else none). Lines are strings or `{ text, choices }`, already translated
+by the conversation (`dialogue.js`: its own lines `loc('dlg.<conversation>.<name>', 'English')`, a
+villager's data pages by the keys its object holds over `dialogueUnits` — `dialogueKeyOf(obj, i)`,
+`choiceKeyOf(obj, i, j)` for each choice —, [§8](#8-dialoguejs--conversations-and-built-in-actions)); `{word}`
+renders in gold. The promise
 resolves with the last chosen index (or `undefined`).
 
 `talkTo(id)` (automation) works as follows:
@@ -380,7 +433,9 @@ photo mode is on.
   and `maxDistance`. So the player stays in frame (and in the DOF band) right up to the map edges
   whatever the zoom.
 - **High ground**: pitch target = `highGround.pitch` while `player.y > highGround.minY`, else the
-  level pitch.
+  level pitch (`game.camera.pitch`). The debug panel's *Camera › pitch* slider writes whichever
+  of the two is in use, so it sticks; its *reset* restores the level's values
+  (`DebugControls.js`).
 - **Edge-aware yaw**: near the west edge, the negative yaw limit shrinks smoothly from −60° to
   −10°; near the east edge, the positive limit shrinks from +60° to +10°. The band starts
   `e0 = min(9, W / 5)` tiles from the edge and is fully applied at `e1 = e0 × 5/9`. This keeps the
@@ -399,11 +454,11 @@ photo mode is on.
 | Feature | API | Notes |
 | --- | --- | --- |
 | Time | `cycleTime()` (T), `setTime(h)` | `Weather.cycleTime` glides 2 s forward to the next preset (6.5 Dawn, 12.5 Midday, 17.2 Golden Hour, 18.9 Dusk, 22.5 Night) and toasts its name. `setTime` ignores non-numbers. |
-| Weather | `cycleWeather()` (R), `setWeather(name)` | `clear → rain → snow → clear`, blended ([§9](#9-weather--time-glides-and-weather-blending)). |
+| Weather | `cycleWeather()` (R), `setWeather(name)` | `clear → rain → snow → clear`, blended ([§9](#9-weather--time-glides-and-weather-blending)). In a room (`environment.interior`) none shows: R changes the weather outside (toast "Rain outside"). |
 | Photo mode | `togglePhotoMode({ instant })` (P, leave with P or `cancel`) | Refused while busy, in a dialog, outside play or with the map open — and on combat levels while engaged or dead (toast "Not while foes are near"), where photo mode also freezes the player and pauses combat. From the keyboard a toast shows, the UI hides 1.2 s later; `instant` (automation) hides it at once. |
 | Music | `setMusic(on)` (M) | `AudioSystem.startMusic/stopMusic`; `environment.music === false` keeps a level silent at start. On combat levels `setMusic(true)` starts the track combat wants (`combat.musicTrack`: `emberfall`, `battle` or `boss`). |
-| Minimap / world map | `toggleMap(open)` (N / Tab, gamepad Back) | `renderLevelMap(level)` is painted once at load (`_setupMaps`); minimap `view: 34`, disabled by `environment.minimap === false`; the world map shows regions and markers (NPCs, interactables, fires; combat levels: enemy dots, waystones, discovered chests, the boss) and only opens in play, not during a conversation or photo mode (combat levels: nor while dead or in the boss intro; it pauses combat and releases the lock-on). While it is open the player stands still, but the clock and villagers carry on. |
-| Regions | `_updateRegion` | Every 0.3 s: the first `region` containing the player (and above its `minY`, if set) sets the HUD plate (`name`, `sub` or the level name); a `banner` shows once per play session. Between regions the last plate stays. |
+| Minimap / world map | `toggleMap(open)` (N / Tab, gamepad Back) | `renderLevelMap(level)` is painted once at load (`_setupMaps`); minimap `view: 34`, disabled by `environment.minimap === false`; the world map shows regions and markers (NPCs, interactables and fires from `World.mapMarkers()` — a live story prop's marker hides while it is absent; combat levels: enemy dots, waystones, discovered chests, the boss) and only opens in play, not during a conversation or photo mode (combat levels: nor while dead or in the boss intro; it pauses combat and releases the lock-on). While it is open the player stands still, but the clock and villagers carry on. |
+| Regions | `_updateRegion` | Every 0.3 s: the first `region` containing the player (and above its `minY`, if set) sets the HUD plate (`term(name)`; `sub` by the key the region holds, `textKeyOf(region, 'sub')`, or the level name as a term); a `banner` (by `textKeyOf(region, 'banner')`, the name a term) shows once per play session (per region name: `_bannersShown` is cleared by `enterGameplay` and made anew by `_applyLevel`, so a campaign's travel shows them again; walking back into a region does not). Between regions the last plate stays. |
 
 ### 3.8 Debug panel and automation hooks
 
@@ -428,20 +483,295 @@ photo mode is on.
   everything in reverse order (the combat system first, then the game objects while the renderer
   is alive, then the engine and the UI); each step is isolated in `try/catch`.
 
+### 3.9 Campaigns: the level half and `swapLevel`
+
+A campaign ([CAMPAIGN_FORMAT.md](../specs/CAMPAIGN_FORMAT.md),
+[Campaign lifecycle](../specs/CAMPAIGN_FORMAT.md)) plays
+several levels in one page. `Game` therefore has two halves:
+
+| Lives as long as the page (`init`) | Belongs to a level (`_applyLevel` + `_buildLevel`) |
+| --- | --- |
+| `Engine`, renderer, `TextureLibrary`, `LightingSystem`, `Particles` (and the burst pools), `GodRays`, `SpriteManager`, `CameraRig`, `PostFX`, `ResolutionGovernor`, `UI`, `AudioSystem`, `Weather` (its rain and snow emitters), the debug panel, the frame wiring, the fog-start patch; for a campaign one `LightPool` of 12 lights with `fixed: true` (`this.lightPool`, handed to every `World`) | camera framing and bounds, the fog start (`uFogStart`), high ground, regions, the combat flag, the title drift (`_applyLevel`); `World`, `Player`, villagers (+ their sheets), `Critters`, `CombatSystem`, `BlobBatch`, the actors' warm-fill registrations, `AudioDirector`, the HUD's location and controls, the maps (`_buildLevel`) |
+
+`init` calls `_buildLevel` once, exactly where it built the level before (single levels are
+unchanged: same order, same programs). `swapLevel(level, { spawn, source })` — called by
+`CampaignRuntime.travel` behind the fader — sets `mode = 'travel'` (`update` returns at once),
+closes the map and photo mode, then:
+
+1. `_detachLevel`: disposes combat now (it undoes its HUD, key bindings, mouse buttons and stick
+   zoom, and releases the burst pools only its warm-up made — `Particles.releaseBurstPools`, so a
+   peaceful level next keeps its own program count, KNOWN_ISSUES CMP-05; `window.__game.combat`
+   goes) and keeps the rest of the level for later — with `keep` (a room's travel, below) it is
+   set aside at once (`_setAside`);
+2. `_applyLevel(level)`, the rig's distance range and bounds;
+3. `_buildLevel(…, { spawn, prepared })`: the new level — its world built ahead when the travel
+   hands one over (`prepared`, below: the build steps not run yet, then `world.attach()` where
+   `new World` + `build()` would run, the world's story presence switched to the runner's), else
+   built here —, the player at the arrival point (moved quietly onto standable ground),
+   `campaign.attachWorld` (Space exits become interactables), the maps (the campaign overview on
+   placed levels, `refreshWorldMap` when the other levels' maps arrive);
+4. the detached level is disposed (its world's god-ray shafts with it: `World.shafts`) — **after**
+   the build, so programs both levels use stay compiled — unless it was set aside;
+5. the camera snaps to the arrival, then init's warm-up: rain and snow on, the one-shot bursts,
+   `combat.warmup`, both compiles, the shadow primer, five drawn frames (`_frames`), the primer
+   disposed, `combat.endWarmup` — for a level attached again (`kept`) only the compile check and
+   `KEPT_FRAMES` (2) frames;
+6. the previous mode returns, `window.__game` is exposed again (new objects), `loadStats.lastSwap`;
+   it returns `{ aside }`, the level left when it was set aside.
+
+**Levels set aside** ([CAMPAIGN_FORMAT.md §6.3](../specs/CAMPAIGN_FORMAT.md#rooms-the-levels-set-aside)).
+Around rooms (`environment.interior`) the campaign keeps levels instead of releasing them:
+`swapLevel(level, { keep })` sets the level left aside (never a combat level; a campaign only — it
+needs the shared light pool) and returns it as a `KeptLevel` (`_setAside`: `World.detach()`, the
+traveler's, villagers' and critters' sprites out of the scene and the sprite manager, their warm
+fill out of the lighting, the contact-shadow batch out of the scene, a talk or a script's walk on
+them reset; the level, its source, the villagers' sheets, the `AudioDirector` and the painted map
+with the story presence it was painted for kept); `swapLevel(kept.level, { kept })` attaches one
+again where `_buildLevel` would build: `world.attach()` (root, emissive registrations, emitters,
+god-ray shafts back; `_wireLights` hands the shared pool its descriptors again, the story groups'
+lamps hidden as they were), the same `Player` (`arrive(spawn)`: at the arrival spot, idle, nothing
+left over), villagers, critters, batch and ambience back, the actors' warm fill registered again,
+the painted map reused while `_mapPresence()` (which story-conditioned objects are there) is the
+same, then `campaign.attachWorld` and `story.attachLevel` as for a build — the story's changes
+since are applied there (`applyPresence`). `disposeKept(kept)` releases one (`_disposeDetached`).
+`World.detach()` takes an attached world out of the running game without disposing anything (its
+root, emissive registrations — registered again from `baseDay` on attach —, emitters, god-ray
+shafts, and the prompts others added after the build: `interactables` back to the world's own
+`_ownInteractables`); `attach()` runs the deferred steps of a world built ahead the first time and
+puts a detached one back after that (`attached` says which). A failed build or attach releases the
+level left (set aside or not) and the level being attached, and `_forget` clears what the game
+still points at of them, so the caller's rollback releases nothing twice. `Game.dispose` releases
+the levels set aside first (`campaign.dropAside()`).
+
+`CampaignRuntime` ([`src/game/campaign/CampaignRuntime.js`](../../src/game/campaign/CampaignRuntime.js))
+drives the rest: walk exits in `update` (called from `Game.update` while playing), the arrival
+point, the level's clock / weather / music / backdrop on entering, combat progress, opened
+chests and the enemy groups defeated there (`CampaignState.cleared`: `combat.defeatedGroups()` at
+every save in the level and on leaving, `combat.markGroupsCleared(ids)` on entering — those groups
+are simply not there until a waystone rest; KNOWN_ISSUES CMP-03), story flags (`Game._interact`
+calls `setFlag` with a villager's `storyFlag` after the
+conversation), chapters, saves (`CampaignState`, version 2: no save before `onStart`, a run's saves
+atomic, play-tests under `….test`), the title's Continue / New journey, a failed build's way back,
+and the levels set aside around rooms (`_aside`: the `parent` and the last `room`, each an
+`AsideEntry` — base id, file, its text, the parsed file `levelRaw` and the game's `KeptLevel`;
+`travel` takes the target out with `_takeAside`, attaches it while `_asideHolds` — the same file and
+text, the same objects from `storyLevel` —, releases everything with `dropAside` before a level that
+is neither a room nor set aside, and keeps the level left with `_putAside`; `keepRooms = false`
+turns it off).
+The start itself (the saved game or `&level=` / `&story=`, the level file, the arrival spot) is
+`loadCampaignStart` in [`CampaignStart.js`](../../src/game/campaign/CampaignStart.js), which
+`src/main.js` imports only for `?campaign=`: a single level loads no campaign or story-state code.
+
+**Content text across levels** ([I18N.md §4.8](../specs/I18N.md)). Every display site reads the
+text key from the object it shows (`textKeys`, `#line:` tags; I18N.md §4.2), so a text keeps its
+key on any level, in a world built ahead, a room set aside or a party member's talk, with nothing
+to remember per file. `swapLevel`'s `source` is the file whose text is played, which the campaign
+takes from `CampaignRuntime.sourceOf(fileId)` = `CampaignLevels.textPath(fileId)`: for a chapter
+variant started with `&level=<variantId>` or play-tested with `&as=`,
+`CampaignLevels.override(id, text, textFile)` remembers the variant's file, so its own keys are
+read (shared with the base where the English is the same) while `state().campaign.file` stays the
+base id. The campaign's own texts: an exit's locked pages by `pageKeyOf(exit, 'locked', i)` (a
+blank `locked`: `t('campaign.exit.closed')`), the arrival banner `term(level.name)` and the
+subtitle by `textKeyOf(level, 'subtitle')`, chapter banners by `textKeyOf(chapter, 'title' |
+'subtitle')`, the title screen by `textKeyOf(campaign, 'title.<k>')` / `textKeyOf(campaign,
+'subtitle')` (blank: `game.default.prompt` / `game.default.credit`), and the names on the save
+line, the world map and the travel toast as terms.
+
+**The next level built ahead** (KNOWN_ISSUES CMP-01;
+[`LevelPreparation.js`](../../src/game/campaign/LevelPreparation.js)). Every 0.5 s
+`CampaignRuntime.update` looks for the nearest exit within 12 u that is there and whose `requires`
+holds (the preload rule, which also fetches every such exit's file): its level is prepared —
+unless it is set aside (it is attached as it is) — one at a time; another target, a chapter that swaps the file, or no exit toward it within 24 u
+drops the preparation. Each frame asks for an idle callback (`requestIdleCallback`), which works
+on it for what the frame leaves (at most 8 ms, 3 ms kept free; after 120 ms without idle time a
+3 ms slice anyway; a browser without idle callbacks: 3 ms in the frame):
+
+1. the file's text (`CampaignLevels.text`) parsed, the story applied as it stands **in that level**
+   (`CampaignRuntime.storyLevel`) and its *presence key* taken (`CampaignRuntime.presence`: one
+   character per story-conditioned object of the file — there or not — and a snapshot presence
+   test the world is built with, so a story change mid-build cannot give it a mix);
+2. `Game.prepareWorld(level, present)`: a `World` made with `defer: true`, built by
+   `buildSteps({ paced: true })` one step after another ([§4.1](#41-build-phases)) — terrain,
+   props, trees, waterfalls, foliage, the merges, snow, culling, the shore in its worker. Nothing of
+   it reaches the running game: its root waits outside the scene, its colliders go into its own
+   TileMap, and the emissive registrations, the props' and waterfalls' emitters, the light pool's
+   descriptors and the atmosphere (dust, particle areas, god rays) wait in `world._pending`.
+
+A preparation whose key no longer matches the story (checked every 0.5 s) is begun again. The
+travel (`CampaignRuntime.travel`) takes the preparation of its file and uses it when the text and
+the presence key are still the same — else it is disposed and the level built as before; either way
+the rest of the travel is unchanged. `Game.swapLevel(level, { prepared })` runs the steps not done
+yet at full speed behind the fader (`LevelPreparation.finish`, a frame every ~12 ms) and attaches
+the world where `build()` would have run: the scene, every program in use, the draw calls and the
+particle seeds are those of a world built there (verified by hashing the built worlds). What stays
+at the travel: the villagers, critters, player and combat (scene objects, sprites, bindings), the
+weather's and the ambience's view of the level, the maps (a painted map is ≈ 6–35 ms of one
+uninterruptible step; the villagers' sheets ≈ 7–15 ms), and the compile and warm-up. A failure
+anywhere from the hand-off on is a failed build: the travel's rollback builds the level left again.
+`state().campaign.prep` shows the preparation, `stats.lastPrep` the last travel's (with `used`);
+`campaign.prepareAhead = false` turns it off. Measurements:
+[PERFORMANCE.md §2.7](PERFORMANCE.md#27-campaign-travel).
+
+### 3.10 The story runtime
+
+A campaign — or a single level with a story (`levelHasStory`: an `event`, or a villager with
+`talk` / `actor`) — gets a `StoryRunner` ([`src/game/story/StoryRunner.js`](../../src/game/story/StoryRunner.js),
+[STORY_SCRIPT.md](../specs/STORY_SCRIPT.md)), created by `Game._createStory` in `init` **before**
+the level is built and imported lazily together with its UI (`ui.useStoryUI`: the journal, emote
+bubbles, the end card, the letterbox; the `journal` key B is bound then). A level without a story
+creates none of it (`game.story === null`), and `World` gets `story: null` (the old build path).
+
+- **Persistent half.** The runner outlives `swapLevel`: `_buildLevel` begins with
+  `story.setLevelId(levelId)` (conditions read the new level's `level` and `done:` while its world
+  is built) and ends with `story.attachLevel(levelId)` (index the level's events — Space events
+  become interactables —, give villagers their talk scripts and saved homes, subscribe to combat
+  `kill` for `cleared` events, apply presence at once); `_detachLevel` calls `story.detachLevel()`
+  (the camera back to the game, the level's queued events dropped). Its state is the campaign
+  save's `StoryState` (a single level: a session one). Conditions read the story through
+  `storyReader` (StoryState.js) — the same rules the campaign uses at boot, before the runner
+  exists (`CampaignRuntime._holdsIn`; a travel reads the level being entered: `storyLevel(level,
+  to)`, `holdsIn(to)`).
+- **Presence.** `World` is built with `story.present`: the props of `LIVE_STORY_TYPES` with a
+  `when` / `unless` — houses, windmills, wells and waterfalls included — and the particle areas
+  become story groups (`World._storyGroupOf`, `storyRanges`, `applyStory`);
+  `story.applyPresence()` (on every story change) toggles them, the critters groups
+  (`Critters.applyStory`: an absent group's animals hidden, not updated, out of `chickens`; back
+  at their start points) and the villagers (`Npc.setPresent`), moves actors off ground that went
+  away, refreshes the chickens' threats and the minimap's villagers (`Game.refreshActors`) and
+  repaints the maps (`Game.repaintLevelMap`, painted from `_mapLevel`: absent story objects left
+  out).
+  A group's props are merged into the level's own batches like any other, and the group hides by
+  collapsing its vertex ranges there and hiding its props' own roots (what the merge leaves there:
+  flame billboards and glows, a windmill's sails — its `update` skipped while absent —, a
+  waterfall's sheet and foam pool) — no draw call of its own, none added or removed
+  ([§4.9](#49-live-story-groups-in-the-levels-batches)). `world.fires` holds only the campfires
+  there now and `world.fallAnchors` only the roaring waterfalls (both changed in place: the
+  AudioDirector's crackle and roar follow; `Game._waterfallFx` skips a fall whose `hidden` is
+  true); their map markers, like the group's prompts' (doors, wells, signs), read `hidden` from
+  the group (`World.mapMarkers`). The shore re-bakes only
+  around the changed colliders standing in water (`_wetTiles`, clustered by `_clusterRects`), a
+  big level's in a worker (`Water.rebakeShoreAsync`). `applyStory` returns `{ changed, rect,
+  mapChanged }`: `mapChanged` is true when a changed group holds a type the painted map shows
+  (`LEVEL_MAP_TYPES`: a lamp, a crate or a sign alone need no repaint).
+- **The frame.** `Game.update` calls `story.update(dt)` after the player and combat (walks, waits,
+  the camera director, the skip hold, the clock — the campaign's hour (`campaign.hour()`), so an
+  interior's own hour is no jump: a new day, `time` events —; when the story version, the tenth of
+  an hour, the weather or the gold changed: presence, `change` events, chapters through
+  `campaign.onStoryChange`; `enter` / `leave` events; the next queued run when the player is free).
+  The game setting the clock is no time passing: `CampaignRuntime.onStart` (Continue) and
+  `newGame` call `story.resyncClock()`. While the story owns the camera (`story.ownsCamera`),
+  `_updatePlayCamera` is skipped and the DOF focuses on the rig's focus. On a combat level a
+  presence change that moves colliders rebuilds the enemies' walk grid (`combat.rebuildNav(rect)`:
+  given `World.applyStory`'s rect, only the cells a change there can reach — `Nav.buildRect`, the
+  same grid as a full build in ≈ 0.05–0.1 ms for a bridge; without a rect, the whole grid), and
+  the combat legend gets the journal line (`combat.legendExtra`).
+- **Interaction.** `_interact` runs a villager's talk script (`story.talk(npc)`, which counts the
+  visit when the run ends) instead of its conversation; other villagers' visits count in the
+  story's state too, by actor or `<level>/<id>` (`story.visitKey`, `StoryState.visit`).
+  `_findInteractable` skips absent villagers and prefers a story event's prompt at the same spot.
+  A run holds the player through `busy`; the journal (`toggleJournal`, `journalOpen`) pauses play
+  and combat like the world map.
+- **Continue.** `enterGameplay` runs the level's `arrive` events — except on a continued campaign
+  (`campaign.hasSave`), which instead runs again the event runs saved as queued or going on
+  (`story.resumePending()`, `StoryState.pending`, written by `CampaignRuntime._saveObject` from
+  `story.pendingKeys()`) and talks to the villager of an interrupted conversation again
+  (`game.talkTo`).
+- **The background lane.** `background: true` events run as `story.bgRuns` (`_execBg`, at most 8,
+  their own queue `bgQueue`): no `busy`, no saves held, no window — `bark` lines go to
+  `ui.emotes.bark` (the emote layer's text bubbles); `StoryScript.backgroundIssue` refuses any node
+  that needs the player. They pause (walks, waits) while `_bgPaused()` (a run, `busy`, a dialog, the
+  map, the journal, photo mode, a travel); a main run that directs a villager stops the background
+  run directing it (`_takeActor`); `detachLevel` stops them.
+- **Text** ([I18N.md §4.2, §4.8](../specs/I18N.md)). A script line's key is its `#line:` tag:
+  `parseScript` cuts the tag off and puts the key on the node, so nothing is stamped at run time.
+  `_parse(key, source, where)` caches a parse by its source key (`talk:<level>/<id>`,
+  `level:<level>/<event>`, `script:<id>`) and its text, tags included: a chapter variant's unchanged
+  talk is the same parse with the same keys, an edited one a parse of its own, and a parse's errors
+  are reported once. Lines, questions, options, barks, toasts, banners, stage texts and the
+  ending's title are shown by their keys (`loc(node.tk, text)`, `option.tk`, a banner's `node.tks`)
+  and their values filled after (a blank ending title: `t('story.ending.default')`); a `call` keeps
+  the called script's keys; speakers, item, quest and actor names and the ending's subtitle are
+  terms. The journal shows declared item, quest, stage and goal texts by the key the story file
+  holds (the built story's `textKey`), and a script's own stage text by the key and English saved
+  beside it (`q.keys`, `q.src`; only a GUID is kept — a key that is no GUID is dropped
+  with its English, so the text is shown as saved, in English, a `nokey` miss, as is one saved
+  without a key; a text that had `${…}` values is shown as saved, in English, with no miss). A villager's title comes from `def.titleKey`, else
+  `textKeyOf(storyObj, 'title')` (`_titleOf`). Lines no window shows (`auto` answers, the lines a
+  skipped cutscene passes over) are looked up `quietly`; `__game.story.run` lines have no keys
+  (English in every language, a `nokey` miss each; nothing is looked up by its English). A shop item the story names from a name is kept under that
+  name (`StoryState.itemNames`).
+- **Rest, time, endings.** `restUntilMorning` tells the campaign (`onRest`: an interior keeps its
+  hour, the campaign's clock moves to the morning) and the runner (`rested`: a new day past
+  midnight); `returnToTitle` (a script's `ending`) reloads to the title.
+
+### 3.11 The party
+
+The villagers who joined the player ([PARTY.md](../specs/PARTY.md) §4): [`src/game/party/`](../../src/game/party/Party.js)
+— `Party` (records, the player's trail, the follow, joins and leaves, the talk, the tactics
+panel's wiring) and `PartyMember` (a member's sprite and its moves). Made on demand
+(`Game.ensureParty`: the party chunk, its UI — `ui.usePartyUI` —, the G binding): on a level
+nobody joins on `game.party` is null and nothing of it runs or exists.
+
+- **Persistent half.** The party outlives a campaign's travel; its records are the story's
+  (`StoryState.party`, saved with a campaign; `Game.syncParty` → `Party.syncFromState` on Continue
+  and a new journey). Each level gets the members as actors: `attachLevel` at the end of
+  `_buildLevel` (built, prepared or set aside and attached again) registers them like the level's
+  actors (scene, sprite manager, `SPRITE_FILL`, the contact-shadow batch and `makeShadowOnly` on
+  batched / combat levels) and places them behind the player; `detachLevel` in `_detachLevel`
+  releases them — a level set aside keeps no member. Their villagers are hidden on every level
+  (`Party.holds`, by id or actor; `refreshActors` and the maps skip them; the story's `present`
+  asks it too).
+- **The follow.** `party.update(dt)` after the story in `Game.update`, only while playing with no
+  map, journal or tactics panel open: the trail grows (a point every 0.12 u), each member walks to
+  its point `1.1 · (k + 1)` u behind the player along it — a beat after the one before it, easing
+  in and out, to the side where the trail runs toward the camera (it would hide the player), back
+  further where it cannot step aside; it rests beside or behind the player on the screen and makes
+  way when the player walks into it (catch-up on the walk grid beyond 4 u, else along the trail, a
+  snap beyond 20 u, stuck 2 s or with no way back); a teleport (`Game.teleport`, a jump > 2.5 u) puts
+  them behind the player, clear of it on the screen. A member the combat drives
+  (`member.combat.active`), a script directs or the player talks to waits. While a member in front
+  covers the player on the screen (`party.coversPlayer`) the player's x-ray silhouette fades out
+  (`Player.fadeSilhouette`); every `_buildLevel` binds G again while a party exists (`_bindParty`).
+- **Talk.** `_findInteractable` offers members standing still; `_interact` → `Party.talk` (the
+  story's `talkFor` script, else the party conversation: *Tactics…*, *Part ways*, *Carry on*);
+  `talkTo(id)` falls back to the member. A member's title, talk and pages use the keys its
+  villager's level object holds (`PartyMember.storyObj`, taken at `attach`; a stand-in made from the
+  record alone, `{ id, actor }`, holds no title and no pages: its talk is its story actor's, whose
+  lines carry their own tags), so they keep their keys on any level;
+  the frames, the panel and the toasts name it
+  with `Party.memberName` (`term(name)`, `t('game.default.villager')` for 'Villager').
+- **Tactics panel and HUD.** `togglePartyMenu` (G, *Tactics…*, the hook) opens the panel; while it
+  is open play pauses like the journal (`partyMenuOpen` in `update`'s `mapOpen`). The legend gains
+  *G — Party* (`_controls`, `_legendExtra`, `refreshPartyLegend`), the HUD frames are fed every
+  frame (`_updatePartyHud`), the maps get `map.party` (`refreshActors`).
+
 ---
 
 ## 4. `World` — building a level into the scene
 
-[`src/demo/World.js`](../../src/demo/World.js) turns a normalised level into meshes, lights,
+[`src/game/World.js`](../../src/game/World.js) turns a normalised level into meshes, lights,
 particles and gameplay anchors. The per-object geometry comes from the engine's
 [`ObjectBuilder.js`](../../src/engine/level/ObjectBuilder.js) — **the same builders the editor's
 3D preview uses** ([EDITOR.md §10](EDITOR.md#10-how-the-editor-stays-in-sync-with-the-game)).
 
 ### 4.1 Build phases
 
-`build(onProgress)` is `async`: between phases it yields a macrotask (`setTimeout(0)`) so the
-loading screen keeps animating; `stats.phases` records the CPU milliseconds of each phase (yields
-excluded).
+`build(onProgress)` is `async`: it runs `buildSteps()`, a step generator
+([`src/engine/utils/steps.js`](../../src/engine/utils/steps.js)), and between phases yields a
+macrotask (`setTimeout(0)`) so the loading screen keeps animating; `stats.phases` records the CPU
+milliseconds of each phase (yields excluded). The long builders inside are step generators too —
+`buildLevelTerrainSteps` (`TileMap.buildSteps`: a step per tile, per tile's fringes, per mesh),
+`shadowCasterSteps`, `TileMap.consolidateChunkSteps`, `PropFactory.mergeStaticSteps`,
+`mergeTreeSteps`, `scatterForestSteps`, `outerGroundSteps`, `groundDetailSteps`, `kdSplitSteps` —
+whose synchronous forms (`buildLevelTerrain`, `mergeStatic` …, what the editor calls) run the same
+generator to its end (`runSteps`): one code path, the same result. A whole build runs them in one
+go. A campaign's next level built ahead ([§3.9](#39-campaigns-the-level-half-and-swaplevel)) is a
+world made with `defer: true` and built by `buildSteps({ paced: true })`, a step at a time: a slice
+point after every tile, object, tree, batch and field (props: before every object), the shore baked
+in its worker on any level, and what reaches the running game — the root into the scene, the
+emissive registrations, the props' and waterfalls' emitters (their `Particles` seeds count up as
+they are made), the lights and the atmosphere (phase 7) — held in `_pending` until `attach()`,
+which does it in this order where `build()` would have run. Its `stats.buildMs` is CPU time.
 
 | # | Label (World progress) | Phase key | What happens |
 | --- | --- | --- | --- |
@@ -449,12 +779,12 @@ excluded).
 | 1 | Painting textures (0.08) | `textures` | `textures.preload()` — every procedural texture painted up front. |
 | 2 | Raising the land (0.18) | `terrain` | `buildLevelTerrain(level, { chunkSize: big ? 32 : 64, deferShore: true })` → `TileMap` + `Water`. Big levels: the opaque casting faces (`isProxyCaster`) get merged shadow-only proxies (`buildShadowCasters`, name `terrain:shadow`) and stop casting themselves; then `tileMap.consolidateChunks({ maxTriangles: 48000, maxExtent: 48, minTriangles: 12000 })`. |
 | 3 | Building the village (0.30–0.44) | `props` | `LevelObjectBuilder({ seed: 42 })`; the `*_buildProps()` generator builds every buildable object except trees and waterfalls, yielding about every 12 ms; each result is wired ([§4.2](#42-the-builtobject-wiring)); houses / signposts / wells / campfires register interactables and anchors. |
-| 4 | Planting the forest (0.45) | `trees` | Level trees built (colliders kept unless `collider: false`, not added individually), then — on big levels — `water.refreshAsync()` starts the shore bake in a worker; `_buildTrees()` scatters the forest border and outer forest and merges everything ([§4.5](#45-scenery-forest-border-outer-forest-outer-ground)). |
-| 5 | Letting the water run (0.58) | `water` | `_buildWaterfalls()`; small levels bake the shore now (`water.refresh()`), after every collider standing in water exists. |
+| 4 | Planting the forest (0.45) | `trees` | Level trees built (colliders kept unless `collider: false`, not added individually), then — on big levels and in a world built ahead — `water.refreshAsync()` starts the shore bake in a worker; `_buildTrees()` scatters the forest border and outer forest and merges everything ([§4.5](#45-scenery-forest-border-outer-forest-outer-ground)); a live story tree is merged with the others, tagged with its group ([§4.9](#49-live-story-groups-in-the-levels-batches)). |
+| 5 | Letting the water run (0.58) | `water` | `_buildWaterfalls()` (a world built ahead keeps its emitters for `attach()`); small levels built in one go bake the shore now (`water.refresh()`), after every collider standing in water exists. |
 | 6 | Growing the meadow (0.68) | `foliage` | `_buildGroundDetail()` ([§4.6](#46-ground-foliage-grounddetailjs)). |
-| 7 | Lighting the lanterns (0.80) | `lights` | `_wireLights()` (the `LightPool`, [§4.4](#44-lights-emissives-and-emitters)) and `_buildAtmosphere()` (dust, particle areas, god rays). |
-| 8 | Merging meshes (0.88) | `merge`, `shoreWait` | `_mergeProps()` → `factory.mergeStatic(results, { name: 'village:static', …split, shadowCasters })`; a big level then awaits the shore worker (re-baking once more if a collider changed meanwhile). |
-| 9 | — | `snow` | `addSnowCover` on terrain meshes, the outer ground (`'ground'`), foliage fields (`'foliage'`) and merged roof materials (`ROOF_MATERIAL` = `/^lumina:roof/`, exported by `SnowCover.js`). |
+| 7 | Lighting the lanterns (0.80) | `lights` | `_wireLights()` (the `LightPool`, [§4.4](#44-lights-emissives-and-emitters)) and `_buildAtmosphere()` (dust, particle areas, god rays); a world built ahead: at `attach()`. |
+| 8 | Merging meshes (0.88) | `merge`, `shoreWait` | `_mergeProps()` → `factory.mergeStatic(results, { name: 'village:static', …split, shadowCasters, tags })` (`tags`: the live story props' groups, only when there are any — [§4.9](#49-live-story-groups-in-the-levels-batches)); a level whose shore bakes in the worker then awaits it (re-baking once more if a collider changed meanwhile). |
+| 9 | — | `snow` | `addSnowCover` on terrain meshes, the outer ground (`'ground'`), foliage fields (`'foliage'`) and merged roof materials (`ROOF_MATERIAL` = `/^luminati:roof/`, exported by `SnowCover.js`). |
 | 10 | — | `culling` | Big levels only: `cullByBox` on terrain meshes, merged prop meshes, tree groups and foliage fields (the foliage with `pad: 0.8`). |
 
 Afterwards `stats` holds `buildMs`, `colliders`, `pointLights`, `objects`, `batching`,
@@ -470,12 +800,12 @@ skipped — a broken object never stops the level):
 | `BuiltObject` field | Consumer |
 | --- | --- |
 | `object` | added to `World.root` (except level trees, which are only merged) |
-| `propResult` | pushed to `results` for `PropFactory.mergeStatic` (not for `light` / `waterfall`, not for trees) |
+| `propResult` | pushed to `results` for `PropFactory.mergeStatic` (not for `light` / `waterfall`, not for trees); a live story prop's too, and `_storyTags` maps it to its group |
 | `colliders` | `tileMap.addCollider(c)` (circles and boxes; queried through a spatial grid) |
 | `walkRects` | `tileMap.addWalkSurface(r)` (bridge decks) |
-| `emissives` | `lighting.registerEmissive(material, { day ?? 0, night ?? 1.6 })`, once per material; the entry gets `baseDay` so the weather can light windows on grey days |
+| `emissives` | `lighting.registerEmissive(material, { day ?? 0, night ?? 1.6 })`, once per material; the entry gets `baseDay` so the weather can light windows on grey days (a world built ahead: at `attach()`) |
 | `lights` | collected as descriptors for the light pool (tagged `<type>:<id>`, `priority` from `LIGHT_PRIORITY`, other types 3; a house's door lantern only when `obj.light` is set) |
-| `emitters` | `particles.createEmitter(e)` — `smoke` gets the softer, greyer `SMOKE` look; waterfall mist gets `count = max(4, round(8 × width))`, `alpha 0.07` (overridable per waterfall with `mist: { count, alpha }`) |
+| `emitters` | `particles.createEmitter(e)` — `smoke` gets the softer, greyer `SMOKE` look; waterfall mist gets `count = max(4, round(8 × width))`, `alpha 0.07` (overridable per waterfall with `mist: { count, alpha }`); a world built ahead creates them at `attach()` |
 | `update` | pushed to `updaters`, called every frame (windmill sails, waterfalls) |
 | `interact` / `anchor` | door positions (with the door leaf, `interact.lookSpan`), well / sign anchors, campfire and waterfall anchors |
 
@@ -483,20 +813,30 @@ skipped — a broken object never stops the level):
 
 | Level object | Registered as | Radius | Label | Text |
 | --- | --- | --- | --- | --- |
-| `house` with a non-empty `text` | id `door:<id>`, kind `door`, at the builder's door-step point (0.9 in front of the wall collider), `lookSpan` = the door leaf ([§3.5](#35-interactions-and-the-conversation-flow)) | 1.0 (set here; the prop's own `interact.radius` 1.1 is unused) | Knock | `text` lines, no speaker |
-| `signpost` with `text` | kind `sign`, at the anchor | 1.35 | Read | speaker `obj.speaker ?? 'Signpost'` |
+| `house` with a non-empty `text` | id `door:<id>`, kind `door`, at the builder's door-step point (0.9 in front of the wall collider), `lookSpan` = the door leaf ([§3.5](#35-interactions-and-the-conversation-flow)) | 1.0 (set here; the prop's own `interact.radius` 1.1 is unused) | Knock | `text` pages, no speaker; keyed by the **house's** id (`of: <id>`), not `door:<id>` |
+| `signpost` with `text` | kind `sign`, at the anchor | 1.35 | Read | speaker `obj.speaker` (a term; `''` none), absent: 'Signpost' shown as `t('game.default.signpost')` (`speakerDefault`) |
 | `well` with `text` | kind `well`, prompt 4.2 u above and 0.3 u north | 1.75 | Look | sfx `obj.sfx ?? 'splash'` |
-| `campfire` | `fires[]` (ambience, minimap), `anchors.campfire` = first | — | — | — |
-| `waterfall` | `falls[] = { id, x, z, width, dir, anchor, splash }` (spray, roar) | — | — | — |
+| `campfire` | `fires[]` (ambience; a live story group's only while it is there), a `fire` marker (`mapMarkers()`), `anchors.campfire` = first | — | — | — |
+| `waterfall` | `falls[] = { id, x, z, width, dir, anchor, splash }` (spray; a live story fall also `hidden`, a getter: true while its group is absent) and `fallAnchors` (the roar: the splashing falls there now) | — | — | — |
 
-A house without text has **no interactive door** (the editor's level check warns about it).
+A house without text has **no interactive door** (the editor's level check warns about it). A live
+story object's prompt is in its group and `disabled` while the group is absent.
+
+The text stays the level's English (`InteractText`): `lines` are the field's pages from
+`World.textPagesOf(obj)` (ContentKeys.js `textPages`: blank entries skipped, their indices not
+reused), and `keys` the text key the object holds for each page (`pageKeyOf(obj, 'text', i)` at
+its raw index; `''` where it holds none), so `Game._examineText` shows each page by its own key.
+`speakerDefault` / `linesDefault` mark a code default standing in for blank data (the sign's
+'Signpost', an unnamed waystone's 'Waystone', the chest and waystone examine lines on a peaceful
+level), shown as `t('game.default.<id>')`. The pages of an interactable without `keys` (one another
+module made) are shown as they are.
 
 ### 4.4 Lights, emissives and emitters
 
 **Point lights** go through the engine's [`LightPool`](../../src/engine/lighting/LightPool.js)
 with `MAX_POINT_LIGHTS = 12` (`World.js`):
 
-1. Descriptors are sorted by `priority` (`LIGHT_PRIORITY` in `ObjectBuilder.js`: campfire 0,
+1. Descriptors are sorted by `priority` (`LIGHT_PRIORITY` in `ObjectBuilder.js`: campfire, hearth 0,
    `wallTorch` / `light` 1, lamppost 2, house door lantern 3; any other type 3), ties by level
    order.
 2. Hand-edited numbers are sanitised when they are present. `intensity` is clamped to 0–200,
@@ -532,13 +872,13 @@ with `MAX_POINT_LIGHTS = 12` (`World.js`):
   30 (1–1000); failures are logged and skipped; kept in `areaEmitters` (driven by the weather)
   and `emitters[id]`;
 - god rays (unless `environment.godRays === false`): `environment.godRayAreas`, else one area
-  over the walkable ground (`_autoGodRayArea`: `computeCameraBounds(level, 1)`, the most common
+  over the walkable ground (`LevelLook.godRayLayout` / `autoGodRayArea`, shared with the editor: `computeCameraBounds(level, 1)`, the most common
   walkable height, `count = clamp(round(area / 90), 1, 6)`, seed 7); each area `count` 0–12
   (default 3).
 
 ### 4.5 Scenery: forest border, outer forest, outer ground
 
-[`Scenery.js`](../../src/demo/Scenery.js) makes the diorama read as part of a continuous world:
+[`Scenery.js`](../../src/game/Scenery.js) makes the diorama read as part of a continuous world:
 
 - `makeOuterHeight(tileMap)` — a height function that continues the map's edge heights, rolls,
   rises into northern hills and far mountain ridges, and gentle hills east / west / south.
@@ -556,9 +896,11 @@ with `MAX_POINT_LIGHTS = 12` (`World.js`):
   (`forestKindAreas`, first matching area wins) or the automatic mix: half pines north of z = 6,
   half autumn trees where x > 0.72 W and z > 8, an oak / pine / birch mix elsewhere. Kinds never
   change positions: the random sequence is the same with or without kind areas.
-- `mergeTrees(results, { name, castShadow, maxTriangles, maxExtent, minTriangles })` — merges
+- `mergeTrees(results, { name, castShadow, maxTriangles, maxExtent, minTriangles, tags })` — merges
   PropFactory trees per material into world space, folding each tree's sway phase into `aPhase`
   and transforming `aCenter`, so merged canopies billboard and sway exactly like separate ones.
+  `tags` (result → live story group) puts each group's vertices next to each other in every
+  batch and returns them as `ranges` ([§4.9](#49-live-story-groups-in-the-levels-batches)).
 - `buildOuterGround()` / `outerGroundSteps()` — a fogged tensor-product heightfield (1 u spacing
   near the map, 2 u then 10 u farther out, extent 170) with a hole where the map is. The generator
   form lets the editor build it in time slices.
@@ -572,7 +914,7 @@ with `MAX_POINT_LIGHTS = 12` (`World.js`):
 | Outer ground | `buildOuterGround()` unless `environment.outerScenery === false` | same |
 
 `environment.border === 'forest'` enables the border trees; `environment.outerScenery !== false`
-the outer forest and ground; `environment.scenery.southGap` (default `SOUTH_GAP = 5`) keeps the
+the outer forest and ground; `environment.scenery.southGap` (default `SOUTH_GAP = 5`, `LevelLook.js`) keeps the
 meadow south of the map open (the camera looks north).
 
 ### 4.6 Ground foliage (`GroundDetail.js`)
@@ -594,8 +936,10 @@ shadows). Placement is keyed on the **legend characters** of the built-in tiles:
 Extras: bushes along house walls (not in front of doors), ferns around trees on the map, and
 **clearings** around every NPC (radius `min(8, max(0, wander)) + 0.8`) where only short grass
 grows. Spots under colliders are rejected by `World._isFreeForFoliage`, a collider-grid query
-with 0.1 u around circles and 0.15 u around boxes. It runs before any NPC exists, so villagers'
-colliders play no part. The `T`, `F` and `m` scatters skip this test. `environment.foliage`
+with 0.1 u around circles and 0.15 u around boxes — and around the colliders of every live story
+group absent at build (a house, a well, a crate that may come later: no grass pokes through it).
+So a story house, windmill or well that is absent leaves a bare footprint, and a house its wall
+bushes (the foliage is scattered once, at the build). It runs before any NPC exists, so villagers' colliders play no part. The `T`, `F` and `m` scatters skip this test. `environment.foliage`
 supplies `seed` (default 2024), `flowerAreas` (tile rects with a palette of frames 0–3) and
 `shrubAreas` (tile rects with a `chance`). Big levels cap a field at `foliageInstances` (4000) per
 instanced mesh (k-d split; placement unchanged).
@@ -606,7 +950,7 @@ instanced mesh (k-d split; placement unchanged).
 ### 4.7 Snow cover (`SnowCover.js`)
 
 `addSnowCover(material, 'ground' | 'foliage')` chains an extra `onBeforeCompile` step after the
-material's own patch and appends `|lumina-snow-<kind>` to its program cache key. The shared
+material's own patch and appends `|luminati-snow-<kind>` to its program cache key. The shared
 uniform `snowCover.value` (0–1) whitens up-facing surfaces (`'ground'`) or frosts the upper part
 of foliage sprites (`'foliage'`). Programs are built once at load with the uniform always present,
 so snowfall never compiles anything. The weather drives the value ([§9](#9-weather--time-glides-and-weather-blending)).
@@ -638,11 +982,70 @@ Game-side big-level extras: far-actor throttling ([§6.4](#64-far-actor-throttli
 pass only (`makeShadowOnly`). Measured budgets and trade-offs:
 [PERFORMANCE.md](PERFORMANCE.md).
 
+### 4.9 Live story groups in the level's batches
+
+A level played with a story builds the props of `LIVE_STORY_TYPES` that carry a `when` / `unless`
+— every prop type but the combat ones, houses, windmills, wells and waterfalls included — and its
+particle areas as **story groups**, one per condition pair (`_storyGroupOf`;
+[STORY_SCRIPT.md §9.5](../specs/STORY_SCRIPT.md#95-objects-that-come-and-go)). Their meshes cost
+no draw call of their own:
+
+- **Merged with everything else.** A story prop's `PropResult` goes into `results` (a tree into
+  the `trees:map` merge) like any prop's, and `_storyTags` maps it to its group. `mergeStatic` and
+  `mergeTrees` take that map as `tags`: the batches — per material, cut by the same k-d split on
+  a big level, with the same shadow-only proxies — are the ones the level would get without the
+  conditions; within each batch and proxy a group's vertices lie next to each other
+  (`SpatialSplit.groupByTag`, the untagged ones first in their order), and the merges return
+  where (`ranges`: one range per group and batch). A level without story conditions takes the old
+  path untouched (`tags: null`; its batches are byte-identical).
+- **`World.storyRanges`** (`SpatialSplit.CollapsibleRanges`) holds those ranges with a copy of
+  their values. A group that is absent — at build, before anything is uploaded, or later in
+  `applyStory` — has every vertex of each range written onto the range's first vertex in the
+  attributes that place it (`position`; a tree batch also `aCenter`, `aSway`, `aPhase`, or the
+  sway would pull the triangles open again): every triangle is degenerate, so nothing is drawn in
+  the colour pass or the shadow pass (which draws the same geometry; a big level's proxies have
+  ranges of their own). Coming back copies the saved values in. Only the range is uploaded
+  (`BufferAttribute.addUpdateRange` + `needsUpdate`). The collapsed point is one of the group's
+  own vertices, so bounding spheres and boxes (and the `cullByBox` boxes) stay valid.
+- **What stays per group:** the props' own roots (`objects`: what the merge leaves there — flame
+  billboards and glows, wind-swayed, animated or mirrored meshes, a windmill's sails, a
+  waterfall's sheet and foam pool) are hidden with `visible`, and their `update` (the sails) is
+  skipped while the group is absent; colliders, walk surfaces, prompts (doors, wells, signs),
+  particles (smoke, embers, mist, particle areas), campfires, waterfalls (`fallAnchors`, `hidden`),
+  lamps (`LightPool.setHidden`) and map markers as described in
+  [§3.10](#310-the-story-runtime). A house's windows and lantern glass glow through shared
+  emissive materials, drawn only by the house's own (collapsed) vertices: an absent house does not
+  glow, and nothing is registered or released.
+
+No mesh, material, program or light is created or removed by a change. Measured (2026-10-07,
+Gildhaven with every second of its 333 live props given `when: sa` / `when: sb`, at the spawn):
+175 draw calls with both groups present, one or none — the same as the level without conditions
+(before: 212 / 190 / 170, each group merged on its own); the demo campaign's Mill Road ford
+draws 98 calls with the bridge or with the debris (before: 95 / 105). Collapsing or restoring a
+group of ~45 000 vertices takes 0.1–0.2 ms; a whole `applyStory` there takes 0.9–1.9 ms (before:
+0.5–1.6 ms), and the next frame's upload adds ~0.1–0.3 ms. Mill Road's toggle stays at ~6–7 ms,
+the shore re-bake on the main thread. An absent group's degenerate triangles still pass through
+the vertex shader — cheap for the props that stand alone.
+
+Houses, windmills, wells, waterfalls, critters and particle areas (2026-10-07): Emberfall with its
+inn (a door lantern), windmill, well, both waterfalls, chickens and two particle areas `unless:
+gone`, two lit houses, the cat and the leaves `when: built` (`sandbox/story.presence.json`) draws
+exactly what the level without conditions draws — the same 188 draws in the colour, shadow and
+post passes by object and material, the same triangles, 12 lights, 57 programs, day and night —
+with everything there; with `gone` set the draws lose only the waterfalls' sheets and pools, the
+sails' shadow draws, the inn's smoke, the mists and the two areas (175), and coming back restores
+the geometry, colliders, prompts, emitters, falls, lamps and markers byte for byte (one
+`applyStory` 0.1–0.3 ms). Gildhaven with its 87 objects of these types split into `when: sa` /
+`when: sb`: 201 draws with both groups there (as without conditions), 194 with one, 182 with
+none (10 shadow-proxy draws throughout), 59 programs and 12 lights throughout; `applyStory`
+0.4–0.7 ms, but a change of a painted type (a house) repaints the maps: ≈ 30–45 ms on its
+128 × 128 map, once per change (as a bridge or a tree does).
+
 ---
 
 ## 5. `Player`
 
-[`src/demo/Player.js`](../../src/demo/Player.js) is the traveler: `createCharacterSheet({
+[`src/game/Player.js`](../../src/game/Player.js) is the traveler: `createCharacterSheet({
 ...CHARACTER_PRESETS.traveler, preset: 'traveler' })`, drawn as a `Sprite3D` with
 `CHARACTER_SPRITE_OPTS`, starting at `level.spawn` and facing its `facing`.
 
@@ -654,28 +1057,34 @@ pass only (`makeShadowOnly`). Measured budgets and trade-offs:
 | Facing | 4 directions from the screen-space movement (`sprite.faceVector`); `facing` keeps the world vector for interaction tests and is re-applied while idle so Q / E orbits keep the sprite facing what the prompt refers to. |
 | Animation | `walk` / `run` with playback speed from the actual speed (so pushing into a wall walks slowly in place); `idle` at `IDLE_SPEED[0] + 0.04`. |
 | Footsteps | `onFrameChange` on frames 0 and 2 of walk / run plays the `step` sfx (volume 0.4 walking, 0.55 running). Its pitch depends on the ground: any walk surface such as a bridge deck 1.25, `cobblestone` / `stone_tiles` / `moss_stone` tops 1.1, `sand` 0.85, anything else 1. Every other step is 6 % lower. Running also bursts 4 `footstep` dust particles. |
-| X-ray silhouette | a pale copy of the sprite quad (`MeshBasicMaterial`, `depthFunc: GreaterDepth`, `renderOrder 60`, vertices pulled 1.3 u toward the camera) that draws only where walls, roofs or canopies hide the player. It writes its own depth so the DOF keeps it sharp. `setSilhouetteEnabled(false)` on the title screen changes render states only (no recompile); `setSilhouetteLevel` dims it at night. |
+| X-ray silhouette | a pale copy of the sprite quad (`MeshBasicMaterial`, `depthFunc: GreaterDepth`, `renderOrder 60`, vertices pulled 1.3 u toward the camera) that draws only where walls, roofs or canopies hide the player. It writes its own depth so the DOF keeps it sharp. `setSilhouetteEnabled(false)` on the title screen changes render states only (no recompile); `setSilhouetteLevel` dims it at night. The villager the player can talk to (the *Talk* prompt's, kept while talking) gets the same silhouette — one more mesh of the same program, moved from villager to villager by `Player.setTalkSilhouette(sprite)`, a draw call only while there is one — so a keeper behind a stall's awning shows (KNOWN_ISSUES PROP-13). |
 | Combat levels (`combat: true`) | The sheet is `createCharacterSheet({ ...traveler, weapon: 'sword' }, { combat: true })` (18 columns: the 6 locomotion frames plus the combat poses) and the sprite uses the `combatFx` program (hit flash, glow). `action` (a string while the combat core owns the sprite: `update` then only follows the ground and returns before any `play` / face / speed write), `faceOverride` (a unit vector the sprite faces while walking or standing — lock-on strafing, the walk cycle instead of run), `moveOverride` (a world-space move vector replacing the input's — automation), `speedMul` (1), `moveBy(dx, dz)` (`tileMap.move` with radius 0.3, max step 0.55; returns the fraction moved — lunges, rolls, knockback, separation). On peaceful levels all of this stays unused and the player is exactly as above. |
 
 ---
 
 ## 6. `Npc` — villagers
 
-[`src/demo/Npc.js`](../../src/demo/Npc.js). `npcDef(obj)` (a module function in `Game.js`) turns a level `npc` object into a
-definition: `name` (default "Villager"), `preset` (unknown → `villager`), `home`, `wander`
+[`src/game/Npc.js`](../../src/game/Npc.js). `npcDef(obj)` (a module function in `Game.js`) turns a level `npc` object into a
+definition: `name` (default "Villager"; `unnamed` set when the level gave none, so the plate shows
+`t('game.default.villager')` — `villagerName`), `preset` (unknown → `villager`), `spec` (the object's
+hand-written sprite overrides, when it is an object), `home`, `wander`
 (default 1.2), `speed`, `facing`, `behaviour`, `talkRadius` (≥ 0.5), `talkPoint` (from the
 relative `talkOffset`, or the legacy absolute `talkPoint`), `bounds` (from the relative `area`, or
 the legacy absolute `bounds`) and `portraitColor` (default `#c9a45c`). Loaded levels are already
 normalised, so missing fields carry the **catalog defaults** (`ObjectCatalog` npc defaults: speed
 1, wander 1.2, facing down, behaviour wander, action none…) and legacy absolute fields have been
-converted to the relative ones; `npcDef`'s own fallbacks (e.g. speed 1.3) only apply to
-un-normalised input.
+converted to the relative ones; `npcDef`'s own fallbacks only apply to un-normalised input
+(they match the catalog: speed 1 — `npcDef` and `Npc` fell back to 1.3 before 2026-10-07).
+`npcDef` also carries `titleKey` (`textKeyOf(obj, 'title')`, the key of the villager's `title`;
+absent without one): its title, like its dialogue pages and talk script, is looked up by the keys
+its own object holds, also while its level is set aside and attached again.
 
 ### 6.1 Common mechanics
 
-- Sheets are cached per `{ preset, ...spec }` (`sheetCache` shared by all NPCs). `npcDef` never
-  passes a `spec`, so in the game the cache is effectively per preset (the editor preview does
-  honour a hand-written `spec` — see [EDITOR.md §10](EDITOR.md#10-how-the-editor-stays-in-sync-with-the-game)).
+- Sheets are cached per `{ preset, ...spec }` (`sheetCache` shared by all NPCs). `npcDef` passes
+  an npc object's hand-written `spec` (since 2026-10-07; before, the game ignored it and only the
+  editor preview drew it — see [EDITOR.md §10](EDITOR.md#10-how-the-editor-stays-in-sync-with-the-game)),
+  so NPCs share a sheet when their preset and `spec` match. No shipped level has a `spec`.
 - Each NPC owns a **dynamic** circle collider (r 0.34) that follows it — the TileMap tests
   dynamic colliders on every query instead of gridding them, and they never carve the water shore.
   Its own collider is parked at `x = Infinity` while it moves (`_withoutSelf`), since the TileMap
@@ -712,7 +1121,7 @@ the accumulated time capped at 0.25 s; a talking NPC always updates. Critters us
 
 ## 7. `Critters`
 
-[`src/demo/Critters.js`](../../src/demo/Critters.js) spawns one group per `critters` object
+[`src/game/Critters.js`](../../src/game/Critters.js) spawns one group per `critters` object
 (`kind`, `count` 0–16, `x, z`, `radius` roam radius — catalog defaults chicken / 4 / 2.5 —, optional relative `area` /
 `spotOffsets`, legacy absolute `bounds` / `spots`, `seed`, `seedBase`, `speed`). Placement:
 
@@ -732,9 +1141,21 @@ A group that throws is skipped with a warning.
 | `dog` | `Cat` | 1.3 / 0.22 | Same as the cat, default creature colours. |
 | `bird` | `Bird` | 0.9 / 0.1 | Hops 0.5 u at a time, pulled back when a hop would leave the group's `radius` around home. It takes flight when the player is within 2.3 u and fades out while rising. It stays away 9–15 s, then lands again once the player is more than 5 u from home. No sun shadow. |
 
-Critter placement is duplicated in the engine as `ObjectCatalog.critterStartPoints()` /
-`critterYard()`, which the editor uses to show the animals where the game spawns them — keep both
-in sync when changing the placement rules.
+Critter placement lives in the engine: `Critters._spawnGroup` starts the animals at
+`ObjectCatalog.critterStartPoints(g, (x, z) => tileMap.isWalkable(x, z))` and keeps chickens in
+`critterYard(g)` (else the `radius` square) — the same functions the editor uses to show the
+animals where the game spawns them, so a change to the placement rules reaches both (one copy
+since 2026-10-07; the start positions on Emberfall, Starfall Vale, Gildhaven and Willowmere were
+checked identical).
+
+A group with a story condition (`when` / `unless`) is one of `Critters.storyGroups` and follows
+the story live ([STORY_SCRIPT.md §9.5](../specs/STORY_SCRIPT.md#95-objects-that-come-and-go)):
+`applyStory(present)` (called by `StoryRunner.applyPresence`; a level without a story never calls
+it) marks an absent group's animals `absent` — hidden, skipped by `update` (they stand still, the
+far-critter throttle too) and taken out of `chickens`, the array the `chase` villagers read (one
+array, changed in place; a villager chasing one gives up) — and puts a group that comes back at its
+start points (`Critter.reset`: idle, shown, a bird landed). The critters are not on the minimap
+either way.
 
 ---
 
@@ -767,7 +1188,7 @@ object.
 | --- | --- |
 | `none` (default) | Just the pages. `…` shows only when the list is empty or blank. A normalised NPC without a `dialogue` key gets the catalog default `Hello, traveler!`. |
 | `rest` | Appends "Will you rest until morning? [Not yet / Rest until morning]" unless the pages already end with a choice; any answer but the first runs `game.restUntilMorning()` — with a one-choice closing page of the designer's own, its only answer runs it. |
-| `shop` | Appends "Would you like the `<item>`? [Just looking / Yes, please]" unless the pages already end with a choice; any answer but the first adds `inventory[item.toLowerCase()]`, plays `chime` and toasts "Obtained: `<item>`" (default item "Crisp Apple"); with a one-choice closing page of the designer's own, its only answer runs it. On a combat level an item the combat system sells (`combat.priceOf(item)`: the Healing Draught, 25 gold, or a ware of `SHOP_WARES` by name) is bought instead: the question reads "Would you like the Healing Draught? (25 gold)" and "Yes" calls `combat.buy(item)` (toast "Obtained: Healing Draught", "Not enough gold", "You cannot carry more" or "Not for sale" for a one-time ware already bought). |
+| `shop` | Appends "Would you like the `<item>`? [Just looking / Yes, please]" unless the pages already end with a choice; any answer but the first adds `inventory[item.toLowerCase()]`, plays `chime` and toasts "Obtained: `<item>`" (the item a term; a blank item keeps the identity "Crisp Apple" in the inventory and is shown as `t('game.default.item')`, looked up only for the shop action); with a one-choice closing page of the designer's own, its only answer runs it. On a combat level an item the combat system sells (`combat.priceOf(item)`: the Healing Draught, 25 gold, or a ware of `SHOP_WARES` by name) is bought instead: the question reads "Would you like the Healing Draught? (25 gold)" and "Yes" calls `combat.buy(item)` (toast "Obtained: Healing Draught", "Not enough gold", "You cannot carry more" or "Not for sale" for a one-time ware already bought). |
 | `music` | Silent → the music starts (toast "♪ Music"). Already playing → "Another song, or a little quiet? [Keep playing / Some quiet]", the second answer stops it. With the designer's own closing question, any answer but the first — or the only answer of a one-choice page — plays the music and never stops it. |
 
 - A `{ text, choices }` page with **at least one** non-blank choice is a choice page; blank or
@@ -775,6 +1196,14 @@ object.
   single choice (the editor's `Ready? [Okay |]`) shows as a one-item choice list. A one-choice
   closing page counts as "ends with a choice", so no built-in question is appended, and its only
   answer (index 0) runs the action (`firstYes` = 0 instead of 1).
+- **Text** ([I18N.md §4.8](../specs/I18N.md)): everything a conversation hands `say` / `toast` is
+  already translated — its own lines as code keys, `loc('dlg.<conversation>.<name>', 'English')`
+  (sentences with values are whole templates filled after the lookup, `contentFormat`); a level
+  villager's pages and choices by the keys its object holds over `dialogueUnits`' raw indices
+  (`showPages(units, obj)`: `dialogueKeyOf(obj, i)`, `choiceKeyOf(obj, i, j)` per choice; a page
+  without a key in English, a `nokey` miss); the combat shop's wares by the
+  labels `combat.shopOffers()` gives (`label`, `gainLabel`). Game and StoryRunner translate only the
+  speaker.
 - **`conversationFor(obj)`** — the script when `script` names one (called as `script(ctx, obj)`;
   an unknown script logs a warning and falls back to the dialogue), else `levelConversation(obj)`.
 - Convention: the non-committal answer comes **first**, so mashing confirm through the text never
@@ -786,12 +1215,12 @@ object.
 
 ## 9. `Weather` — time glides and weather blending
 
-[`src/demo/Weather.js`](../../src/demo/Weather.js) is updated from `Game.update` after the lighting
+[`src/game/Weather.js`](../../src/game/Weather.js) is updated from `Game.update` after the lighting
 system (which recomputes its palette every frame), so everything it multiplies never accumulates.
 The weather *look* — the table below, the precipitation emitter configs and the functions that
 apply a weather state (lighting multipliers, overcast colours, grade offsets, wind, lamp and window
 day glow, lantern-glass level, particle-area intensities) — lives in
-[`src/demo/WeatherLook.js`](../../src/demo/WeatherLook.js), shared with the editor's 3D preview,
+[`src/game/WeatherLook.js`](../../src/game/WeatherLook.js), shared with the editor's 3D preview,
 which shows a level's `environment.weather` at its settled values
 ([EDITOR.md §10](EDITOR.md#10-how-the-editor-stays-in-sync-with-the-game)). `Weather.js` keeps the
 time glides, the blending, the debug `tuning` and the time-of-day parts (golden-hour god rays,
@@ -802,6 +1231,13 @@ night desaturation, calmer water and fewer leaves at night, snow settling / melt
 - **Weather.** `setWeather('clear' | 'rain' | 'snow', { instant })` (other names are ignored — an
   own-property test, so e.g. `'toString'` is too); `update()` blends `WEATHER_PARAMS`
   (`WeatherLook.js`, frozen) with `damp(1.1)`. `instant` jumps (used for a level's starting weather).
+- **Rooms.** `setWorld` reads the level's `environment.interior` (`indoors`): in a room the look
+  blends toward clear skies (`shown`, `LevelLook.shownWeather` — no rain or snow drawn, no snow
+  settling, no overcast grey, the clear wind, fog and grade) while `weather` goes on — R
+  (`cycleWeather`, toast "… outside"), `setWeather` and a campaign's save change and keep it, and it
+  shows again in the next level outdoors. `instant` jumps to what is shown. The water's base
+  brightness and glint are read once per world (`World.waterBase`): a level set aside and attached
+  again has the night-scaled values in its uniforms.
 
 | Parameter | clear | rain | snow | Drives |
 | --- | --- | --- | --- | --- |
@@ -825,7 +1261,7 @@ values (used by the audio director).
 
 ## 10. `AudioDirector` — the ambience mix
 
-[`src/demo/AudioDirector.js`](../../src/demo/AudioDirector.js) recomputes the mix every 0.25 s
+[`src/game/AudioDirector.js`](../../src/game/AudioDirector.js) recomputes the mix every 0.25 s
 (when `enabled`, i.e. in gameplay) and hands it to `audio.setAmbience(levels, { fade: 0.6 })`:
 
 | Channel | Formula (clamped 0–1) |
@@ -852,13 +1288,15 @@ values (used by the audio director).
 | `SUN_PATH` | `{ noon: 12.6, lat: 32, dec: 14, refTime: 17.2, refAzimuth: −112 }` | Golden hour puts the sun ~25° up, behind-left of the default view. |
 | `MOON_PATH` | `{ refAzimuth: 40 }` | The moon keys the night from the front-right. |
 | `KEYFRAME_OVERRIDES` | night / late night / blue hour / sunset / purple dusk / golden hour | Bluer, brighter nights; lifted dusk; teal golden-hour shadows. Merged over `DEFAULT_KEYFRAMES` by name. |
-| `CHARACTER_SPRITE_OPTS` | `normalUp 0.6, wrap 0.6, roundness 0.55, emissive #ffe9d2, emissiveIntensity 0.06` | Shared look of every character / critter sprite (readable when backlit). |
+| `CHARACTER_SPRITE_OPTS` | `normalUp 0.6, wrap 0.6, roundness 0.55, emissive #ffe9d2, emissiveIntensity 0.06` | Shared look of every character / critter sprite (readable when backlit). The game and the editor register every such sprite with `registerEmissive(…, SPRITE_FILL)`, which rewrites `emissiveIntensity` at once and every frame: the 0.06 only lights unregistered sprites (the `combat_fx` / `enemy_ai` sandboxes). |
 | `SPRITE_FILL` | `{ day: 0.05, night: 0.03 }` | `registerEmissive` levels of that fill. |
 | `IDLE_SPEED` | `[0.5, 0.62]` | Idle "breathing" playback speed range. |
 
 `Game.js` constants: `INTERACT_RANGE 1.6`, `FAR_ACTOR_DISTANCE 42`, `FAR_EVERY 4`,
 `TALK_COOLDOWN 0.8`, `WARM_FRAMES 5`, `AUTO_BOUNDS_MARGINS`. `World.js`: `MAX_POINT_LIGHTS 12`,
-`SMOKE`, `MIST`, `SOUTH_GAP 5`, `SMALL_LEVEL 64`, `BIG_LEVEL_BATCHING`. The HD-2D post look is set
+`BIG_LEVEL_BATCHING`; `LevelLook.js` (shared with the editor's preview): `SMOKE`, `MIST`,
+`SOUTH_GAP 5`, `SMALL_LEVEL 64`, `BIG_FOLIAGE_INSTANCES 4000`, `DUST_BOX` 20 × 4.5 × 16, the level's
+camera framing (`cameraFraming`). The diorama post look is set
 in `Game._tunePost()` (DOF focus range 6, max blur 13, tilt-shift 0.42; bloom 0.5 / threshold 1.05;
 grade saturation 1.3, vignette 0.55, teal shadows `[−0.04, 0.05, 0.15]`).
 
@@ -880,12 +1318,22 @@ See [§3.8](#38-debug-panel-and-automation-hooks). Controllers that also change 
 
 ### 11.4 `AtmosphereFog.js` — fog that starts in front of the player
 
-`installFogStart(start)` replaces three's global `fog_vertex` chunk with
-`vFogDepth = max(0, -mvPosition.z - start)`, so FogExp2 starts `start` units from the camera
-(`camera.distance − 7` = 23 for the default framing). The band around the player stays crisp and
-saturated; everything beyond melts into the horizon colour. It affects every material that uses
-the standard chunks (including particles). The patch is global and first-call-wins (tagged), and
-must run before the first material compiles. The editor does not install it.
+`installFogStart()` replaces three's global `fog_vertex` chunk with
+`vFogDepth = max(0, -mvPosition.z - uFogStart.x)` (and declares `uniform vec2 uFogStart` in
+`fog_pars_vertex`), so FogExp2 starts `uFogStart.x` units from the camera. The band around the
+player stays crisp and saturated; everything beyond melts into the horizon colour. It affects every
+material that uses the standard chunks (including particles). The patch is global and installed
+once per page (tagged; later calls only set the value), and must run before the first material
+compiles. The editor does not install it.
+
+The start itself is the shared uniform `globalUniforms.uFogStart`
+([render.md §2](modules/render.md#2-globaluniforms)): `setFogStart(start)` writes it, and
+`Game._applyLevel` calls it with `camera.distance − 7` (23 for the default framing) — in the
+constructor and on every `swapLevel`, so each level of a campaign fogs from its own camera
+distance (the cellar of the demo campaign, distance 20, from 13). A change takes effect in the
+next frame and compiles nothing: three's built-in materials reach the uniform through
+`THREE.ShaderLib` (and `THREE.UniformsLib.fog`), the engine's fogged `ShaderMaterial`s reference
+it themselves. `installFogStart(start)` with an argument (the combat FX sandbox) also sets it.
 
 ---
 
@@ -906,7 +1354,15 @@ must run before the first material compiles. The editor does not install it.
   areas, critter counts), bad objects are skipped with a console warning, an unstandable spawn is
   moved. Keep that robustness when adding fields.
 - **Conversation scripts are code.** A new `script` id needs an entry in `CONVERSATIONS` *and* in
-  `ObjectCatalog.NPC_SCRIPTS` (the editor's dropdown).
+  `ObjectCatalog.NPC_SCRIPTS` (the editor's dropdown); its lines are code keys
+  (`loc('dlg.<conversation>.<name>', 'English')`, both literal — the checker extracts them).
+- **Text is translated at display, by key.** Prose shown from data goes through `loc(key, english)`
+  with the key the object shown holds, read with `ContentKeys.js`' readers (`textKeyOf`,
+  `pageKeyOf`, `dialogueKeyOf`, `choiceKeyOf`, a node's `tk`); names through `term(name)`; defaults
+  for blank data through `t('game.default.*')`. The data, interactables (`label`, `InteractText`)
+  and saves keep the English. The game never makes or changes a key (`TextKeys.js` stays out of
+  its chunks). A new display site reads the key the extractor lists
+  ([TASK_PLAYBOOKS.md §27](../ai/TASK_PLAYBOOKS.md#27-add-a-display-site-or-a-translatable-field)).
 - **`Weather` owns the multipliers.** Do not write `lighting.settings.*Mul`, grade temperature /
   saturation or particle-area intensities elsewhere — edit `weather.tuning` instead. A change to
   the weather look itself belongs in `WeatherLook.js`, so the editor preview follows.
@@ -917,10 +1373,10 @@ must run before the first material compiles. The editor does not install it.
 
 | Task | Where | Notes |
 | --- | --- | --- |
-| A new hand-written conversation | `CONVERSATIONS` in `dialogue.js` + `NPC_SCRIPTS` in `ObjectCatalog.js` | Put the non-committal answer first. |
+| A new hand-written conversation | `CONVERSATIONS` in `dialogue.js` + `NPC_SCRIPTS` in `ObjectCatalog.js` | Put the non-committal answer first; every line `loc('dlg.<name>.<line>', 'English')`, then translate it ([TASK_PLAYBOOKS.md §26](../ai/TASK_PLAYBOOKS.md#26-translate-or-fix-content-text-with-the-worklist)). |
 | A new built-in NPC action | `levelConversation` + `NPC_ACTIONS` (catalog) | Document it in [LEVEL_FORMAT.md](../specs/LEVEL_FORMAT.md) and the contract (additively). |
 | A new NPC behaviour | `Npc.update` switch + `NPC_BEHAVIOURS` | The editor preview shows NPCs idle only. |
-| A new critter kind | `KINDS` in `Critters.js`, `CRITTER_KINDS`, a creature sheet | Keep `critterStartPoints` in sync. |
+| A new critter kind | `KINDS` in `Critters.js`, `CRITTER_KINDS`, a creature sheet | List it in both: `critterStartPoints` (shared by the game and the editor) reads `CRITTER_KINDS`. |
 | A new weather | `WEATHER_PARAMS` + `WEATHERS` in `WeatherLook.js` (a precipitation config in `precipitationEmitter`), the toast label in `Game.cycleWeather`, the hand-written Weather lists of the editor's inspector (`ui/Inspector.js`) and Level settings (`ui/dialogs.js`) | Create its emitters in the `Weather` constructor and warm them in `Game.init`. The editor preview applies the look through `WeatherLook.js` by itself, but a new precipitation emitter must also be created and warmed in `Viewport3D._setAtmosphere` / `_warmWeatherFx`. |
 | A new `environment` option | read it in `Game` / `World`, normalise it in `LevelFormat` | Make the editor preview honour it too ([EDITOR.md §10](EDITOR.md#10-how-the-editor-stays-in-sync-with-the-game)). |
 
@@ -951,12 +1407,15 @@ automation). A level is a combat level when `levelHasCombat(level)`: `environmen
 or the key is not `false` and the level has an `enemy` object (Cinderwatch Pass, the combat
 fixture, editor play-tests with enemies). Every other level creates **nothing** combat-related:
 `game.combat === null`, no combat sheet, program, binding, DOM or legend row — and the combat
-modules are not even loaded (`Game.init` imports `CombatSystem.js` dynamically).
+modules are not even loaded (`Game.init` imports `CombatSystem.js` dynamically). Party companions
+fight beside the player through `CombatSystem.addAlly` and `src/game/party/MemberCombat.js`
+([contracts/COMBAT.md §28](../contracts/COMBAT.md#28-party-allies), [specs/PARTY.md §5](../specs/PARTY.md#5-companions-in-combat-party-combat)):
+each enemy's update reads its target's view as `ctx.player` — the player's unless a companion drew it.
 
-| File ([`src/demo/combat/`](../../src/demo/combat/)) | Role |
+| File ([`src/game/combat/`](../../src/game/combat/)) | Role |
 | --- | --- |
 | `CombatSystem.js` | orchestration: `load()` (sheets, FX atlas, `FxQuads`, `GroundMarkers`, every enemy and the boss adds, the walk grid and the zones, `UI.useCombatUI` + `ui.enableCombat()`, the combat bindings — the engine's combat modules are imported from their own files, never through the barrel), the combat clock and sub-steps, the `CombatContext` of the enemies, hit resolution and damage, kills / XP / loot, boss signals and victory, separation, dormancy, engagement, the look, HUD values, labels, minimap dots, death and respawn, the shop (`buy`, `priceOf`, `shopOffers`), `state()`, `stats()` |
-| `Nav.js` | the enemies' walk grid (0.5 u cells with their ground height; open = walkable, not open water, clear of static colliders and the map edge, outside the boss arenas) and a bounded, allocation-free A* string-pulled into waypoints; ≤ 2 searches per combat sub-step (`beginStep` / `spend`); `warm()` at load |
+| `Nav.js` | the enemies' walk grid (0.5 u cells with their ground height; open = walkable, not open water, clear of static colliders and the map edge, outside the boss arenas) and a bounded, allocation-free A* string-pulled into waypoints; ≤ 2 searches per combat sub-step (`beginStep` / `spend`); `warm()` at load. `build(blocked)` remembers `blocked`; `buildRect(minX, maxX, minZ, maxZ)` recomputes only the cells a change of colliders or walk surfaces inside that world rect can reach (2 cells beyond it grown by 0.2 u) — cell for cell what a full `build` gives; `CombatSystem.rebuildNav(rect)` uses it after a story presence change (KNOWN_ISSUES STORY-04). The open cells are labelled by connected part on the first search after a build: a goal in another part fails at once, without a search (STORY-14; `stats.apart`, `stats.parts`, `connected(ax, az, bx, bz)`); `buildSteps(blocked, rowsPerStep)` is `build` as a step generator (the story's own grid, built ahead in idle time, `new Nav(tm, { defer: true })`) |
 | `PlayerCombat.js` | the player kit: stats and levels, HP / MP / SP, the 3-hit combo (magnet, lunges, cancel windows), roll / backstep with i-frames and the perfect dodge, Whirl Slash / Ember Bolt / Radiant Nova, the Healing Draught, hitstun / knockdown, death |
 | `CombatInput.js`, `bindings.js` | the 10 f input buffer (keyboard, mouse buttons, pad with LT skills, virtual presses), resume / respawn guards, lock tap / hold; the combat bindings, legends and the pad hint |
 | `Targeting.js` | aim direction, soft target (auto-aim, melee magnet), lock-on inside the frustum, the lock and boss-framing camera focus |
@@ -965,7 +1424,7 @@ modules are not even loaded (`Game.init` imports `CombatSystem.js` dynamically).
 | `Waystones.js`, `BossArena.js` | checkpoints (attune, rest), chests (discovery, open); the boss arena (ember wall, barrier, player clamp) |
 | `CombatFx.js`, `Feel.js`, `CombatMusic.js` | named effects on `FxQuads`; hit-stop / shake / flash tables and the combat look; battle / boss music |
 | `rules.js`, `hooks.js` | every player number and the shop's wares (`SHOP_WARES`); `window.__game.combat` ([specs/AUTOMATION_API.md §3.4](../specs/AUTOMATION_API.md#34-window__gamecombat-combat-levels-only)) |
-| `Enemy.js`, `defs.js`, `ai/*` | the enemy actor (the shared state machine of COMBAT.md §7.4, telegraph / hazard helpers), its stats and the eight brains; the brain interface (`init`, `idle`, `engage`, `attack`, `stun`, `cancel`, `onHit`, `die`, `glow`, `update` for the boss) is the table at the top of [`ai/index.js`](../../src/demo/combat/ai/index.js). Brains see only the `CombatContext` (plus pure helpers such as `aimVy`) and never import `Enemy.js`. Chasing and returning use the walk grid (`ctx.nav`, below); the old fade-and-snap home stays only as a last resort. |
+| `Enemy.js`, `defs.js`, `ai/*` | the enemy actor (the shared state machine of COMBAT.md §7.4, telegraph / hazard helpers), its stats and the eight brains; the brain interface (`init`, `idle`, `engage`, `attack`, `stun`, `cancel`, `onHit`, `die`, `glow`, `update` for the boss) is the table at the top of [`ai/index.js`](../../src/game/combat/ai/index.js). Brains see only the `CombatContext` (plus pure helpers such as `aimVy`) and never import `Enemy.js`. Chasing and returning use the walk grid (`ctx.nav`, below); the old fade-and-snap home stays only as a last resort. |
 
 **The combat clock.** `update(dt, active)` runs `n = ceil(dt·60 − ε)` sub-steps of `dt / n`; in each:
 the input buffer, `PlayerCombat.step`, every non-dormant enemy's `update(h · enemyScale, ctx)`,
@@ -1010,6 +1469,16 @@ Charm DEF +3 for 150) through a dialogue menu (§8); `combat.buy(item)` applies 
 shop is shut while enemies are engaged. `state().combat.shop.purchased` lists them; the event is
 `purchase`.
 
+**Names on screen** ([I18N.md §4.8](../specs/I18N.md)). The data keeps the English (identities: `buy`,
+`priceOf`, `state()`); the display translates. An enemy's name (`displayName(e)`, cached per enemy:
+an elite's bar, the boss bar and banner): a named group's `name` as a term, else the kind's name
+(`combat.enemy.<kind>`, a UI string; a group named as its kind reads as the kind's name where the
+tables have no term for it). The wares: `shopOffers()` adds `label` / `gainLabel` (UI strings),
+`wareLabel(item)` a ware's UI name or, for an NPC's own item, a term. A checkpoint (`placeName`,
+Waystones.js: the toasts, the death screen): the spawn's place as a UI string, a waystone's name as a
+term, an unnamed waystone (`Checkpoint.unnamed`, additive: `name` still holds 'Waystone') as
+`t('game.default.waystone')`. The results card names the level as a term.
+
 **Boss arena.** While a boss arena is closed the player is *sealed* in with its boss
 (`PlayerView.sealed`): enemies outside it neither aggro (sight, a neighbour's wake-up) nor get an
 attack token, and one that is engaged anyway walks home and stays calm for 6 s — the fight stays a
@@ -1029,6 +1498,21 @@ higher up, and one granted by the boss's kill waits for the results card; skill 
 click (a click never reaches the canvas as an attack). Pickups that would give nothing (a heart at
 full HP, a mana mote at full MP, a draught at the carry cap) stay on the ground, even after the
 magnet caught them.
+
+**The story and the campaign** (2026-10-07, KNOWN_ISSUES CMP-03 / CMP-04). Enemy groups, chests
+and waystones are `LIVE_STORY_TYPES`: a level with a story loads every one whatever its `when` /
+`unless` (a campaign keeps them in the level it builds), and `StoryRunner.applyPresence` calls
+`combat.applyPresence(present)` right after `World.applyStory`. An absent group's foes are hidden
+and dormant (`_absent`, also in `_hidden` with the unspawned adds: excluded from AI, hits, the
+minimap, the counts — `state().combat.enemies.absent` — and the hooks); one taken mid-fight drops
+the lock-on, aggro, tokens, markers and projectiles, goes home at full HP, and its boss's fight
+ends; an absent boss's arena closes nothing (`BossArena.present`). A group that comes back spawns at
+home, its fallen stay fallen; the death reset, a rest and the `reset` hook keep absent groups
+away. Chests and waystones are World story groups (prop, collider, prompt, paint, marker); combat
+marks the records `absent` (no discovery, opening, attuning or rest; an opened chest that comes
+back stays offering nothing; a checkpoint that goes falls back to the spawn). A campaign remembers
+defeated groups per level (`defeatedGroups` / `markGroupsCleared`, above): no death, drop, XP or
+`kill` event on entering, a boss stays defeated.
 
 **Integration points in `Game`**: the constructor (`combatEnabled`), `init` (§3.2 rows 0.94 and
 0.96), the frame (§3.4 steps 3 and 7), `_setupMaps` (`attachMaps`), `toggleMap` (`onMapOpen`),

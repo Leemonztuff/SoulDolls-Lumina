@@ -7,13 +7,16 @@
  *                    'ember': Emberfall resized to 64×64 + 64 trees) in the split layout
  *   s2d(x, z)        viewport (client) coords of a world point in the 2D map
  *   s3d(x, z)        viewport (client) coords of a world point on the terrain in the 3D view
- *   path(view, pts)  [[x, z], …] world → [[cx, cy], …] client points (for harness drag steps)
+ *   path(view, pts)  [[x, z], …] world → [[cx, cy], …] client points (JSON), for harness drag
+ *                    steps: { "drag": "P.path('2d', [[30, 30], [31.5, 30.5]])" } — the harness
+ *                    evaluates the string when the step runs, so the stroke follows the layout
+ *                    (editor_perf*.json draw every stroke this way)
  *   start()/stop(label)  in-page frame-time recorder (rAF deltas, long tasks, Viewport3D phases)
  *   fingerprint()    structure-independent checksum of the 3D scene (terrain + water + props)
  *   exactCheck()     fingerprint now vs after a forced full rebuild of the 3D view
  *
- * The dynamic imports use the URL paths the dev server serves ('/src/…', '/sandbox/…'); tsc
- * resolves them through the `paths` of tsconfig.json.
+ * The dynamic imports are relative to this module (`../src/…`, `./editor3d.level.js`) and its fetch
+ * starts with `import.meta.env.BASE_URL`, so the helpers also work under a sub-path.
  */
 
 /**
@@ -73,14 +76,14 @@ export function install() {
   async function setup(kind = 'vale') {
     let level;
     if (kind === 'ember') {
-      const LF = await import('/src/engine/level/LevelFormat.js');
-      const src = await (await fetch('/levels/emberfall.json')).json();
+      const LF = await import('../src/engine/level/LevelFormat.js');
+      const src = await (await fetch(`${import.meta.env.BASE_URL}levels/emberfall.json`)).json();
       // (the `??` fallback is for an older normalizeLevel that returned the level itself)
       const base = /** @type {Level} */ (LF.normalizeLevel(src).level ?? LF.normalizeLevel(src));
       level = LF.resizeLevel(base, 64, 64, { anchor: 'nw' });
       for (let k = 0; k < 64; k++) LF.addObject(level, 'tree', 50 + (k % 8) * 1.5, 6 + Math.floor(k / 8) * 1.7, { opts: { kind: k % 3 ? 'oak' : 'pine', height: 4.5, seed: k + 1 } });
     } else {
-      const m = await import('/sandbox/editor3d.level.js');
+      const m = await import('./editor3d.level.js');
       level = m.generateTestLevel({ width: 64, depth: 64 });
     }
     E.state.replaceLevel(level, { kind: 'new', name: '' });
@@ -296,7 +299,7 @@ export function install() {
    */
   async function capture(name) {
     const v = E.view3d;
-    const G = await import('/src/engine/render/GlobalUniforms.js');
+    const G = await import('../src/engine/render/GlobalUniforms.js');
     const U = G.globalUniforms;
     const wind = U.uWindStrength?.value;
     if (U.uWindStrength) U.uWindStrength.value = 0;

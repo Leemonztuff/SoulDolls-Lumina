@@ -1,6 +1,6 @@
 # Architecture overview
 
-> **Purpose.** The big picture of Lumina: which programs exist (engine, game, editor, tools,
+> **Purpose.** The big picture of Luminati: which programs exist (engine, game, editor, tools,
 > levels, sandboxes), how they depend on each other, what runs every frame and in which order,
 > how a level file becomes a lit 3D diorama, how the editor keeps its views in sync, and where
 > each piece of state lives. Read this before you change code that crosses a module boundary.
@@ -10,7 +10,7 @@
 > **Source of truth.** The code: [`src/main.js`](../../src/main.js),
 > [`src/engine/core/Engine.js`](../../src/engine/core/Engine.js),
 > [`src/engine/render/GlobalUniforms.js`](../../src/engine/render/GlobalUniforms.js),
-> [`src/demo/Game.js`](../../src/demo/Game.js), [`src/demo/World.js`](../../src/demo/World.js),
+> [`src/game/Game.js`](../../src/game/Game.js), [`src/game/World.js`](../../src/game/World.js),
 > [`src/engine/level/`](../../src/engine/level/), [`src/editor/EditorState.js`](../../src/editor/EditorState.js),
 > [`src/editor/viewport3d/Viewport3D.js`](../../src/editor/viewport3d/Viewport3D.js). The binding
 > contracts are [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (engine) and
@@ -44,36 +44,44 @@
 
 ## 1. System context
 
-Lumina is a browser project with no server logic beyond the Vite dev server. Everything the
+Luminati is a browser project with no server logic beyond the Vite dev server. Everything the
 player sees — textures, sprite sheets, meshes, particles, sounds, music — is generated at run
 time by the engine. Three front ends share the engine, and they are fed by one kind of data file:
-the `lumina-level` JSON.
+the `luminati-level` JSON. The front page, the **launcher** (`index.html`), is no front end of the
+engine: a plain English page with no script that lists every campaign and level with links into
+the game and the editor, its list written from `public/` by a Vite plugin
+([Launcher architecture](OVERVIEW.md)).
 
 ```mermaid
 flowchart LR
   subgraph PAGES["Browser pages"]
-    IDX["index.html<br/>game"]
+    LCH["index.html<br/>launcher (no script)"]
+    IDX["game.html<br/>game"]
     ED["editor.html<br/>level editor"]
     SB["sandbox/*.html<br/>module test pages"]
   end
   subgraph SRC["src"]
     MAIN["src/main.js"]
-    DEMO["src/demo/<br/>Game, World, Player, Npc…"]
+    GAME["src/game/<br/>Game, World, Player, Npc…"]
     EDIT["src/editor/<br/>EditorApp, EditorState, views, tools"]
     ENG["src/engine/<br/>public API: index.js"]
   end
   subgraph DATA["Data"]
-    LV[("public/levels/*.json")]
-    LS[("localStorage<br/>lumina.level.{slot}")]
+    LV[("public/levels/*.json<br/>public/campaigns/‹c›/")]
+    LS[("localStorage<br/>luminati.level.{slot}")]
   end
   subgraph NODE["Node tools"]
     API["tools/vite-level-api.js<br/>/api/levels (dev only)"]
+    LAU["tools/vite-launcher.js<br/>the launcher's list"]
     GEN["tools/make-*.mjs<br/>level generators"]
     CHK["tools/check.mjs<br/>headless harness"]
   end
-  IDX --> MAIN --> DEMO --> ENG
+  LCH -- "Play / Edit links" --> IDX & ED
+  LV -- "read" --> LAU
+  LAU -- "writes the list" --> LCH
+  IDX --> MAIN --> GAME --> ENG
   ED --> EDIT --> ENG
-  EDIT -. "preview reuses" .-> DEMO
+  EDIT -. "preview reuses" .-> GAME
   SB --> ENG
   SB -.-> EDIT
   MAIN -- "fetch levels/{name}.json" --> LV
@@ -81,24 +89,30 @@ flowchart LR
   EDIT -- "PUT/GET/DELETE" --> API --> LV
   EDIT -- "save / autosave / play-test" --> LS
   GEN -- "writes" --> LV
-  CHK -- "starts Vite + Chrome, drives" --> IDX & ED & SB
+  CHK -- "starts Vite + Chrome, drives" --> LCH & IDX & ED & SB
 ```
 
 | Part | Entry | What it is |
 | --- | --- | --- |
-| Engine | [`src/engine/index.js`](../../src/engine/index.js) | The reusable HD-2D engine (≈ 60 % of the code). Public API re-exported by the barrel; see [§3](#3-engine-module-map). |
-| Game ("demo") | [`index.html`](../../index.html) → [`src/main.js`](../../src/main.js) → [`src/demo/Game.js`](../../src/demo/Game.js) | Plays any level file: `?level=<name>` (`public/levels/<name>.json`), `?level=local:<slot>` (browser storage), default `emberfall`. `?autostart=1` skips the title. See [GAME.md](GAME.md). |
+| Engine | [`src/engine/index.js`](../../src/engine/index.js) | The reusable 2.5D pixel-art engine (≈ 60 % of the code). Public API re-exported by the barrel; see [§3](#3-engine-module-map). |
+| Launcher | [`index.html`](../../index.html) (styles [`src/launcher/launcher.css`](../../src/launcher/launcher.css)) | The front page: every campaign (*Play* → `game.html?campaign=<c>`, its level files → `editor.html?open=<c>/<file>`), every level in `public/levels/` (*Play* → `game.html?level=<name>`, *Edit* → `editor.html?open=<name>`), the editor and, on the dev server, the sandboxes and the docs. Plain English HTML, no script; the list comes from the launcher plugin (below). |
+| Game | [`game.html`](../../game.html) → [`src/main.js`](../../src/main.js) → [`src/game/Game.js`](../../src/game/Game.js) | Plays any level file: `?level=<name>` (`public/levels/<name>.json`), `?level=local:<slot>` (browser storage), default `emberfall`; or a campaign, `?campaign=<name>`, switching levels without a reload ([CAMPAIGN_FORMAT.md](../specs/CAMPAIGN_FORMAT.md), [GAME.md §3.9](GAME.md#39-campaigns-the-level-half-and-swaplevel)). `?autostart=1` skips the title. See [GAME.md](GAME.md). |
 | Level editor | [`editor.html`](../../editor.html) → [`src/editor/main.js`](../../src/editor/main.js) → [`EditorApp`](../../src/editor/EditorApp.js) | 2D map + live 3D preview (the real engine), tools, inspector, save / play-test. See [EDITOR.md](EDITOR.md). |
 | Sandboxes | [`sandbox/*.html`](../../sandbox/) | One page per module against raw three.js, plus scripted checks (`*.actions.json`, `editor_*.json`). |
-| Levels | [`public/levels/`](../../public/levels/) | `emberfall.json` (48 × 40, 136 objects), `starfall-vale.json` (128 × 128, 874 objects, generated), `brightwater-crossing.json` (36 × 28, 68 objects, built in the editor), `sample-hamlet.json` (28 × 22, 38 objects, generated). An `untitled.json` there (when present) is the user's own file — never touch it. |
-| Dev-server level API | [`tools/vite-level-api.js`](../../tools/vite-level-api.js) (plugin in [`vite.config.js`](../../vite.config.js)) | `GET/PUT/DELETE /api/levels[/:name]` writes `public/levels/<name>.json`. `apply: 'serve'` — it does not exist in `npm run build` output. See [../specs/LEVEL_STORAGE_API.md](../specs/LEVEL_STORAGE_API.md). |
-| Generators | [`tools/make-starfall-vale.mjs`](../../tools/make-starfall-vale.mjs), [`tools/make-sample-hamlet.mjs`](../../tools/make-sample-hamlet.mjs), [`tools/convert-emberfall.mjs`](../../tools/convert-emberfall.mjs) | Node scripts that write level JSON with the engine's DOM-free level modules. The two `make-*` generators are deterministic: re-run them instead of hand-editing `starfall-vale.json` / `sample-hamlet.json`. `convert-emberfall.mjs` was a one-off conversion of the old hand-coded demo (it reads the pre-conversion sources from git); `emberfall.json` itself is now the source of truth. |
+| Levels | [`public/levels/`](../../public/levels/) | `emberfall.json` (48 × 40, 137 objects), `starfall-vale.json` (128 × 128, 875 objects, generated), `gildhaven.json` (128 × 128, 518 objects, generated), `cinderwatch-pass.json` (96 × 120, combat, generated), `brightwater-crossing.json` (36 × 28, 68 objects, built in the editor), `sample-hamlet.json` (28 × 22, 38 objects, generated). An `untitled.json` there (when present) is the user's own file — never touch it. |
+| Campaigns | [`public/campaigns/`](../../public/campaigns/ferrymans-lantern/campaign.json) | One folder per campaign: `campaign.json` and `levels/<id>.json`. The demo *The Ferryman's Lantern* is generated by `tools/make-ferrymans-lantern.mjs`, the rooms demo *Emberfall — Open Doors* (`emberfall-interiors`) by `tools/make-emberfall-interiors.mjs`. |
+| Dev-server level API | [`tools/vite-level-api.js`](../../tools/vite-level-api.js) (plugin in [`vite.config.js`](../../vite.config.js)) | Under the dev server's base: `GET/PUT/DELETE /api/levels[/:name]` writes `public/levels/<name>.json`; `/api/campaigns[/<c>/levels[/:name]]` a campaign's levels. `apply: 'serve'` — it does not exist in `npm run build` output. See [../specs/LEVEL_STORAGE_API.md](../specs/LEVEL_STORAGE_API.md). |
+| Launcher plugin | [`tools/vite-launcher.js`](../../tools/vite-launcher.js) (plugin in [`vite.config.js`](../../vite.config.js)) | `transformIndexHtml`: writes the list into `index.html`'s `<!-- luminati:launcher -->` placeholder from `public/campaigns/<c>/campaign.json` (and each `levels/` folder) and `public/levels/*.json` — on the dev server on every request, in a build once (baked into `dist/index.html`). Only `luminati-campaign` / `luminati-level` files are listed; any other is named in a *Not listed* note. Checked by `sandbox/launcher.json`. |
+| Generators | [`tools/make-starfall-vale.mjs`](../../tools/make-starfall-vale.mjs), [`tools/make-sample-hamlet.mjs`](../../tools/make-sample-hamlet.mjs) | Node scripts that write level JSON with the engine's DOM-free level modules. The two `make-*` generators are deterministic: re-run them instead of hand-editing `starfall-vale.json` / `sample-hamlet.json`. `emberfall.json` was converted once from the old hand-coded demo and is itself the source of truth. |
 | Check harness | [`tools/check.mjs`](../../tools/check.mjs) (`npm run check`) | Starts its own Vite server, drives headless Chrome on the real GPU, writes screenshots + `report.json` to `.check/<out>/`. The project's "test runner". See [../development/TESTING_AND_VERIFICATION.md](../development/TESTING_AND_VERIFICATION.md). |
 
 The production build (`npm run build`, [`vite.config.js`](../../vite.config.js)) is a multi-page
-build of `index.html` and `editor.html` into `dist/`; `public/levels/` is copied as-is, so every
-project level stays playable with `?level=<name>`. Saving to the project folder needs the dev
-server.
+build of three inputs — `index.html` (the launcher, its list baked in at build time), `game.html`
+(the game; entry chunk `assets/game-*.js`) and `editor.html` — into `dist/`; `public/levels/` is
+copied as-is, so every project level stays playable with `game.html?level=<name>`. Its URLs are relative (`base: './'`), so the
+same `dist/` works at the site root or under any sub-path
+([GETTING_STARTED §5](../user/GETTING_STARTED.md#5-build-and-deploy)). Saving to the project folder
+needs the dev server.
 
 ---
 
@@ -108,7 +122,7 @@ server.
 flowchart TB
   subgraph L3["Applications"]
     direction LR
-    GAME["src/main.js + src/demo/"]
+    GAME["src/main.js + src/game/"]
     EDITOR["src/editor/"]
   end
   subgraph L2["Engine (src/engine/)"]
@@ -135,13 +149,13 @@ The rules, all verified against the current imports:
 
 | Rule | Detail |
 | --- | --- |
-| **The engine never imports the game or the editor.** | No file under `src/engine/` imports from `src/demo/` or `src/editor/`. New engine features must not depend on demo tunables — pass them in as options (the way `LightingSystem` takes `sunPath`, `keyframes`). |
+| **The engine never imports the game or the editor.** | No file under `src/engine/` imports from `src/game/` or `src/editor/`. New engine features must not depend on demo tunables — pass them in as options (the way `LightingSystem` takes `sunPath`, `keyframes`). |
 | The game imports the engine. | Mostly through the barrel (`../engine/index.js`), plus deep imports: `level/ObjectBuilder.js`, `level/ObjectCatalog.js`, `level/LevelMap.js`, `world/ShadowCasters.js` and `world/SpatialSplit.js` are not in the barrel; `lighting/LightPool.js` and `sprite/BlobBatch.js` are, but `World.js` / `Game.js` import them by path. [`src/main.js`](../../src/main.js) imports `level/LevelStorage.js` and `level/LevelFormat.js`. |
 | The editor imports the engine by deep paths … | e.g. `engine/core/Engine.js`, `engine/level/LevelFormat.js`, `engine/world/ShadowCasters.js`. |
-| … and five demo modules on purpose. | [`viewport3d/Viewport3D.js`](../../src/editor/viewport3d/Viewport3D.js) and [`ActorPreview.js`](../../src/editor/viewport3d/ActorPreview.js) import [`src/demo/config.js`](../../src/demo/config.js) (camera framing, sun / moon paths, keyframe overrides, sprite look) so the preview matches the game; [`SceneryPreview.js`](../../src/editor/viewport3d/SceneryPreview.js) and [`FoliagePreview.js`](../../src/editor/viewport3d/FoliagePreview.js) reuse [`src/demo/Scenery.js`](../../src/demo/Scenery.js) and [`src/demo/GroundDetail.js`](../../src/demo/GroundDetail.js); `Viewport3D` applies the level's weather with [`src/demo/WeatherLook.js`](../../src/demo/WeatherLook.js), and the terrain, scenery, foliage, prop and ghost previews install the snow patch of [`src/demo/SnowCover.js`](../../src/demo/SnowCover.js). The game never imports the editor. |
-| Node tools import only DOM-free engine modules. | `tools/*.mjs` import [`level/LevelFormat.js`](../../src/engine/level/LevelFormat.js), [`level/ObjectCatalog.js`](../../src/engine/level/ObjectCatalog.js) and [`utils/math.js`](../../src/engine/utils/math.js) (`convert-emberfall.mjs` also `world/props/SmallProps.js`). Keep these modules free of `document` / WebGL use. [`ObjectBuilder.js`](../../src/engine/level/ObjectBuilder.js) is not DOM-free (it builds meshes). |
+| … and five game modules on purpose. | [`viewport3d/Viewport3D.js`](../../src/editor/viewport3d/Viewport3D.js) and [`ActorPreview.js`](../../src/editor/viewport3d/ActorPreview.js) import [`src/game/config.js`](../../src/game/config.js) (camera framing, sun / moon paths, keyframe overrides, sprite look) so the preview matches the game; [`SceneryPreview.js`](../../src/editor/viewport3d/SceneryPreview.js) and [`FoliagePreview.js`](../../src/editor/viewport3d/FoliagePreview.js) reuse [`src/game/Scenery.js`](../../src/game/Scenery.js) and [`src/game/GroundDetail.js`](../../src/game/GroundDetail.js); `Viewport3D` applies the level's weather with [`src/game/WeatherLook.js`](../../src/game/WeatherLook.js), and the terrain, scenery, foliage, prop and ghost previews install the snow patch of [`src/game/SnowCover.js`](../../src/game/SnowCover.js). The game never imports the editor. |
+| Node tools import only DOM-free engine modules. | `tools/*.mjs` import [`level/LevelFormat.js`](../../src/engine/level/LevelFormat.js), [`level/ObjectCatalog.js`](../../src/engine/level/ObjectCatalog.js) and [`utils/math.js`](../../src/engine/utils/math.js). Keep these modules free of `document` / WebGL use. [`ObjectBuilder.js`](../../src/engine/level/ObjectBuilder.js) is not DOM-free (it builds meshes). |
 | Sandboxes may import anything. | They are test pages; nothing imports them. |
-| No side effects on import … | … except the UI stylesheet and web-font imports under `src/engine/ui/` (`UI.js` imports the `@fontsource` CSS, every UI file imports `ui.css`; `DebugPanel.js` imports `lil-gui`). Importing the barrel therefore pulls in the UI CSS. |
+| No side effects on import … | … except the UI stylesheets under `src/engine/ui/` (`UI.js` imports `ui.css` and `layout/base.css`, every component its own stylesheet; `DebugPanel.js` imports `lil-gui`). The fonts are not imported: `FontLoader.js` loads them at run time, Google Fonts first, else the `@fontsource` CSS through dynamic `import()`s Vite emits into `dist/`. Importing the barrel therefore pulls in the UI CSS. |
 
 Inside the engine the directory-level imports are (imports within the same directory and of
 `three` omitted; `utils` = `utils/math.js`):
@@ -183,15 +197,15 @@ map.
 | **fx** → [modules/fx.md](modules/fx.md) | `Particles`, `GodRays` | Stateless GPU particle emitters and bursts; additive light shafts. |
 | **lighting** → [modules/lighting.md](modules/lighting.md) | `LightingSystem`, `LightPool`, `Sky` | 24 h keyframed palette, sun / moon, fog, exposure, point lights and emissives; `LightPool` shares a fixed set of at most 12 point lights among any number of light sources; the sky dome. |
 | **world** → [modules/world.md](modules/world.md) | `TileMap`, `Water`, `WaterShore`, `Props` (`PropFactory`) + `props/*`, `SpatialSplit`, `ShadowCasters` | Terrain from the legend / tiles / heights format, collision and walk queries; water and waterfalls; every procedural prop; big-level batching helpers. |
-| **level** → [modules/level.md](modules/level.md) | `LevelFormat`, `ObjectCatalog`, `ObjectBuilder`, `LevelStorage`, `LevelMap` | The `lumina-level` format, the object catalog, building level objects into props, storage (project / browser / file), the painted minimap image. |
-| **ui** → [modules/ui.md](modules/ui.md) | `UI`, `DialogBox`, `Banner`, `TitleScreen`, `HUD`, `Minimap` / `WorldMap`, `InteractPrompt`, `Fader`, `DebugPanel`; combat levels: `CombatHUD`, `BossBar`, `WorldLabels`, `Announcer`, `DeathScreen` | DOM overlay with the Octopath-style look. |
+| **level** → [modules/level.md](modules/level.md) | `LevelFormat`, `ObjectCatalog`, `ObjectBuilder`, `LevelStorage`, `LevelMap` | The `luminati-level` format, the object catalog, building level objects into props, storage (project / browser / file), the painted minimap image. |
+| **ui** → [modules/ui.md](modules/ui.md) | `UI`, `DialogBox`, `Banner`, `TitleScreen`, `HUD`, `Minimap` / `WorldMap`, `InteractPrompt`, `Fader`, `DebugPanel`; combat levels: `CombatHUD`, `BossBar`, `WorldLabels`, `Announcer`, `DeathScreen` | DOM overlay in the pixel-art look of mockup *G · Gilded Today* ([PIXEL_UI.md](../specs/PIXEL_UI.md)). |
 
-The game layer (`src/demo/`) adds what is not engine-generic: `Game` (wiring and flow), `World`
+The game layer (`src/game/`) adds what is not engine-generic: `Game` (wiring and flow), `World`
 (level → scene), `Player`, `Npc`, `Critters`, `Weather` (with `WeatherLook`, the weather look it
 shares with the editor preview), `AudioDirector`, `Scenery` (outer
 world, tree merging), `GroundDetail` (foliage fields), `SnowCover`, `AtmosphereFog`,
 `ResolutionGovernor`, `DebugControls`, `dialogue.js`, `config.js`, `levels.js`, and — on levels
-with enemies only — the ARPG combat in `src/demo/combat/` (`CombatSystem` and the player kit,
+with enemies only — the ARPG combat in `src/game/combat/` (`CombatSystem` and the player kit,
 `Enemy` and its `ai/*` brains; contract [COMBAT.md](../contracts/COMBAT.md)). See [GAME.md](GAME.md).
 
 ---
@@ -222,7 +236,7 @@ keeps running. `Engine.step(realDt)` advances one frame by hand (tests).
 
 ### 4.2 What the game registers
 
-[`Game.init`](../../src/demo/Game.js) wires the frame like this:
+[`Game.init`](../../src/game/Game.js) wires the frame like this:
 
 | Hook | Order | What runs |
 | --- | --- | --- |
@@ -254,7 +268,7 @@ keeps running. `Engine.step(realDt)` advances one frame by hand (tests).
 8. `world.update(dt, { focus, camera })`: animated props (windmill sails, waterfalls), water,
    the `LightPool` re-ranking, big-level particle culling.
 9. `godRays.update`, waterfall spray bursts, `particles.update(dt, camera)`,
-   `resolution.update(dt)` (the [`ResolutionGovernor`](../../src/demo/ResolutionGovernor.js)).
+   `resolution.update(dt)` (the [`ResolutionGovernor`](../../src/game/ResolutionGovernor.js)).
 10. HUD clock, region plate and arrival banners, minimap / world map, `audioDirector.update`.
 
 ```mermaid
@@ -313,7 +327,7 @@ frame updates every material. Never copy `.value` into a material.
 | `uFogColor` | (0.6, 0.65, 0.75) | `LightingSystem._apply` (= sky horizon colour); `Weather.update` and the editor preview override it under an overcast sky | Water (sky reflection) |
 
 Other shared uniform objects follow the same pattern: `snowCover` in
-[`src/demo/SnowCover.js`](../../src/demo/SnowCover.js) (0 … 1 settled snow, chained into ground,
+[`src/game/SnowCover.js`](../../src/game/SnowCover.js) (0 … 1 settled snow, chained into ground,
 foliage and roof materials), `TileMap._bounceUniform` (`tileMap.wallBounce`), and the CoC uniform
 set PostFX shares across its DOF materials (`createCocUniforms`).
 
@@ -333,7 +347,7 @@ section is about how that data becomes a scene.
 ```mermaid
 flowchart LR
   Q["?level= query"] --> R{"resolveLevelFromURL"}
-  R -- "local:{slot}" --> LL["loadLocalLevel(slot)<br/>localStorage lumina.level.{slot}"]
+  R -- "local:{slot}" --> LL["loadLocalLevel(slot)<br/>localStorage luminati.level.{slot}"]
   R -- "{name}" --> PL["loadProjectLevel(name)<br/>fetch BASE_URL + levels/{slug}.json"]
   R -- "no query: null" --> DEF["src/main.js default:<br/>loadProjectLevel('emberfall')"]
   LL & PL & DEF --> PARSE["parseLevel → normalizeLevel<br/>(fills defaults, fixes chars / ids,<br/>returns warnings)"]
@@ -343,8 +357,9 @@ flowchart LR
 
 - [`LevelStorage.loadProjectLevel`](../../src/engine/level/LevelStorage.js) rejects an HTML
   answer (the dev server serves `index.html` for unknown paths); [`src/main.js`](../../src/main.js)
-  turns load failures into a message on the loading screen with links to the editor and (unless
-  Emberfall itself failed) to Emberfall — never a blank page.
+  turns load failures into a message on the loading screen with links to Emberfall (`game.html`,
+  when a `?level=` was asked for), Cinderwatch Pass (`game.html?level=cinderwatch-pass`, unless that
+  failed) and the editor (`editor.html`) — never a blank page.
 - [`normalizeLevel`](../../src/engine/level/LevelFormat.js) never throws for recoverable
   problems: sizes are clamped to 8…128, rows padded / truncated, unknown tile chars become grass,
   unknown object types are dropped, duplicate or reserved (`spawn`) ids are renamed, unknown
@@ -355,7 +370,7 @@ flowchart LR
 
 ### 6.2 `World.build` steps
 
-[`World.build`](../../src/demo/World.js) is async so the loading screen keeps animating; each
+[`World.build`](../../src/game/World.js) is async so the loading screen keeps animating; each
 step awaits a `setTimeout(0)` tick. Per-step CPU milliseconds land in `world.stats.phases`. The
 fraction is what `World.build` reports; `Game.init` scales it by 0.9 for the loading bar (the
 last 10 % are the villagers, `'Waking the villagers'` at 0.92, and the warm-up, `'Warming up the
@@ -402,7 +417,7 @@ flowchart LR
   BO -- "propResult" --> MS["PropFactory.mergeStatic<br/>(trees: Scenery.mergeTrees)"]
 ```
 
-- Light descriptors carry `priority` from `LIGHT_PRIORITY` (`campfire` 0, `wallTorch` 1,
+- Light descriptors carry `priority` from `LIGHT_PRIORITY` (`campfire` / `hearth` 0, `wallTorch` 1,
   `light` 1, `lamppost` 2, `house` 3; houses only emit their door lantern when `obj.light` is
   set). `_wireLights` sorts by priority, then level order, and sanitises hand-edited numbers
   (`sanitizeLightDescriptors` in [`LightPool.js`](../../src/engine/lighting/LightPool.js), which the
@@ -413,7 +428,7 @@ flowchart LR
 - `light` and `waterfall` objects have no `propResult` (nothing to merge); trees are merged
   separately with the border / outer forest.
 - The game (not `World`) turns the remaining object kinds into behaviour: `npc` → `Npc`
-  (`script` → a conversation in [`dialogue.js`](../../src/demo/dialogue.js), else the object's
+  (`script` → a conversation in [`dialogue.js`](../../src/game/dialogue.js), else the object's
   `dialogue` + built-in `action`), `critters` → `Critters`, `region` → HUD location plate, arrival
   banners and world-map names.
 
@@ -458,7 +473,7 @@ flowchart LR
 - **Saving.** `LevelStorage` writes `serializeLevel` output (byte-stable: open + save unchanged
   leaves `git diff` empty) to the project (`/api/levels`, dev server only), browser storage or a
   download. Autosave every 20 s to the `__autosave__` slot; play-test stores the level in
-  `__playtest__` and opens `index.html?level=local:__playtest__&autostart=1`.
+  `__playtest__` and opens `game.html?level=local:__playtest__&autostart=1`.
 
 ---
 
@@ -475,7 +490,7 @@ flowchart LR
 | Texel density | `PPU = 16` texels per world unit for world textures **and** sprites; NEAREST magnification. Characters are 32 × 32 px frames ≈ 2 units tall. | `PPU`, `PixelCanvas#toTexture` |
 | Camera | Position = `focusPoint + (sin yaw · cos pitch, sin pitch, cos yaw · cos pitch) · distance`. Yaw 0 = camera on the +Z side looking toward −Z, so screen-down = +Z and a sprite facing `down` faces the camera. `CameraRig` options take degrees; runtime `yaw` / `pitch` are radians. | [`CameraRig.js`](../../src/engine/core/CameraRig.js) |
 | Sprite directions | `DIRECTIONS = ['down', 'left', 'right', 'up']` = +Z, −X, +X, −Z; sheet rows in that order. | `constants.js` |
-| Sun / moon azimuth | Azimuth φ ↦ direction `(sin φ, cos φ)` on XZ; φ = 0 is +Z (the camera side). Demo golden hour (17.2 h): sun at φ = −112°, ≈ 25° up (behind-left of the default view), so shadows fall toward the lower right. | `LightingSystem` `sunPath`, [`src/demo/config.js`](../../src/demo/config.js) `SUN_PATH` |
+| Sun / moon azimuth | Azimuth φ ↦ direction `(sin φ, cos φ)` on XZ; φ = 0 is +Z (the camera side). Demo golden hour (17.2 h): sun at φ = −112°, ≈ 25° up (behind-left of the default view), so shadows fall toward the lower right. | `LightingSystem` `sunPath`, [`src/game/config.js`](../../src/game/config.js) `SUN_PATH` |
 | Time of day | Hours in `[0, 24)`; `LightingSystem.timeOfDay`. The game clock runs at `TIME_SPEED = 1/90` h per real second (one game hour ≈ 90 s). | `config.js` |
 | Light intensity | Physically based (three r155+): point lights in candela with `decay = 2`. `addPointLight` and `light` objects default to intensity 8, `distance` 8; the props' own lights: lamppost 12 / 9, wall torch 7 / 7, campfire 14 / 10, house door lantern 6 / 7. | `LightingSystem.addPointLight`, [`props/LightProps.js`](../../src/engine/world/props/LightProps.js), [`props/House.js`](../../src/engine/world/props/House.js) |
 | Screen | Harness coordinates and `pointer` are CSS px; the drawing buffer is CSS px × `engine.pixelRatio` (`min(devicePixelRatio, maxPixelRatio) × renderScale`). | `Engine._resize` |
@@ -509,7 +524,7 @@ sequenceDiagram
   participant G as Game
   participant W as World
   participant R as renderer / PostFX
-  M->>M: exposeHook() (window.__lumina), progress "Reading the map"
+  M->>M: exposeHook() (window.__luminati), progress "Reading the map"
   M->>S: resolveLevelFromURL / loadProjectLevel('emberfall')
   S-->>M: { level (normalised), warnings, source }
   M->>M: console warnings, validateLevel, set titles
@@ -523,12 +538,12 @@ sequenceDiagram
   G->>G: level weather, window.__game, loadStats
   M->>G: start(): engine.start(), 5 warm frames (rain + snow on), title or enterGameplay
   M->>G: await warmedUp
-  M->>M: __lumina.loadMs, fade out the loading screen
+  M->>M: __luminati.loadMs, fade out the loading screen
 ```
 
 `Game.init` records wall-clock milliseconds per phase in `game.loadStats` (`engine`, `world`,
-`characters`, `map`, `compile`); `World.build` records CPU milliseconds per step in
-`world.stats.phases`; `window.__lumina.loadMs` is navigation start → first gameplay frame. The
+`characters`, `map`, `compile`; `shadowVariants` counts the shadow primer's proxies); `World.build` records CPU milliseconds per step in
+`world.stats.phases`; `window.__luminati.loadMs` is navigation start → first gameplay frame. The
 warm-up exists so no shader compiles during play — why and how is in
 [RENDER_PIPELINE.md §9](RENDER_PIPELINE.md#9-warm-up-no-shader-compiles-during-play).
 
@@ -563,15 +578,16 @@ build and background shader warm-up. See [EDITOR.md](EDITOR.md).
 | Render resolution | `engine.renderScale`, `engine.maxPixelRatio` | Driven by `ResolutionGovernor` unless `manual`. |
 | Per-frame shared values | `globalUniforms` | [§5](#5-shared-global-uniforms). |
 | Game flow | `game.mode` (`'loading'` / `'title'` / `'play'`), `busy`, `photoMode`, `mapOpen`, `inventory`, `visits` | Not persisted. |
-| Browser storage | `lumina.level.<slot>` (levels, incl. `__playtest__`, `__autosave__`, `__recovered_<id>__`), `lumina.levels` (slot index), `lumina.editor.prefs`, `lumina.editor.autosave`, `lumina.editor.recovered` | [`LevelStorage.js`](../../src/engine/level/LevelStorage.js), [`autosave.js`](../../src/editor/autosave.js). |
+| Browser storage | `luminati.level.<slot>` (levels, incl. `__playtest__`, `__autosave__`, `__recovered_<id>__`), `luminati.levels` (slot index), `luminati.editor.prefs`, `luminati.editor.autosave`, `luminati.editor.recovered`, `luminati.campaign.<name>` (saved games), `luminati.lang`, `luminati.fonts` | [`LevelStorage.js`](../../src/engine/level/LevelStorage.js), [`autosave.js`](../../src/editor/autosave.js). |
 | Project files | `public/levels/*.json` | Written by the editor through `/api/levels` or by the generators. |
-| Automation handles | `window.__game`, `window.__lumina`, `window.__engine` (with `?debug` or `?autostart`), `window.__editor` | [../specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md). |
+| Automation handles | `window.__game`, `window.__luminati`, `window.__engine` (with `?debug` or `?autostart`), `window.__editor` | [../specs/AUTOMATION_API.md](../specs/AUTOMATION_API.md). |
 
 ---
 
 ## 12. Architectural invariants
 
-These break easily and silently; each has a reason recorded in [../history/DECISIONS.md](../history/DECISIONS.md).
+These invariants prevent subtle integration regressions. The linked module references explain
+their implementation and trade-offs.
 
 - **The point-light count is fixed before the first frame and never changes** — at most 12 (the
   game: one per light descriptor up to 12, else 12 pooled; the editor: always 12, the engine

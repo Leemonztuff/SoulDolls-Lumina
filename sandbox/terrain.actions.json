@@ -6,13 +6,13 @@
     "eval": "JSON.stringify(window.__terrain.stats())"
   },
   {
-    "eval": "window.__terrain.setClock(3.0); window.__terrain.setView('hd2d'); 'ok'"
+    "eval": "window.__terrain.setClock(3.0); window.__terrain.setView('diorama'); 'ok'"
   },
   {
     "wait": 400
   },
   {
-    "shot": "hd2d_day"
+    "shot": "diorama_day"
   },
   {
     "eval": "window.__terrain.setView('overview'); 'ok'"
@@ -69,22 +69,22 @@
     "shot": "terrace_day"
   },
   {
-    "eval": "window.__terrain.setTime('golden'); window.__terrain.setView('hd2d'); 'ok'"
+    "eval": "window.__terrain.setTime('golden'); window.__terrain.setView('diorama'); 'ok'"
   },
   {
     "wait": 400
   },
   {
-    "shot": "hd2d_golden"
+    "shot": "diorama_golden"
   },
   {
-    "eval": "window.__terrain.setTime('night'); window.__terrain.setView('hd2d'); 'ok'"
+    "eval": "window.__terrain.setTime('night'); window.__terrain.setView('diorama'); 'ok'"
   },
   {
     "wait": 400
   },
   {
-    "shot": "hd2d_night"
+    "shot": "diorama_night"
   },
   {
     "eval": "window.__terrain.setTime('day'); window.__terrain.setCamera({ focus: [15, 0.9, 9.5], distance: 22, yaw: -38, pitch: 30 }); 'ok'"

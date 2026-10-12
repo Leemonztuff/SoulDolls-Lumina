@@ -10,29 +10,49 @@
  *     kind's Count is 1 (the boss spawns alone): its field stops at 1, and an edit that makes a
  *     group the boss (Kind) or sets its Count clamps it (`clampBossCount`);
  *   - nothing: level summary, validation, quick environment settings and level actions.
- * All edits go through EditorState (undoable); slider drags are one undo step.
+ * All edits go through EditorState (undoable); slider drags are one undo step. Clearing an optional
+ * field (one the type's catalog `defaults` lack: `when`, `unless`, `talk`, `actor`, `flag`, an
+ * event's `label` / `if` / `at` / `group` …) removes its key instead of writing it blank; typed
+ * again, the key goes back to its place in the object (the file's key order). A story condition
+ * field (`when`, `unless`, an exit's `requires`, an event's `if` — `StoryChecks.conditionFields`)
+ * shows under it what *Check for problems* says about that field of the object, with its text as
+ * typed (../story.js `conditionIssues`). Text keys (docs/specs/I18N.md §4.10) are never edited
+ * here — EditorState carries them through every edit, and a script field holds and compares its
+ * script without the lines' `#line:` tags — but one object's translatable fields show their keys
+ * read-only under them (./keyView.js: a monospace line per text with a Copy button; a field of
+ * several texts behind a "Text keys (n)" toggle), and *Find by text key…* focuses the text that
+ * holds one (`showTextKey`).
  */
 import { h, icon, clear, fmt } from './dom.js';
 import { createFieldEditor, numberControl, selectControl, textControl } from './fields.js';
 import { glyphBadge } from './ToolOptions.js';
 import { ICONS } from '../icons.js';
 import {
-  OBJECT_TYPES, SPAWN_MARKER, ENEMY_INFO, getField, setField, enemyStartPoints, levelHasCombat,
+  OBJECT_TYPES, SPAWN_MARKER, ENEMY_INFO, getField, setField, enemyStartPoints, levelHasCombat, dialogueToText,
 } from '../../engine/level/ObjectCatalog.js';
 import { validateLevel, levelStats, tileDef, onBridgeDeck } from '../../engine/level/LevelFormat.js';
 import { isWalkableAt } from '../tools/SpawnTool.js';
 import { friendlyProblem } from './dialogs.js';
 import { gateEdgeGap, GATE_EDGE_TOLERANCE, isBossGroup, clampBossCount, bossExtraCount } from '../enemyGroups.js';
 import { ownValue } from '../../engine/utils/own.js';
+import { conditionRuleOf, conditionIssues, onStoryContext } from '../story.js';
+import { isRoom } from '../rooms.js';
+import { stripScriptTags } from '../../engine/i18n/TextKeys.js';
+import { textRows, textFieldsOf } from '../textKeys.js';
+import { fillKeyView, copyText } from './keyView.js';
+import { selectLine } from './scriptEditor.js';
 
-/** @import { EditorState } from '../EditorState.js' */
+/**
+ * @import { EditorState } from '../EditorState.js'
+ * @import { TextRow } from '../textKeys.js'
+ */
 
 const LIGHT_TYPES = new Set(['lamppost', 'wallTorch', 'campfire', 'light']);
 const WEATHER = [{ value: 'clear', label: 'Clear' }, { value: 'rain', label: 'Rain' }, { value: 'snow', label: 'Snow' }];
 
-/** Number of objects that request a point light. */
+/** Number of objects that request a point light (a hearth while its fire burns, `opts.lit`). */
 export function countLights(level) {
-  return level.objects.filter((o) => LIGHT_TYPES.has(o.type) || (o.type === 'house' && o.light)).length;
+  return level.objects.filter((o) => LIGHT_TYPES.has(o.type) || (o.type === 'house' && o.light) || (o.type === 'hearth' && o.opts?.lit !== false)).length;
 }
 
 /** A new boss group's arena and gate (relative to the group; COMBAT.md §14.1): 18 × 18 u, gate south. */
@@ -77,15 +97,26 @@ export class Inspector {
     this.bindings = [];
     this._key = '';
     this._raf = 0;
+    /**
+     * Where optional keys that were cleared sat in their object: `${id}\u0000${key}` → the key
+     * before it ('' = the first). Typed again, a key goes back there, so clearing and retyping a
+     * value leaves the saved file as it was.
+     * @type {Map<string, string>}
+     */
+    this._clearedKeys = new Map();
+    /** The fields (by key) whose "Text keys (n)" list is open: it stays open from object to object. */
+    this._keysOpen = new Set();
     state.on('selection', () => this.render());
     state.on('change', (info) => this._onChange(info));
     // the weather hint depends on the atmosphere preview
     state.on('view', () => { for (const b of this.bindings) if (b.view) b.update(); });
+    // a campaign's story and level files arrived: the condition hints check against them
+    onStoryContext(() => this.refresh());
     this.render();
   }
 
   _onChange(info) {
-    if (info.source === 'load') { this.render(); return; }
+    if (info.source === 'load') { this._clearedKeys.clear(); this.render(); return; }
     cancelAnimationFrame(this._raf);
     this._raf = requestAnimationFrame(() => this.refresh());
   }
@@ -234,10 +265,13 @@ export class Inspector {
     // by dragging, so the transform follows
     const rest = fields.filter((f) => f.key !== 'rotation');
     const boss = isBossGroup(o);
+    // (a translatable field: its texts' keys under it, read-only)
+    const keyed = textFieldsOf(o.type) ?? {};
     const props = rest.map((f) => (boss && f.key === 'count'
       // the boss spawns alone (enemyStartPoints takes one): the field stops at 1
       ? [this._fieldEditor({ ...f, max: 1, slider: false }, [id]), this._bossCountHint(id)]
-      : this._fieldEditor(f, [id])));
+      : Object.hasOwn(keyed, f.key) ? [this._fieldEditor(f, [id]), this._keyView(id, f.key, keyed[f.key] !== 'text')]
+        : this._fieldEditor(f, [id])));
     if (rest.length) this.body.appendChild(this._section('Properties', props));
     this.body.appendChild(this._section('Transform', tf));
     if (!rest.length) this.body.appendChild(h('p', { class: 'le-hint le-pad' }, 'This object has no other properties.'));
@@ -334,7 +368,8 @@ export class Inspector {
   /** Field editor for one or several objects (mixed values). */
   _fieldEditor(field, ids) {
     const st = this.state;
-    const values = () => ids.map((i) => st.getObject(i)).filter(Boolean).map((ob) => getField(ob, field.key));
+    // (a script without its key tags: two objects with the same lines show them, not "mixed")
+    const values = () => ids.map((i) => st.getObject(i)).filter(Boolean).map((ob) => (field.type === 'script' ? stripScriptTags(getField(ob, field.key)) : getField(ob, field.key)));
     const isMixed = (vals) => vals.some((v) => JSON.stringify(v) !== JSON.stringify(vals[0]));
     let live = false;
     const apply = (v, isLive = false) => {
@@ -345,20 +380,127 @@ export class Inspector {
       const clamp = field.key === 'kind' || field.key === 'count';
       for (const i of ids) {
         st.updateObject(i, (ob) => {
-          setField(ob, field.key, clone(v));
+          const slot = `${ob.id}\u0000${field.key}`;
+          // an optional field (no catalog default: when, unless, talk, actor, flag …) cleared by
+          // the author leaves the object instead of being written blank — an optional checkbox
+          // (an event's `background`) unticked too: absent reads as false
+          if ((isBlankValue(v) || (field.type === 'bool' && v === false)) && !hasDefault(ob.type, field.key)) {
+            if (Object.hasOwn(ob, field.key)) {
+              const keys = Object.keys(ob);
+              this._clearedKeys.set(slot, keys[keys.indexOf(field.key) - 1] ?? '');
+            }
+            deleteField(ob, field.key);
+          } else {
+            // (typed again: back where it was cleared)
+            const after = Object.hasOwn(ob, field.key) ? undefined : this._clearedKeys.get(slot);
+            setField(ob, field.key, clone(v));
+            if (after !== undefined) {
+              moveKeyAfter(ob, field.key, after);
+              this._clearedKeys.delete(slot);
+            }
+          }
           if (clamp) clampBossCount(ob);
         }, label);
       }
       if (!isLive && !live) st.commit();
     };
     const vals = values();
-    const ed = createFieldEditor(field, {
+    // a story condition (`when`, `unless`, an exit's `requires`, an event's `if`): read by the
+    // checks' own rule for the field, its hint says what *Check for problems* says about it
+    const type = st.getObject(ids[0])?.type ?? '';
+    const rule = conditionRuleOf(type, field.key);
+    // (the hint reads the object as it is now — an event's trigger, its type —, with the field's
+    // text as typed; several objects: only what their type and the text say)
+    const hintObject = () => (ids.length === 1 && st.getObject(ids[0])) || { type };
+    const ed = createFieldEditor(rule && field.type === 'text' ? { ...field, type: 'condition' } : field, {
       value: vals[0], mixed: isMixed(vals), apply,
       begin: () => { live = true; st.begin(`Edit ${field.label}`); },
       end: () => { if (live) { live = false; st.commit(); } },
+      rule: rule ?? undefined,
+      check: rule ? (t) => conditionIssues(st, hintObject(), field.key, t).map((i) => i.msg) : undefined,
     });
     this._bind(() => { const vv = values(); if (vv.length) ed.set(vv[0], isMixed(vv)); });
+    ed.el.dataset.field = field.key;
     return ed.el;
+  }
+
+  /**
+   * The read-only keys of one object's translatable field, under it (./keyView.js): refreshed with
+   * the object (an edit that gives a text a new key shows it). Never writes.
+   * @param {string} id
+   * @param {string} field
+   * @param {boolean} pages the field holds pages or lines (a toggle opens their list)
+   */
+  _keyView(id, field, pages) {
+    const st = this.state;
+    const el = h('div', { class: 'le-text-keys', dataset: { field } });
+    let shown = '';
+    const upd = () => {
+      const o = st.getObject(id);
+      const rows = o ? textRows(o).filter((r) => r.field === field) : [];
+      const sig = JSON.stringify(rows.map((r) => [r.key, r.page, r.choice, r.line, r.text]));
+      if (sig === shown) return;
+      shown = sig;
+      fillKeyView(el, rows, {
+        pages, open: this._keysOpen.has(field),
+        onToggle: (open) => { if (open) this._keysOpen.add(field); else this._keysOpen.delete(field); },
+        onCopy: (key) => { copyText(key).then((ok) => st.notify(ok ? `Copied the text key ${key}` : `Text key ${key} (the clipboard is not available: select it to copy)`)); },
+      });
+    };
+    upd();
+    this._bind(upd);
+    return el;
+  }
+
+  /**
+   * Show the text that holds a key in the one selected object's inspector (Edit › *Find by text
+   * key…*): its field scrolled into view, the text selected in it — a script's line, a page of a
+   * `lines` or dialogue field (the page of a choice), a one-string field's text — and its key line
+   * shown (its list opened) and marked. Returns whether the field was found.
+   * @param {TextRow} row
+   * @returns {boolean}
+   */
+  showTextKey(row) {
+    const o = this.state.selectedObjects.length === 1 ? this.state.selectedObjects[0] : null;
+    const field = [...this.body.querySelectorAll('.le-field')].find((x) => /** @type {HTMLElement} */ (x).dataset.field === row.field);
+    const view = [...this.body.querySelectorAll('.le-text-keys')].find((x) => /** @type {HTMLElement} */ (x).dataset.field === row.field);
+    const input = /** @type {HTMLTextAreaElement|HTMLInputElement|null} */ (field?.querySelector('textarea, input') ?? null);
+    if (!o || !field || !input) return false;
+    // the key line: its list opened, the line marked
+    const toggle = /** @type {HTMLButtonElement|null} */ (view?.querySelector('.le-text-keys-toggle') ?? null);
+    if (toggle && !toggle.classList.contains('is-open')) toggle.click();
+    /** @type {HTMLElement|null} */
+    let hitLine = null;
+    for (const l of view?.querySelectorAll('.le-text-key') ?? []) {
+      const on = /** @type {HTMLElement} */ (l).dataset.key === row.key;
+      l.classList.toggle('is-hit', on);
+      if (on && !hitLine) hitLine = /** @type {HTMLElement} */ (l);
+    }
+    field.scrollIntoView({ block: 'nearest' });
+    // (the key line too, when it fits in the panel with the field)
+    if (hitLine && hitLine.getBoundingClientRect().bottom - field.getBoundingClientRect().top <= this.body.clientHeight) hitLine.scrollIntoView({ block: 'nearest' });
+    if (row.line != null && input instanceof HTMLTextAreaElement) {
+      selectLine(input, row.line);
+      return true;
+    }
+    if (row.page != null && input instanceof HTMLTextAreaElement) {
+      // the page's place in the field's text: its pages joined by blank lines (linesToText /
+      // dialogueToText)
+      const v = getField(o, row.field);
+      const list = Array.isArray(v) ? v : [v];
+      const pageText = (p) => (row.field === 'dialogue' ? dialogueToText([p]) : String(p ?? ''));
+      let a = 0;
+      for (let k = 0; k < row.page && k < list.length; k++) a += pageText(list[k]).length + 2;
+      const b = Math.min(input.value.length, a + pageText(list[row.page]).length);
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(Math.min(a, b), b);
+      const lh = parseFloat(getComputedStyle(input).lineHeight) || 18;
+      input.scrollTop = Math.max(0, (input.value.slice(0, a).split('\n').length - 1) * lh - input.clientHeight / 3);
+      return true;
+    }
+    input.focus({ preventScroll: true });
+    input.select();
+    return true;
   }
 
   // ------------------------------------------------------------------------------ several
@@ -447,6 +589,8 @@ export class Inspector {
       const lv = L();
       title.textContent = lv.name || 'Untitled';
       sub.textContent = lv.subtitle || (lv.author ? `by ${lv.author}` : 'No subtitle');
+      // a room (environment.interior): said under the name
+      if (isRoom(lv.environment)) sub.textContent += ' · a room';
       const s = levelStats(lv);
       const lights = countLights(lv);
       const npcs = s.counts.npc ?? 0;
@@ -500,6 +644,12 @@ export class Inspector {
     const wHint = h('p', { class: 'le-hint le-weather-hint' });
     const updHint = () => {
       const w = env().weather;
+      // a room shows no weather (the game's LevelLook.shownWeather; the 3D preview follows it)
+      if (isRoom(env())) {
+        wHint.hidden = w !== 'rain' && w !== 'snow';
+        if (!wHint.hidden) clear(wHint).append(`This level is a room: the game shows no ${w} inside, and neither does the 3D view (Level settings › Environment › Interior).`);
+        return;
+      }
       const on = (w === 'rain' || w === 'snow') && !st.view.atmosphere;
       wHint.hidden = !on;
       if (!on) return;
@@ -514,7 +664,7 @@ export class Inspector {
       todHint,
       h('div', { class: 'le-field' }, h('label', { class: 'le-field-label' }, 'Weather'), h('div', { class: 'le-field-control' }, weather.el)),
       wHint,
-      h('div', { class: 'le-field', title: 'World height of the water surface' }, h('label', { class: 'le-field-label' }, 'Water level'), h('div', { class: 'le-field-control' }, wl.el)),
+      h('div', { class: 'le-field', title: 'World height of the water surface (height level × 0.5)' }, h('label', { class: 'le-field-label' }, 'Water level (world units)'), h('div', { class: 'le-field-control' }, wl.el)),
     ]));
     this.body.appendChild(this._actions([
       { label: 'Level settings…', icon: ICONS.settings, onClick: () => this.actions.settings() },
@@ -530,3 +680,55 @@ function stat(label, value, title = '', warn = false) {
 }
 
 const clone = (v) => (v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
+
+/**
+ * Is a field value blank: null (a cleared nullable number), whitespace-only text, an empty list
+ * (lines, dialogue, a script)?
+ * @param {unknown} v
+ */
+export function isBlankValue(v) {
+  return v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && v.length === 0);
+}
+
+/**
+ * Does the catalog give objects of `type` a default for the (dotted) field `key`? Fields without
+ * one are optional: absent from files that do not use them.
+ * @param {string} type
+ * @param {string} key
+ */
+export function hasDefault(type, key) {
+  const def = ownValue(OBJECT_TYPES, type);
+  return !!def && getField(def.defaults, key) !== undefined;
+}
+
+/**
+ * Move an object's own key `key` right after the key `after` ('' = to the front), keeping the
+ * other keys in their order — the order a level file writes them in. Nothing happens when `after`
+ * is no longer a key of the object. (The keys are put back as own data properties: a level's
+ * hostile `__proto__` key stays a plain key.)
+ * @param {object} obj
+ * @param {string} key
+ * @param {string} after
+ */
+export function moveKeyAfter(obj, key, after) {
+  if (!Object.hasOwn(obj, key) || (after && !Object.hasOwn(obj, after))) return;
+  const entries = Object.entries(obj).filter(([k]) => k !== key);
+  entries.splice(after ? entries.findIndex(([k]) => k === after) + 1 : 0, 0, [key, obj[key]]);
+  for (const k of Object.keys(obj)) delete obj[k];
+  for (const [k, value] of entries) Object.defineProperty(obj, k, { value, writable: true, enumerable: true, configurable: true });
+}
+
+/**
+ * Remove a dotted field from an object (nothing when a step of the path is missing).
+ * @param {object} obj
+ * @param {string} key
+ */
+export function deleteField(obj, key) {
+  const parts = key.split('.');
+  let v = obj;
+  for (const k of parts.slice(0, -1)) {
+    v = v?.[k];
+    if (v == null || typeof v !== 'object') return;
+  }
+  delete v[parts[parts.length - 1]];
+}

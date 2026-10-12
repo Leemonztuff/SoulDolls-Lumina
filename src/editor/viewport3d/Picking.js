@@ -146,7 +146,7 @@ export function stairProgress(dir, lx, lz) {
 
 /**
  * Ray vs. the level's height field (blocky tops, stairs ramps, water surfaces, cliff faces) with
- * a 2D grid DDA — exact for Lumina terrain and far cheaper than raycasting the terrain meshes.
+ * a 2D grid DDA — exact for Luminati terrain and far cheaper than raycasting the terrain meshes.
  * Clicks on a cliff face resolve to the higher tile the face belongs to (the tile the user sees).
  * Misses fall back to a horizontal plane (`fallbackY`), so pointers beyond the map edge still
  * map to (out-of-map) tiles.

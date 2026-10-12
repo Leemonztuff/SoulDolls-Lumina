@@ -6,7 +6,7 @@ import { Sky } from './Sky.js';
 /** @import { LightDescriptor } from './LightPool.js' */
 
 /**
- * LightingSystem — day/night cycle for the HD-2D diorama.
+ * LightingSystem — day/night cycle for the 2.5D diorama.
  *
  * A keyframed 24h palette (colors interpolated in LINEAR space with a cyclic monotone cubic
  * spline, so transitions are smooth and never overshoot) drives:
@@ -314,7 +314,11 @@ export class LightingSystem {
     this.paused = false;
 
     /** Live-tweakable multipliers. */
-    this.settings = { sunMul: 1, ambientMul: 1, fogMul: 1, shadows: true, exposureMul: 1, pointLightMul: 1, flicker: true };
+    this.settings = { sunMul: 1, ambientMul: 1, fogMul: 1, shadows: true, exposureMul: 1, pointLightMul: 1, flicker: true, backdrop: /** @type {THREE.Color|null} */ (null) };
+    /** The renderer's clear colour before a backdrop replaced it (restored when the backdrop goes). */
+    this._clearBefore = null;
+    /** The backdrop colour `_setBackdrop` applied last (null: the sky), so another one is noticed. */
+    this._backdropApplied = /** @type {THREE.Color|null} */ (null);
 
     this.shadowMapSize = opts.shadowMapSize ?? 2048;
     this._shadowExtent = opts.shadowExtent ?? 22;
@@ -472,6 +476,30 @@ export class LightingSystem {
    * Pass null to follow the point the camera looks at.
    * @param {THREE.Object3D|THREE.Vector3|null} target
    */
+  /**
+   * Show the sky, or hide it behind a backdrop colour (settings.backdrop, applied by `update`): the
+   * renderer's clear colour follows (no program changes — the sky's stays compiled).
+   * @param {THREE.Color|null} color
+   */
+  _setBackdrop(color) {
+    this.sky.object.visible = !color;
+    // (a copy: a colour changed in place, or replaced by another, is noticed by `update`)
+    this._backdropApplied = color ? (this._backdropApplied ?? new THREE.Color()).copy(color) : null;
+    const r = this.renderer;
+    if (!r) return;
+    if (color) {
+      if (!this._clearBefore) {
+        const c = new THREE.Color();
+        r.getClearColor(c);
+        this._clearBefore = { color: c, alpha: r.getClearAlpha() };
+      }
+      r.setClearColor(color, 1);
+    } else if (this._clearBefore) {
+      r.setClearColor(this._clearBefore.color, this._clearBefore.alpha);
+      this._clearBefore = null;
+    }
+  }
+
   followTarget(target) {
     this._follow = target || null;
   }
@@ -682,9 +710,14 @@ export class LightingSystem {
     this.hemi.intensity = st.hemiIntensity * set.ambientMul;
 
     // Fog -------------------------------------------------------------------
-    this.fog.color.copy(st.skyHorizon);
+    // (an interior's backdrop: no sky; the fog and the background its colour)
+    const backdrop = set.backdrop;
+    this.fog.color.copy(backdrop ?? st.skyHorizon);
     this.fog.density = st.fogDensity * set.fogMul;
     if (this.scene.fog !== this.fog && this.scene.fog == null) this.scene.fog = this.fog;
+    // (the sky shown or hidden, or one backdrop colour replaced by another)
+    const applied = this._backdropApplied;
+    if (this.sky.object.visible === !!backdrop || (backdrop && !(applied && applied.equals(backdrop)))) this._setBackdrop(backdrop);
 
     // Exposure --------------------------------------------------------------
     if (this.renderer) this.renderer.toneMappingExposure = st.exposure * set.exposureMul;
@@ -693,7 +726,7 @@ export class LightingSystem {
     globalUniforms.uNight.value = st.night;
     globalUniforms.uSunDirection.value.copy(this._lightDir);
     globalUniforms.uSunColor.value.copy(st.sunColor).multiplyScalar((st.sunIntensity * set.sunMul) / SUN_REFERENCE_INTENSITY);
-    globalUniforms.uFogColor.value.copy(st.skyHorizon);
+    globalUniforms.uFogColor.value.copy(backdrop ?? st.skyHorizon);
 
     // Sky -------------------------------------------------------------------
     const ss = this._skyState;

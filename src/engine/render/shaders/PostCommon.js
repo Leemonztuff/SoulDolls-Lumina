@@ -45,7 +45,7 @@ float pfxHash12(vec2 p) {
 
 /** Plain copy (used when DOF is disabled but bloom needs a writable, non-multisampled target). */
 export const CopyShader = {
-  name: 'LuminaCopyShader',
+  name: 'LuminatiCopyShader',
   uniforms: {
     tDiffuse: { value: null },
   },

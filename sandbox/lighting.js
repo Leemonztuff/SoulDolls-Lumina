@@ -545,7 +545,7 @@ emissiveWindows.forEach((m) => lighting.registerEmissive(m, { day: 0, night: 1.5
 const shafts = godRays.populate({ minX: -12, maxX: 12, minZ: -11, maxZ: 7, y: 0 }, 6, 7);
 
 // ---------------------------------------------------------------------------
-// Camera views (HD-2D rig stand-in)
+// Camera views (diorama rig stand-in)
 // ---------------------------------------------------------------------------
 const view = { focus: new THREE.Vector3(0, 0.6, 1), yaw: 0, pitch: 32 * DEG2RAD, distance: 24 };
 function applyView() {

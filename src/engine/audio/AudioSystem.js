@@ -3,7 +3,7 @@ import { ownValue } from '../utils/own.js';
 
 /**
  * AudioSystem — fully procedural WebAudio: UI/gameplay SFX, layered ambience and a gentle
- * harp-and-strings folk loop in the spirit of Octopath Traveler's town themes. No audio files.
+ * harp-and-strings folk loop inspired by the town themes of Square Enix's HD-2D games. No audio files.
  *
  * Nothing touches WebAudio until `unlock()` (call it from a user gesture). Before that every
  * method is a silent no-op, but ambience levels and "music wanted" are remembered and applied
@@ -607,7 +607,9 @@ export class AudioSystem {
     g.gain.linearRampToValueAtTime(0.32 * vol, t + 0.003);
     g.gain.setTargetAtTime(0, t + 0.006, 0.02);
     src.connect(bp).connect(hp).connect(g).connect(out);
-    src.stop(t + 0.14);
+    // (both voices stop together — the cleanup follows `src` — once the thump has decayed 60 dB:
+    // 0.14 cut it 45 dB under the peak, a faint click, KNOWN_ISSUES AUD-06)
+    src.stop(t + 0.2);
 
     // Soft body thump.
     const o = ctx.createOscillator();
@@ -620,7 +622,7 @@ export class AudioSystem {
     og.gain.setTargetAtTime(0, t + 0.01, 0.025);
     o.connect(og).connect(out);
     o.start(t);
-    o.stop(t + 0.14);
+    o.stop(t + 0.2);
     this._cleanup(src, [src, bp, hp, g, o, og, out]);
   }
 
@@ -646,8 +648,9 @@ export class AudioSystem {
     lp.connect(g).connect(out);
     a.start(t);
     b.start(t);
-    a.stop(t + 0.07);
-    b.stop(t + 0.07);
+    // (stopped once the envelope has decayed ≈ 68 dB: 0.07 cut it 50 dB under the peak, AUD-06)
+    a.stop(t + 0.09);
+    b.stop(t + 0.09);
     this._cleanup(a, [a, b, bg, lp, g, out]);
   }
 

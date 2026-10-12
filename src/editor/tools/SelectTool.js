@@ -5,6 +5,8 @@ import {
 } from './common.js';
 import { OBJECT_TYPES, objectBounds, objectCenter } from '../../engine/level/ObjectCatalog.js';
 import { arenaOf, gateOf, isBossGroup, enemyArena, enemyGate } from '../enemyGroups.js';
+import { storyVisible } from '../story.js';
+import { hiddenAt, hiddenMessage, isHidden, leftOutMessage, notifyHidden } from '../visibility.js';
 
 /**
  * @import { Tool, ToolPreview } from './index.js'
@@ -96,28 +98,34 @@ function handleAt(state, ev) {
 /**
  * Objects / spawn inside a world rectangle (areas must be fully inside, others intersect). Only
  * what the 2D map shows counts (`shownOnMap`: critter and enemy groups follow the markers
- * toggle there), so a box can never pick up objects the map hides.
+ * toggle there; `storyVisible`: the story preview), so a box can never pick up objects the map
+ * hides. `hidden`: the objects in the box that a hidden type or the story preview hides (for the
+ * status message).
+ * @returns {{ ids: string[], hidden: string[] }}
  */
 function idsInBox(state, b) {
   const ids = [];
+  const hidden = [];
   for (const o of state.level.objects) {
-    if (!shownOnMap(state.view, o)) continue;
+    const shown = shownOnMap(state.view, o) && storyVisible(state, o);
+    if (!shown && !isHidden(state, o)) continue;
     const def = OBJECT_TYPES[o.type];
     const r = objectBounds(o);
     const area = def.placement === 'rect' || o.type === 'emitter' || o.type === 'critters' || o.type === 'enemy';
     const hit = area
       ? r.minX >= b.minX && r.maxX <= b.maxX && r.minZ >= b.minZ && r.maxZ <= b.maxZ
       : r.maxX >= b.minX && r.minX <= b.maxX && r.maxZ >= b.minZ && r.minZ <= b.maxZ;
-    if (hit) ids.push(o.id);
+    if (hit) (shown ? ids : hidden).push(o.id);
   }
   const s = state.level.spawn;
   if (state.view.showMarkers !== false && s.x >= b.minX && s.x <= b.maxX && s.z >= b.minZ && s.z <= b.maxZ) ids.push('spawn');
-  return ids;
+  return { ids, hidden };
 }
 
 /**
- * The smallest region / particle area containing world point (x, z), or null (areas are picked
- * by their edge or name tag with a click; a double-click inside one selects it).
+ * The smallest region / exit / story event / particle area containing world point (x, z), or null
+ * (areas are picked by their edge or name tag with a click; a double-click inside one selects it).
+ * Areas the story preview hides are skipped.
  */
 export function areaAt(state, x, z) {
   if (state.view.showMarkers === false) return null;
@@ -125,7 +133,7 @@ export function areaAt(state, x, z) {
   let best = null;
   let bestA = Infinity;
   for (const o of state.level.objects) {
-    if ((o.type !== 'region' && o.type !== 'emitter') || hidden.has(o.type)) continue;
+    if ((o.type !== 'region' && o.type !== 'exit' && o.type !== 'event' && o.type !== 'emitter') || hidden.has(o.type) || !storyVisible(state, o)) continue;
     const b = objectBounds(o);
     if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) continue;
     const a = (b.maxX - b.minX) * (b.maxZ - b.minZ);
@@ -139,7 +147,7 @@ const MAX_HIGHLIGHT = 120;
 
 let mode = null;   // null | 'move' | 'box' | 'handle'
 let move = null;   // { ids, startX, startZ, applied:{dx,dz}, started, clickId, wasSelected, anchor, anchorType }
-let box = null;    // { x0, z0, x1, z1, additive, toggle }
+let box = null;    // { x0, z0, x1, z1, additive, toggle, hidden (a hidden object pressed on: named on a click) }
 let handle = null; // { id, key, fixed:{x,z}, type, arena0?, gate0? (a boss arena corner: the arena / gate at the press) }
 let hover = null;
 
@@ -167,7 +175,7 @@ export const SelectTool = {
   cursorFor(ev, state) {
     if (mode === 'move') return 'move';
     if (handleAt(state, ev)) return 'pointer';
-    if (ev.hitSpawn || ev.hitObjectId) return 'move';
+    if (ev.hitSpawn || (ev.hitObjectId && !isHidden(state, state.getObject(ev.hitObjectId)))) return 'move';
     return 'default';
   },
 
@@ -188,7 +196,13 @@ export const SelectTool = {
       state.begin('Reshape');
       return;
     }
-    const hitId = ev.hitSpawn ? 'spawn' : ev.hitObjectId;
+    let hitId = ev.hitSpawn ? 'spawn' : ev.hitObjectId;
+    // a hit on an object the selection rule hides (the 3D view draws critter and enemy sprites
+    // with *Show markers* off, while the 2D map — and so the rule — hides them): a click on empty
+    // ground, which names it on release
+    /** @type {string|null} */
+    let hiddenHit = null;
+    if (hitId && hitId !== 'spawn' && isHidden(state, state.getObject(hitId))) { hiddenHit = hitId; hitId = null; }
     if (hitId) {
       const wasSelected = state.selection.includes(hitId);
       if (ev.ctrl) {
@@ -207,7 +221,7 @@ export const SelectTool = {
       return;
     }
     mode = 'box';
-    box = { x0: ev.x, z0: ev.z, x1: ev.x, z1: ev.z, additive: ev.shift, toggle: ev.ctrl };
+    box = { x0: ev.x, z0: ev.z, x1: ev.x, z1: ev.z, additive: ev.shift, toggle: ev.ctrl, hidden: hiddenHit };
     state.emit('preview');
   },
 
@@ -319,11 +333,15 @@ export const SelectTool = {
         // the gesture was interrupted (layout switch, lost pointer): change nothing
       } else if (tiny) {
         if (!box.additive && !box.toggle) state.clearSelection();
+        // a click where only a hidden object stands: the status bar says why nothing was picked
+        const hid = box.hidden ?? hiddenAt(state, box.x0, box.z0);
+        if (hid) notifyHidden(state, hiddenMessage(state, hid), [hid]);
       } else {
-        const ids = idsInBox(state, b);
+        const { ids, hidden } = idsInBox(state, b);
         if (box.toggle) state.select(ids, { toggle: true });
         else state.select(ids, { additive: box.additive });
-        if (ids.length) state.notify(`${state.selection.length} selected`);
+        const left = hidden.length ? leftOutMessage(state, hidden) : '';
+        if (ids.length || left) state.notify(`${state.selection.length} selected${left ? ` · ${left}` : ''}`);
       }
     } else if (mode === 'handle') {
       state.commit();
@@ -363,7 +381,7 @@ export const SelectTool = {
       // (both views ask every frame: the id list is computed once per box, and many objects are
       // counted, not outlined)
       const key = `${b.minX},${b.maxX},${b.minZ},${b.maxZ}|${state.level.objects.length}`;
-      if (box.key !== key) { box.key = key; box.ids = idsInBox(state, b); }
+      if (box.key !== key) { box.key = key; box.ids = idsInBox(state, b).ids; }
       const ids = box.ids;
       const n = ids.length;
       return { rect: b, label: n ? `${n} object${n === 1 ? '' : 's'}` : null, highlight: n && n <= MAX_HIGHLIGHT ? { ids, color: 'rgba(255,255,255,0.75)' } : null };
@@ -389,7 +407,7 @@ export const SelectTool = {
     }
     if (!state.hover || !hover) return null;
     const id = hover.hitObjectId;
-    if (id && !state.selection.includes(id)) return { highlight: { ids: [id], color: 'rgba(255,255,255,0.55)' } };
+    if (id && !state.selection.includes(id) && !isHidden(state, state.getObject(id))) return { highlight: { ids: [id], color: 'rgba(255,255,255,0.55)' } };
     return null;
   },
 };

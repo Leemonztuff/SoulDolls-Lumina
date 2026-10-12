@@ -1,5 +1,5 @@
 [
-  { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.ready(90000)).then(() => window.__lumina.loadMs)" },
+  { "eval": "import('/sandbox/combat_fixture.js').then((m) => m.ready(90000)).then(() => window.__luminati.loadMs)" },
   { "wait": 2000 },
   { "eval": "(() => { const g = __game; window.__gaps = { max: 0, over: 0, n: 0, on: true, log: [] }; window.__phase = 'start'; let last = performance.now(); const loop = (t) => { const gp = window.__gaps; if (gp.on) { const d = t - last; gp.n++; if (d > gp.max) gp.max = d; if (d > 45) { gp.over++; gp.log.push([window.__phase, +d.toFixed(1)]); } } last = t; requestAnimationFrame(loop); }; requestAnimationFrame(loop); const c = g.combat; c.god(true); window.__p0 = c.stats().programsAtLoad; return JSON.stringify(c.stats()); })()" },
   { "eval": "(() => { const r = __game.combat.showcase(); return JSON.stringify(r); })()" },

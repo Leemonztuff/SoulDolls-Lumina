@@ -14,7 +14,7 @@ import { patchSpriteLighting, cloneSharedTexture } from './Sprite3D.js';
  * (`instances[i].frame`, or random with `randomFrames: true`) — variety in a single draw call.
  */
 
-// Shared vertex GLSL: yaw billboard + wind sway. `LUMINA_FACE_SUN` switches the facing to the sun
+// Shared vertex GLSL: yaw billboard + wind sway. `LUMINATI_FACE_SUN` switches the facing to the sun
 // azimuth (used by the depth material so cast shadows are full silhouettes).
 const GLSL_FOLIAGE_PARS = /* glsl */ `
 uniform float uTime;
@@ -25,13 +25,13 @@ uniform float uFoliageWind;
 uniform float uAnchorY;
 uniform float uQuadHeight;
 uniform float uFrameU;
-#ifdef LUMINA_FACE_SUN
+#ifdef LUMINATI_FACE_SUN
 uniform vec3 uSunDirection;
 #endif
 attribute float aFrame;
 
-float luminaFoliageYaw() {
-#ifdef LUMINA_FACE_SUN
+float luminatiFoliageYaw() {
+#ifdef LUMINATI_FACE_SUN
 	vec2 sh = uSunDirection.xz;
 	return dot( sh, sh ) > 1e-8 ? atan( sh.x, sh.y ) : uCameraYaw;
 #else
@@ -39,7 +39,7 @@ float luminaFoliageYaw() {
 #endif
 }
 
-vec3 luminaYawRotate( vec3 v, float yaw ) {
+vec3 luminatiYawRotate( vec3 v, float yaw ) {
 	float c = cos( yaw );
 	float s = sin( yaw );
 	return vec3( v.x * c + v.z * s, v.y, - v.x * s + v.z * c );
@@ -47,7 +47,7 @@ vec3 luminaYawRotate( vec3 v, float yaw ) {
 `;
 
 const GLSL_FOLIAGE_BEGIN = /* glsl */ `
-	vec3 transformed = luminaYawRotate( vec3( position ), luminaFoliageYaw() );
+	vec3 transformed = luminatiYawRotate( vec3( position ), luminatiFoliageYaw() );
 	{
 		vec3 lfPos = vec3( 0.0 );
 		float lfScale = 1.0;
@@ -168,7 +168,7 @@ export class Foliage {
         .replace('#include <common>', `#include <common>\n${GLSL_FOLIAGE_PARS}`)
         .replace(
           '#include <beginnormal_vertex>',
-          '#include <beginnormal_vertex>\n\tobjectNormal = luminaYawRotate( objectNormal, luminaFoliageYaw() );',
+          '#include <beginnormal_vertex>\n\tobjectNormal = luminatiYawRotate( objectNormal, luminatiFoliageYaw() );',
         )
         .replace('#include <begin_vertex>', GLSL_FOLIAGE_BEGIN)
         .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n\tvMapUv.x += aFrame * uFrameU;\n#endif');
@@ -179,7 +179,7 @@ export class Foliage {
           '#include <map_fragment>\n\tdiffuseColor.rgb *= mix( 1.0 - uRootDarken, 1.0, smoothstep( 0.0, 0.6, vQuadUv.y ) );',
         );
     };
-    material.customProgramCacheKey = () => 'lumina-foliage-lit-v1';
+    material.customProgramCacheKey = () => 'luminati-foliage-lit-v1';
     this.material = material;
 
     const depthMaterial = new THREE.MeshDepthMaterial({
@@ -192,11 +192,11 @@ export class Foliage {
       Object.assign(shader.uniforms, u);
       shader.uniforms.uSunDirection = globalUniforms.uSunDirection;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\n#define LUMINA_FACE_SUN\n${GLSL_FOLIAGE_PARS}`)
+        .replace('#include <common>', `#include <common>\n#define LUMINATI_FACE_SUN\n${GLSL_FOLIAGE_PARS}`)
         .replace('#include <begin_vertex>', GLSL_FOLIAGE_BEGIN)
         .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n\tvMapUv.x += aFrame * uFrameU;\n#endif');
     };
-    depthMaterial.customProgramCacheKey = () => 'lumina-foliage-depth-v1';
+    depthMaterial.customProgramCacheKey = () => 'luminati-foliage-depth-v1';
     this.depthMaterial = depthMaterial;
 
     /** @type {THREE.InstancedMesh} */

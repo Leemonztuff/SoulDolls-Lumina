@@ -364,7 +364,7 @@ function startDialog() {
 
 async function intro() {
   await ui.fontsReady;
-  await ui.title.show({ title: 'Lumina', subtitle: 'Chronicles of the Ember Road', prompt: 'Press any key',
+  await ui.title.show({ title: 'Luminati', subtitle: 'Chronicles of the Ember Road', prompt: 'Press any key',
     ...(COMBAT ? { destinations: DESTINATIONS, current: 'emberfall' } : {}) });
   await new Promise((r) => setTimeout(r, 650));
   ui.hud.visible = true;
@@ -572,7 +572,7 @@ function setupCombat() {
     titleCase(withDest = true) {
       results.title.push({ source: 'pending', destination: null });
       const k = results.title.length - 1;
-      ui.title.show({ title: 'Lumina', subtitle: 'Chronicles of the Ember Road', ...(withDest ? { destinations: DESTINATIONS, current: 'emberfall' } : {}) })
+      ui.title.show({ title: 'Luminati', subtitle: 'Chronicles of the Ember Road', ...(withDest ? { destinations: DESTINATIONS, current: 'emberfall' } : {}) })
         .then((source) => { results.title[k] = { source: source ?? 'undefined', destination: ui.title.destination }; });
       return k;
     },
@@ -783,7 +783,7 @@ function frame(timestamp) {
 
   if (state.timeSpeed > 0) { state.time = (state.time + state.timeSpeed * dt) % 24; applyTime(state.time); }
 
-  // camera: HD-2D framing with a gentle yaw sway
+  // camera: diorama framing with a gentle yaw sway
   camState.yaw = Math.sin(elapsed * 0.15) * 6 * DEG2RAD;
   const cp = Math.cos(camState.pitch);
   camera.position.set(

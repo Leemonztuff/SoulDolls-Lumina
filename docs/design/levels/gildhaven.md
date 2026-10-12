@@ -23,7 +23,7 @@ node tools/make-gildhaven.mjs --quiet      # no report (errors still go to stder
 node tools/make-gildhaven.mjs --force      # write a failing level for inspection (exit code stays 1)
 ```
 
-Play it: `index.html?level=gildhaven` (`&autostart=1` skips the title; the title screen's ◂ ▸ row
+Play it: `game.html?level=gildhaven` (`&autostart=1` skips the title; the title screen's ◂ ▸ row
 also offers it). Edit (view) it: `editor.html?open=gildhaven`.
 
 ![Gildhaven's title screen over the Market Square, Kingsbridge and the North Quay](../../assets/screenshots/gildhaven-title.jpg)
@@ -152,7 +152,8 @@ one.
 | High Town | Lady Odelia Fairgild and Guardsman Pell (the Hall), Mother Celandine, Novice Cass and Elric the Pilgrim (the Abbey), Brother Anselm (the Library), Guildmaster Orrin (the Exchange), Captain Hale (the Lookout), Sorrel the gardener, Lady Amabel Thornbury, Hazel (Pippin Orchard) |
 
 Stall keepers stand **beside** their counters, not behind them, where the awning would hide them
-(KNOWN_ISSUES PROP-13); the player talks to them from the aisle. The first answer of every shop and
+(KNOWN_ISSUES PROP-13 — since 2026-10-07 a keeper behind one shows as an x-ray silhouette while the
+player can talk to them); the player talks to them from the aisle. The first answer of every shop and
 rest question is the harmless one.
 
 ---
@@ -231,10 +232,10 @@ default camera and records draw calls (fails above 300) and checks that no shade
 compiles after load:
 
 ```bash
-npm run check -- --page=index.html --query="level=gildhaven&autostart=1" --out=gh_tour --wait=8000 --fps=0 --script=sandbox/gildhaven.tour.json
+npm run check -- --page=game.html --query="level=gildhaven&autostart=1" --out=gh_tour --wait=8000 --fps=0 --script=sandbox/gildhaven.tour.json
 ```
 
-Measured 2026-10-02 (GTX 1060, 1600 × 900): first gameplay frame 4.0–4.5 s from navigation, 59
+Measured 2026-10-02 (reference desktop GPU, 1600 × 900): first gameplay frame 4.0–4.5 s from navigation, 59
 programs at load and after the tour, 12 pooled lights for 86 descriptors, **124–274 draw calls** at
 the default zoom (the busiest: the Market Square at yaw +60, 274; Market Street 262), 280 zoomed
 out over the square. The editor opens it with ~944 draw calls (Starfall ~915) and idles at the
@@ -258,9 +259,11 @@ display rate.
 - **Placements shift the seeds:** `P.nextSeed()` gives every house, stall, rock and tree its seed in
   placement order, and the scatter runs after the hand placements, so adding an object can reshuffle
   the scattered trees. That is fine — the output is still deterministic — but re-read the report.
-- **Pines:** keep the two pines by the King's Road (or another pine within the spawn's shadow
-  frustum): they make the load-time warm-up compile the pine's shadow program; without them it
-  compiled on the first walk into High Town (KNOWN_ISSUES REN-13).
+- **Pines:** the two pines by the King's Road were the workaround for KNOWN_ISSUES REN-13 (the
+  pine's shadow program compiled on the first walk into High Town when no pine stood within the
+  spawn's shadow frustum). Since the load-time shadow primer (`Game._primeShadows`) they are
+  scenery only: `sandbox/gildhaven.shadows.json` loads the town without them and finds 59
+  programs at load and after High Town.
 - After a change: `node tools/make-gildhaven.mjs --check`, the tour, `npm run typecheck`.
 
 ![The Market Square at golden hour: the Gild Well, Crier Bertil and the eight stalls](../../assets/screenshots/gildhaven-market-square.jpg)
@@ -272,7 +275,7 @@ display rate.
 - **No boats.** The level format has no boat object; the dialogue says the barges came up at dawn,
   unloaded and went back down to the sea.
 - **Foreground roofs.** Walking Lantern Row or Market Street, the rooftops of the row south of the
-  player fill the bottom of the frame in the near blur — the HD-2D framing, but heavier than in
+  player fill the bottom of the frame in the near blur — the diorama framing, but heavier than in
   Starfall's open town.
 - **The windmill hides nine tiles of Weaver's Lane** behind the town wall from the default camera
   (the player shows as the x-ray silhouette there).

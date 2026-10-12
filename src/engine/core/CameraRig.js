@@ -20,7 +20,7 @@ const _up = new THREE.Vector3();
  */
 
 /**
- * CameraRig — the HD-2D "diorama" camera: narrow FOV, high pitch, far away, smoothly
+ * CameraRig — the 2.5D "diorama" camera: narrow FOV, high pitch, far away, smoothly
  * following a target with look-ahead, orbiting on Q/E within a limited arc and zooming
  * with the wheel.
  *

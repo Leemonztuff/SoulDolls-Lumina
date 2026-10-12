@@ -14,7 +14,7 @@ import { bakeShore } from './WaterShore.js';
  */
 
 /**
- * Water.js — HD-2D pixel-art water for Lumina.
+ * Water.js — 2.5D pixel-art water for Luminati.
  *
  * `Water` builds ONE mesh over every water tile of a TileMap (surface quads + vertical
  * "cross-section" faces where the water body ends at the diorama edge or drops to a lower
@@ -388,9 +388,10 @@ export class Water {
     this.uniforms.uSunDirection = globalUniforms.uSunDirection;
     this.uniforms.uSunColor = globalUniforms.uSunColor;
     this.uniforms.uFogColor = globalUniforms.uFogColor;
+    this.uniforms.uFogStart = globalUniforms.uFogStart;
 
     this.material = new THREE.ShaderMaterial({
-      name: 'Lumina:Water',
+      name: 'Luminati:Water',
       uniforms: this.uniforms,
       vertexShader: WATER_VERT,
       fragmentShader: WATER_FRAG,
@@ -413,6 +414,16 @@ export class Water {
     this.shoreTexture = null;
     this._colliderCount = tileMap.colliders.length;
     this._colliderSig = '';
+    /**
+     * rebakeShoreAsync: its worker (undefined: not made yet; null: none), the windows in flight
+     * by id, and the full bakes so far (a window from before the latest `refresh()` is dropped).
+     * @type {Worker|null|undefined}
+     */
+    this._worker = undefined;
+    /** @type {Map<number, { job: any, rect: TileRect, expand: boolean, gen: number, resolve: () => void }>} */
+    this._shoreJobs = new Map();
+    this._shoreJobId = 0;
+    this._shoreGen = 0;
     // deferShore: the owner calls refresh() once the colliders standing in the water exist (one
     // bake instead of two on a big level); nothing may render the water before that
     if (!deferShore) this.refresh();
@@ -448,6 +459,8 @@ export class Water {
 
   /** Rebuild the shore / depth / flow texture (e.g. after adding colliders standing in water). */
   refresh() {
+    // (re-bake windows still in a worker are older than this: dropped — see rebakeShoreAsync)
+    this._shoreGen++;
     const tex = this._buildShoreTexture();
     this.shoreTexture?.dispose();
     this.shoreTexture = tex;
@@ -474,18 +487,32 @@ export class Water {
     const count = tm.colliders.length;
     const sig = this._waterColliderSignature();
     return new Promise((resolve) => {
-      let worker;
-      const fallback = () => { worker?.terminate(); this.refresh(); resolve(); };
-      try {
-        worker = new Worker(new URL('./shoreWorker.js', import.meta.url), { type: 'module' });
-      } catch {
+      const worker = this._newShoreWorker();
+      // (the bake is the Water's: `dispose` ends it — a level built ahead and dropped must not bake
+      // on, nor fall back to a main-thread bake for a dead object)
+      this._bake?.end();
+      const end = () => {
+        worker?.terminate();
+        if (this._bake?.worker === worker) this._bake = null;
+        resolve();
+      };
+      this._bake = { worker, end };
+      const fallback = () => {
+        if (this._disposed) { end(); return; }
+        worker?.terminate();
+        this.refresh();
+        end();
+      };
+      if (!worker) {
         fallback();
         return;
       }
       worker.onmessage = (e) => {
+        if (this._disposed) { end(); return; }
         const { out, error } = e.data ?? {};
         if (error || !out || out.length !== W * H * 4 || W !== tm.width * R || H !== tm.depth * R) { fallback(); return; }
         worker.terminate();
+        if (this._bake?.worker === worker) this._bake = null;
         this._shoreData = out;
         const tex = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
         this._setupShoreTexture(tex);
@@ -549,6 +576,72 @@ export class Water {
     this._updateShoreWindow(rect, expand);
     this._colliderCount = this.tileMap.colliders.length;
     this._colliderSig = this._waterColliderSignature();
+  }
+
+  /**
+   * `rebakeShore(rect)` with the bake in a Web Worker (shoreWorker.js; one kept per Water and
+   * answered in order, so later re-bakes land after earlier ones): the window is baked from the
+   * colliders as they are now and written when it comes back, a frame or so later — the same
+   * bytes `rebakeShore` writes. The collider signature is taken now, so `update()` does not bake
+   * the whole texture meanwhile; a `refresh()` before the answer drops it (the full bake is
+   * newer). Without workers (or when the worker fails) it bakes on the main thread.
+   * @param {TileRect} rect
+   * @param {{ expand?: boolean }} [opts]
+   * @returns {Promise<void>} resolves once the window is in the texture (or dropped)
+   */
+  rebakeShoreAsync(rect, { expand = true } = {}) {
+    if (!this._shoreData || !this.shoreTexture) { this.refresh(); return Promise.resolve(); }
+    const job = this.shoreJob(rect, { expand });
+    if (!job) return Promise.resolve();
+    const worker = this._shoreWorker();
+    if (!worker) { this.rebakeShore(rect, { expand }); return Promise.resolve(); }
+    this._colliderCount = this.tileMap.colliders.length;
+    this._colliderSig = this._waterColliderSignature();
+    const id = ++this._shoreJobId;
+    return new Promise((resolve) => {
+      this._shoreJobs.set(id, { job, rect, expand, gen: this._shoreGen, resolve });
+      worker.postMessage({ id, input: this.shoreInput(true), a0: job.a0, b0: job.b0, W: job.W, H: job.H });
+    });
+  }
+
+  /** The kept worker of `rebakeShoreAsync` (created on first use), or null (no workers / it failed). */
+  _shoreWorker() {
+    if (this._worker !== undefined) return this._worker;
+    this._worker = this._newShoreWorker();
+    if (!this._worker) return null;
+    this._worker.onmessage = (e) => {
+      const { id, out, error } = e.data ?? {};
+      const f = this._shoreJobs.get(id);
+      if (!f) return;
+      this._shoreJobs.delete(id);
+      if (f.gen === this._shoreGen && this.shoreTexture) {
+        if (error || !out || !this.applyShore(f.job, out)) this.rebakeShore(f.rect, { expand: f.expand });
+      }
+      f.resolve();
+    };
+    this._worker.onerror = (e) => {
+      e.preventDefault?.();
+      this._worker?.terminate();
+      this._worker = null;
+      // what it had: on the main thread
+      const pending = [...this._shoreJobs.values()];
+      this._shoreJobs.clear();
+      for (const f of pending) {
+        if (f.gen === this._shoreGen && this.shoreTexture) this.rebakeShore(f.rect, { expand: f.expand });
+        f.resolve();
+      }
+    };
+    return this._worker;
+  }
+
+  /** A new shore-bake worker (shoreWorker.js), or null where there are none. */
+  _newShoreWorker() {
+    if (typeof Worker !== 'function') return null;
+    try {
+      return new Worker(new URL('./shoreWorker.js', import.meta.url), { type: 'module' });
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -750,7 +843,7 @@ export class Water {
   }
 
   _setupShoreTexture(tex) {
-    tex.name = 'Lumina:WaterShore';
+    tex.name = 'Luminati:WaterShore';
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearFilter;
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -771,6 +864,12 @@ export class Water {
 
   /** Free GPU resources. */
   dispose() {
+    this._disposed = true;
+    this._bake?.end();
+    this._worker?.terminate();
+    this._worker = null;
+    for (const f of this._shoreJobs.values()) f.resolve();
+    this._shoreJobs.clear();
     this.geometry.dispose();
     this.material.dispose();
     this.shoreTexture?.dispose();
@@ -1017,10 +1116,11 @@ export function createWaterfall({ x, z, width = 2, top, bottom, facing = 'S', se
     u.uNight = globalUniforms.uNight;
     u.uSunColor = globalUniforms.uSunColor;
     u.uFogColor = globalUniforms.uFogColor;
+    u.uFogStart = globalUniforms.uFogStart;
     return u;
   };
   const sheetMat = new THREE.ShaderMaterial({
-    name: 'Lumina:Waterfall',
+    name: 'Luminati:Waterfall',
     uniforms: litUniforms({
       uWidth: { value: width },
       uLength: { value: length },
@@ -1068,7 +1168,7 @@ export function createWaterfall({ x, z, width = 2, top, bottom, facing = 'S', se
     poolGeo.applyMatrix4(m);
     poolGeo.translate(x + fx * (footOut - 0.2 + pd / 2), bottom + 0.012, z + fz * (footOut - 0.2 + pd / 2));
     poolMat = new THREE.ShaderMaterial({
-      name: 'Lumina:WaterfallPool',
+      name: 'Luminati:WaterfallPool',
       uniforms: litUniforms({
         uFoam: { value: WATER_LINEAR[6].clone().multiplyScalar(1.05) },
         uC0: { value: WATER_LINEAR[5].clone() },

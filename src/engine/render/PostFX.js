@@ -24,7 +24,7 @@ import { CopyShader } from './shaders/PostCommon.js';
  */
 
 /**
- * PostFX — the HD-2D post-processing stack.
+ * PostFX — the diorama post-processing stack.
  *
  *   scene ─► HalfFloat MSAA target (+ DepthTexture, resolved by blit)
  *         ─► DOF (½ res): prefilter (MRT) → golden-angle bokeh gather → CoC-aware tent
@@ -264,7 +264,8 @@ export class PostFX {
     this._copyMat = makePostMaterial(CopyShader);
     this._quad = new FullScreenQuad(null);
 
-    // bokeh sprite points: one vertex per reduced-res texel (positions come from gl_VertexID)
+    // bokeh sprite points: one vertex per 2 × 2 block of the reduced-res target (sized in
+    // _allocate; positions come from gl_VertexID)
     this._spriteGeo = new THREE.BufferGeometry();
     this._spriteCapacity = 0;
     this._sprites = new THREE.Points(this._spriteGeo, this._spriteMat);

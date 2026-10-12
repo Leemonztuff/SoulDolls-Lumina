@@ -15,19 +15,22 @@
 import { TILE_BY_CHAR, levelToWorld, getHeightLevel } from '../../engine/level/LevelFormat.js';
 import {
   OBJECT_TYPES, SPAWN_MARKER, ENEMY_KINDS, ENEMY_INFO, objectBounds, hitTestObject, critterStartPoints, critterYard, enemyStartPoints,
+  interiorFootprint, optNum,
 } from '../../engine/level/ObjectCatalog.js';
 import { getTool, selectionHandles } from '../tools/index.js';
 import { areaAt } from '../tools/SelectTool.js';
 import { shownOnMap } from '../tools/common.js';
+import { storyVisible } from '../story.js';
 import { enemyKind, bossArena, bossGate, dataColliders, levelStartTest } from '../enemyGroups.js';
 import { isTypingTarget } from '../ui/dom.js';
+import { reportToolError } from '../EditorState.js';
 import { ownValue } from '../../engine/utils/own.js';
 
 /**
  * @import { EditorState } from '../EditorState.js'
  * @import { TextureLibrary } from '../../engine/pixel/Textures.js'
  * @import { PointerEv, Tool } from '../tools/index.js'
- * @import { LevelObject, TileRect } from '../../engine/level/types.js'
+ * @import { LevelObject, LevelObjectOf, TileRect } from '../../engine/level/types.js'
  */
 
 const TP = 16;               // terrain cache: pixels per tile
@@ -44,14 +47,18 @@ const FALL_ANGLE = { S: 0, N: Math.PI, E: -Math.PI / 2, W: Math.PI / 2 };
 const FACING_ANGLE = { down: Math.PI / 2, up: -Math.PI / 2, left: Math.PI, right: 0 };
 const STAIR_ANGLE = { N: 0, E: Math.PI / 2, S: Math.PI, W: -Math.PI / 2 };
 const LIGHT_GLOW = { lamppost: 2.2, wallTorch: 1.7, campfire: 2.8 };
-const LAYER = { region: 0, emitter: 1, critters: 1, bridge: 2, fence: 2, waterfall: 2, house: 3, windmill: 3, well: 3, marketStall: 3, tree: 5, npc: 7, enemy: 7 };
-const AREA_TYPES = new Set(['region', 'emitter', 'critters', 'enemy']);
-/** Point props picked by their rotated footprint (`footprint`). */
-const FOOTPRINT_TYPES = new Set(['house', 'marketStall', 'bench', 'flowerbox', 'chest']);
+const LAYER = { region: 0, exit: 0, event: 0, emitter: 1, critters: 1, rug: 2, bridge: 2, fence: 2, waterfall: 2, house: 3, windmill: 3, well: 3, marketStall: 3, tree: 5, npc: 7, enemy: 7, entrance: 7, marker: 7 };
+const AREA_TYPES = new Set(['region', 'exit', 'event', 'emitter', 'critters', 'enemy']);
+/** Point props picked by their rotated footprint (`footprint`; the interior furniture's too, `footRect`). */
+const FOOTPRINT_TYPES = new Set(['house', 'marketStall', 'bench', 'flowerbox', 'chest', 'bed', 'table', 'shelf', 'hearth', 'counter', 'rug', 'staircase', 'wardrobe', 'wallWindow', 'sacks']);
+/** Map colours of the interior furniture's quilts and rugs (`opts.blanket`, `opts.color`). */
+const FURNITURE_COLORS = { red: '#c0453f', blue: '#3d5fb4', green: '#468a45', ochre: '#d9a92e', plum: '#77428f' };
 /** hitTest grades (see Map2DView._hitOne). */
 const HIT_NEAR = 1;
 const HIT = 2;
 const HIT_EXACT = 3;
+/** PointerEvent.button → PointerEvent.buttons bit (Viewport3D's BUTTON_BIT). */
+const BUTTON_BIT = [1, 4, 2];
 /** Enemy group colours (the 3D view's ActorPreview.ENEMY_COLORS): home ring, elite ring, arena, gate. */
 const ENEMY_RING = '#e0674f';
 const ENEMY_ELITE = '#f2c14e';
@@ -147,7 +154,14 @@ export class Map2DView {
      * @type {((flier: boolean) => (((x: number, z: number) => boolean)|null))|null}
      */
     this.startTestSource = null;
-    /** Enemy start spots per group id ({ sig, spots }) and the level's data colliders (cached). */
+    /**
+     * (set by the app) The 3D view's critter start test, `() => test | null`: the game's
+     * walkability with every prop's and villager's collider (Viewport3D.critterStartTest, lazy);
+     * null as for startTestSource. See _critterSpots.
+     * @type {(() => (((x: number, z: number) => boolean)|null))|null}
+     */
+    this.critterTestSource = null;
+    /** Enemy and critter start spots per group id ({ sig, spots }) and the level's data colliders (cached). */
     this._spots = new Map();
     this._dataCols = null;
 
@@ -223,13 +237,8 @@ export class Map2DView {
     if (!was) return;
     // hidden mid-gesture: a display:none canvas gets no pointerup / lostpointercapture, and
     // captured moves would be read against a 0 × 0 rect — end the stroke / pan now
-    if (this._stroke) {
-      const { tool, pointerId } = this._stroke;
-      this._stroke = null;
-      this._release(pointerId);
-      this._endInterrupted(tool);
-    }
-    if (this._pan) { this._release(this._pan.pointerId); this._pan = null; }
+    this._abortStroke();
+    this._abortPan();
     this._space = false;
     this._pointer = null;
     if (this.state.hover?.view === '2d') this.state.setHover(null);
@@ -321,8 +330,9 @@ export class Map2DView {
     };
   }
 
+  /** Is the object drawn (and pickable): its type shown, and the story preview allows it. */
   _visible(o) {
-    return shownOnMap(this.state.view, o);
+    return shownOnMap(this.state.view, o) && storyVisible(this.state, o);
   }
 
   /** Objects in draw order (bottom first). */
@@ -456,13 +466,41 @@ export class Map2DView {
   }
 
   /**
+   * Where the game starts a critter group's animals: `critterStartPoints` with the 3D view's
+   * test (`critterTestSource`: the game's `TileMap.isWalkable` — walkable tiles and bridge decks,
+   * clear of every prop's and villager's collider; built while that view is shown, from the level
+   * data and the props' own colliders while it is hidden), else — no 3D view, or its build of the
+   * document is due — the level-data test without the props (`levelStartTest` for walkers:
+   * villagers, chests and waystones only). Cached per group like `_enemySpots`.
+   * @param {LevelObjectOf<'critters'>} o
+   */
+  _critterSpots(o) {
+    const sig = JSON.stringify(o);
+    const c = this._spots.get(o.id);
+    if (c && c.sig === sig) return c.spots;
+    let test = null;
+    try {
+      test = this.critterTestSource?.() ?? null;
+    } catch (err) {
+      console.error('[Map2DView] critter test failed:', err);
+    }
+    if (!test) {
+      this._dataCols ??= dataColliders(this.state.level);
+      test = levelStartTest(this.state.level, false, this._dataCols);
+    }
+    const spots = critterStartPoints(o, test);
+    this._spots.set(o.id, { sig, spots });
+    return spots;
+  }
+
+  /**
    * The 3D view's placement test changed (props with colliders built / removed, villagers moved,
-   * terrain synced): place the enemy start dots again. Called by the app.
+   * terrain synced): place the enemy and critter start dots again. Called by the app.
    */
   placementChanged() {
     this._spots.clear();
     this._dataCols = null;
-    if (this.state.level.objects.some((o) => o.type === 'enemy')) this.requestRender();
+    if (this.state.level.objects.some((o) => o.type === 'enemy' || o.type === 'critters')) this.requestRender();
   }
 
   _hitSpawn(x, z) {
@@ -522,14 +560,8 @@ export class Map2DView {
     this._onBlur = () => {
       this._space = false;
       // the pointer-up of a drag may never arrive once the window lost focus
-      if (this._stroke) {
-        const { tool, pointerId } = this._stroke;
-        this._stroke = null;
-        this._release(pointerId);
-        this._endInterrupted(tool);
-        this.requestRender();
-      }
-      if (this._pan) { this._release(this._pan.pointerId); this._pan = null; }
+      if (this._abortStroke()) this.requestRender();
+      this._abortPan();
       this._updateCursor();
     };
     window.addEventListener('keydown', this._onKey, true);
@@ -540,7 +572,12 @@ export class Map2DView {
   _onDown(e) {
     this.canvas.focus({ preventScroll: true });
     if (document.activeElement && document.activeElement !== this.canvas && document.activeElement !== document.body) /** @type {HTMLElement} */ (document.activeElement).blur?.();
-    if (this._stroke || this._pan) return;
+    // the same pointer went down again: its previous release never reached the map (let go over
+    // a native dialog, or where the pointer could not be captured) — end that stroke (cancelled)
+    // or pan first, as Viewport3D does
+    if (this._stroke?.pointerId === e.pointerId && this._abortStroke()) this.requestRender();
+    if (this._pan?.pointerId === e.pointerId) this._abortPan();
+    if (this._stroke || this._pan) return; // another pointer is busy
     if (e.button === 1 || e.button === 2 || (e.button === 0 && this._space)) {
       e.preventDefault();
       this._pan = { sx: e.clientX, sy: e.clientY, cx: this.cx, cz: this.cz, moved: false, button: e.button, pointerId: e.pointerId };
@@ -563,6 +600,11 @@ export class Map2DView {
   _onMove(e) {
     const r = this.canvas.getBoundingClientRect();
     if (!this.active || r.width < 1) return; // hidden layout (captured pointer events)
+    // a mouse moving without the button of the stroke / pan held: its release was lost (the
+    // stroke ends as interrupted, `cancelled: true`; this move is then an ordinary hover)
+    const released = (b) => e.pointerType === 'mouse' && !(e.buttons & BUTTON_BIT[b]);
+    if (this._stroke?.pointerId === e.pointerId && released(0)) this._abortStroke();
+    if (this._pan?.pointerId === e.pointerId && released(this._pan.button)) this._abortPan();
     this._pointer = { sx: e.clientX - r.left, sy: e.clientY - r.top };
     if (this._pan) {
       const dx = e.clientX - this._pan.sx;
@@ -609,8 +651,33 @@ export class Map2DView {
   }
 
   /**
+   * End the open stroke as interrupted (`_endInterrupted`) and release its pointer; false when no
+   * stroke is open.
+   * @returns {boolean}
+   */
+  _abortStroke() {
+    if (!this._stroke) return false;
+    const { tool, pointerId } = this._stroke;
+    // (cleared first: releasing the capture may dispatch 'lostpointercapture' re-entrantly)
+    this._stroke = null;
+    this._release(pointerId);
+    this._endInterrupted(tool);
+    return true;
+  }
+
+  /** Drop the open pan (no context menu) and release its pointer. */
+  _abortPan() {
+    if (!this._pan) return;
+    const { pointerId } = this._pan;
+    this._pan = null;
+    this._release(pointerId);
+    this._updateCursor();
+  }
+
+  /**
    * End a stroke that was interrupted rather than released (pointercancel, a lost pointer capture,
-   * a window blur, the view hidden): the tool gets `pointerUp` with `cancelled: true` (commit
+   * a window blur, the view hidden, a lost release — a mouse move without the button, or the same
+   * pointer pressed again): the tool gets `pointerUp` with `cancelled: true` (commit
    * nothing new, PointerEv.cancelled) on the stroke's last real PointerEv — a cancel or
    * lost-capture event may carry no usable position and a blur has none. `_onDown` sets `_lastEv`
    * before any stroke can end, so the `else` branch is only a safety net: an open transaction is
@@ -635,9 +702,7 @@ export class Map2DView {
   }
 
   _toolError(err) {
-    console.warn('[Map2DView] tool error', err);
-    if (this.state.inTransaction) this.state.commit();
-    this.state.notify(`Tool error: ${err?.message ?? err}`);
+    reportToolError(this.state, err, '[Map2DView]');
   }
 
   _onWheel(e) {
@@ -1521,9 +1586,7 @@ export class Map2DView {
           ctx.setLineDash([]);
         }
         ctx.fillStyle = rgba(def.color, 0.9);
-        const L = this.state.level;
-        const walk = (x, z) => { const d = L.legend[L.tiles[Math.floor(z)]?.[Math.floor(x)]]; return !!d && !d.void && !d.water && d.walkable !== false; };
-        for (const [px, pz] of critterStartPoints(o, walk)) {
+        for (const [px, pz] of this._critterSpots(o)) {
           ctx.beginPath(); ctx.arc(px, pz, Math.max(0.1, 2.2 * u), 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
@@ -1614,6 +1677,76 @@ export class Map2DView {
         labels.push({ x: (o.minX + o.maxX) / 2, z: (o.minZ + o.maxZ) / 2, text: def.glyph, kind: 'glyph', color: '#e2c17f', size: 14, badge: true });
         return;
       }
+      case 'exit': {
+        // a campaign exit: a green dashed rectangle, its target as the tag ("→ level · entrance")
+        ctx.fillStyle = rgba(def.color, o.mode === 'use' ? 0.16 : 0.1);
+        ctx.beginPath(); ctx.rect(o.minX, o.minZ, o.maxX - o.minX, o.maxZ - o.minZ); ctx.fill();
+        haloDash(ctx, u, rgba(def.color, 0.95), o.mode === 'use' ? [3, 3] : [9, 4], 1.8);
+        ctx.restore();
+        if (this.scale >= 9) labels.push({ x: o.minX, z: o.minZ, text: `→ ${o.to || '?'}`, kind: 'region', sub: this.scale >= 30 ? (o.entrance || '') : '', color: def.color });
+        labels.push({ x: (o.minX + o.maxX) / 2, z: (o.minZ + o.maxZ) / 2, text: def.glyph, kind: 'glyph', color: def.color, size: 14, badge: true });
+        return;
+      }
+      case 'event': {
+        // a story event: a gold dashed rectangle, its trigger and prompt as the tag ("! use · Read");
+        // zoomed in, what it waits for (condition, hour, enemy group); a background event (it runs
+        // without holding the player) is dotted and tagged "(background)"
+        ctx.fillStyle = rgba(def.color, o.on === 'use' ? 0.15 : 0.09);
+        ctx.beginPath(); ctx.rect(o.minX, o.minZ, o.maxX - o.minX, o.maxZ - o.minZ); ctx.fill();
+        haloDash(ctx, u, rgba(def.color, 0.95), isBackgroundEvent(o) ? [1.5, 3.5] : o.on === 'use' ? [3, 3] : [6, 3, 1.5, 3], 1.7);
+        ctx.restore();
+        if (this.scale >= 9) labels.push({ x: o.minX, z: o.minZ, text: eventTag(o), kind: 'region', sub: this.scale >= 30 ? eventSub(o) : '', color: def.color });
+        labels.push({ x: (o.minX + o.maxX) / 2, z: (o.minZ + o.maxZ) / 2, text: def.glyph, kind: 'glyph', color: def.color, size: 14, badge: true });
+        return;
+      }
+      case 'marker': {
+        // a story marker (a named spot): a gold ring with its facing, its name below
+        const r = Math.max(0.3, 6 * u);
+        const fa = ownValue(FACING_ANGLE, o.facing) ?? FACING_ANGLE.down;
+        ctx.fillStyle = rgba(def.color, 0.16);
+        ctx.beginPath(); ctx.arc(o.x, o.z, r * 1.55, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.moveTo(o.x + Math.cos(fa) * r * 1.95, o.z + Math.sin(fa) * r * 1.95);
+        ctx.lineTo(o.x + Math.cos(fa + 0.42) * r * 1.2, o.z + Math.sin(fa + 0.42) * r * 1.2);
+        ctx.lineTo(o.x + Math.cos(fa - 0.42) * r * 1.2, o.z + Math.sin(fa - 0.42) * r * 1.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath(); ctx.arc(o.x, o.z, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#33290f';
+        ctx.fill();
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = Math.max(0.07, 1.8 * u);
+        ctx.stroke();
+        ctx.restore();
+        labels.push({ x: o.x, z: o.z, text: def.glyph, kind: 'glyph', color: def.color, size: r * this.scale * 1.25 });
+        if (zoomedIn || this.state.selection.includes(o.id)) labels.push({ x: o.x, z: o.z + r, text: o.name || o.id, kind: 'npc' });
+        return;
+      }
+      case 'entrance': {
+        // a campaign arrival point: a green ring with the arrival facing, its name below
+        const r = Math.max(0.36, 7 * u);
+        const fa = ownValue(FACING_ANGLE, o.facing) ?? FACING_ANGLE.down;
+        ctx.fillStyle = rgba(def.color, 0.18);
+        ctx.beginPath(); ctx.arc(o.x, o.z, r * 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = def.color;
+        ctx.beginPath();
+        ctx.moveTo(o.x + Math.cos(fa) * r * 2, o.z + Math.sin(fa) * r * 2);
+        ctx.lineTo(o.x + Math.cos(fa + 0.42) * r * 1.25, o.z + Math.sin(fa + 0.42) * r * 1.25);
+        ctx.lineTo(o.x + Math.cos(fa - 0.42) * r * 1.25, o.z + Math.sin(fa - 0.42) * r * 1.25);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath(); ctx.arc(o.x, o.z, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#123527';
+        ctx.fill();
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = Math.max(0.08, 2 * u);
+        ctx.stroke();
+        ctx.restore();
+        labels.push({ x: o.x, z: o.z, text: def.glyph, kind: 'glyph', color: def.color, size: r * this.scale * 1.2 });
+        if (zoomedIn || this.state.selection.includes(o.id)) labels.push({ x: o.x, z: o.z + r, text: o.name || o.id, kind: 'npc' });
+        return;
+      }
       default: {
         // generic prop: rotated footprint box with the catalog colour
         const [hw, hd] = footprint(o);
@@ -1653,6 +1786,8 @@ export class Map2DView {
           ctx.strokeStyle = 'rgba(30,18,8,0.85)';
           ctx.lineWidth = 1.2 * u;
           ctx.strokeRect(-hw, -hd, hw * 2, hd * 2);
+        } else if (OBJECT_TYPES[o.type].interior) {
+          drawInterior(ctx, o, def, u);
         } else if (o.type === 'crateStack') {
           const sz = o.opts?.size ?? 0.85;
           const n = o.opts?.count ?? 3;
@@ -1764,12 +1899,12 @@ export class Map2DView {
         const arena = bossArena(o);
         if (!arena) { ctx.beginPath(); ctx.arc(o.x, o.z, (Number(o.radius) || 3) + 0.1, 0, Math.PI * 2); ctx.stroke(); }
         if (arena) { rr(ctx, arena.minX - 0.1, arena.minZ - 0.1, arena.maxX - arena.minX + 0.2, arena.maxZ - arena.minZ + 0.2, 0.12); ctx.stroke(); }
-      } else if (['house', 'marketStall', 'bench', 'flowerbox', 'crate', 'crateStack', 'barrel', 'signpost', 'chest'].includes(o.type)) {
-        const [hw, hd] = footprint(o);
+      } else if (['house', 'marketStall', 'bench', 'flowerbox', 'crate', 'crateStack', 'barrel', 'signpost', 'chest'].includes(o.type) || def.interior) {
+        const r = footRect(o);
         ctx.save();
         ctx.translate(o.x, o.z);
         ctx.rotate(-(o.rotation ?? 0));
-        rr(ctx, -hw - 0.15, -hd - 0.15, hw * 2 + 0.3, hd * 2 + 0.3, 0.15);
+        rr(ctx, r.minX - 0.15, r.minZ - 0.15, r.maxX - r.minX + 0.3, r.maxZ - r.minZ + 0.3, 0.15);
         ctx.stroke();
         ctx.restore();
       } else {
@@ -1876,7 +2011,7 @@ export class Map2DView {
         placed.push({ x0: p.x + 3, x1: p.x + 15 + w, y0, y1: y0 + 18 });
         ctx.fillStyle = 'rgba(10,14,28,0.82)';
         rr(ctx, p.x + 3, y0, w + 12, 18, 4); ctx.fill();
-        ctx.fillStyle = GOLD;
+        ctx.fillStyle = l.color ?? GOLD;
         ctx.fillText(text, p.x + 9, y0 + 9.5);
         ctx.textAlign = 'center';
       } else if (l.kind === 'corner') {
@@ -1980,6 +2115,35 @@ function drawBounds(o) {
   return b;
 }
 
+/**
+ * The tag of a story event: its trigger and prompt ("! use · Read"; "! enter").
+ * @param {Record<string, any>} o an `event` object
+ */
+export function eventTag(o) {
+  const on = typeof o.on === 'string' && o.on ? o.on : 'use';
+  const label = typeof o.label === 'string' ? o.label.trim() : '';
+  return `! ${on}${label ? ` · ${label}` : ''}${isBackgroundEvent(o) ? ' (background)' : ''}`;
+}
+
+/**
+ * Does a story event run in the background (its optional `background: true`: it runs without
+ * holding the player)? Drawn with a dotted outline and "(background)" after its tag.
+ * @param {object} o
+ */
+export function isBackgroundEvent(o) {
+  return /** @type {{ background?: unknown }} */ (o)?.background === true;
+}
+
+/** What a story event waits for, for its tag's second part (zoomed in): condition, hour, group. */
+function eventSub(o) {
+  const parts = [];
+  if (typeof o.if === 'string' && o.if.trim()) parts.push(`if ${o.if.trim()}`);
+  if (o.on === 'time' && Number.isFinite(o.at)) parts.push(`at ${o.at}h`);
+  if (o.on === 'cleared' && typeof o.group === 'string' && o.group) parts.push(o.group);
+  if (o.once) parts.push('once');
+  return parts.join(' · ');
+}
+
 /** Canopy radius of a tree (world units). */
 function treeRadius(o) {
   const hgt = o.opts?.height ?? 4.5;
@@ -1994,8 +2158,142 @@ function inFootprint(o, x, z, tol) {
   const dz = z - o.z;
   const lx = dx * Math.cos(r) + dz * Math.sin(r);
   const lz = -dx * Math.sin(r) + dz * Math.cos(r);
+  const f = footRect(o);
+  return lx >= f.minX - tol && lx <= f.maxX + tol && lz >= f.minZ - tol && lz <= f.maxZ + tol;
+}
+
+/**
+ * A point object's footprint in its own frame (x across, z front to back): the interior furniture's
+ * `interiorFootprint` (not always centred: a wall window lies in front of its wall line), else the
+ * centred `footprint`. @param {LevelObject} o
+ */
+function footRect(o) {
+  const f = interiorFootprint(o);
+  if (f) return f;
   const [hw, hd] = footprint(o);
-  return Math.abs(lx) <= hw + tol && Math.abs(lz) <= hd + tol;
+  return { minX: -hw, maxX: hw, minZ: -hd, maxZ: hd };
+}
+
+/**
+ * Sketch of an interior piece seen from above, in its own frame (the context is translated to it
+ * and turned by its rotation; local +Z, the front, points down the map at rotation 0).
+ * @param {CanvasRenderingContext2D} ctx @param {LevelObject} o
+ * @param {{ color: string }} def @param {number} u one screen pixel in world units
+ */
+function drawInterior(ctx, o, def, u) {
+  const f = footRect(o);
+  // (the options as the builders read them: a plain object, numbers clamped by optNum — a file's
+  // `steps: 1e9` must not draw a billion treads)
+  const op = /** @type {Record<string, any>} */ (o.opts && typeof o.opts === 'object' && !Array.isArray(o.opts) ? o.opts : {});
+  const w = f.maxX - f.minX;
+  const d = f.maxZ - f.minZ;
+  const line = (col, lw = 1) => { ctx.strokeStyle = col; ctx.lineWidth = lw * u; };
+  const wood = '#9a6a3c';
+  const dark = 'rgba(30,18,8,0.85)';
+  if (o.type === 'rug') {
+    ctx.fillStyle = ownValue(FURNITURE_COLORS, op.color) ?? FURNITURE_COLORS.red;
+    ctx.fillRect(f.minX, f.minZ + 0.15, w, d - 0.3);
+    line('#e0b54a', 2);
+    ctx.strokeRect(f.minX + 0.12, f.minZ + 0.27, w - 0.24, d - 0.54);
+    ctx.fillStyle = '#efe6d2';
+    ctx.fillRect(f.minX + 0.06, f.minZ, w - 0.12, 0.15);
+    ctx.fillRect(f.minX + 0.06, f.maxZ - 0.15, w - 0.12, 0.15);
+    return;
+  }
+  if (o.type === 'wallWindow') {
+    ctx.fillStyle = '#bfe0f2';
+    ctx.fillRect(f.minX + 0.5, f.minZ, w - 1, 0.16);
+    line(dark, 1.2);
+    ctx.strokeRect(f.minX + 0.5, f.minZ, w - 1, 0.16);
+    if (op.curtains !== 'none') {
+      ctx.fillStyle = op.curtains === 'linen' ? '#efe6d2' : '#b83a3a';
+      ctx.fillRect(f.minX + 0.1, f.minZ, 0.36, 0.22);
+      ctx.fillRect(f.maxX - 0.46, f.minZ, 0.36, 0.22);
+    }
+    if (op.beam !== false) {
+      ctx.fillStyle = 'rgba(255,240,200,0.18)';
+      ctx.fillRect(f.minX + 0.5, f.minZ + 0.3, w - 1, optNum(op.sill, 0.9, 0.3, 2) + 1.5);
+    }
+    return;
+  }
+  // a drop shadow, then the piece
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  const round = o.type === 'sacks' || o.type === 'chair' && op.style === 'stool' || o.type === 'table' && op.shape === 'round';
+  if (round && o.type !== 'sacks') { ctx.beginPath(); ctx.arc(0.08, 0.12, f.maxX, 0, Math.PI * 2); ctx.fill(); }
+  else if (!round) ctx.fillRect(f.minX + 0.08, f.minZ + 0.12, w, d);
+  if (o.type === 'sacks') {
+    const count = Math.round(optNum(op.count, 3, 1, 4));
+    const n = Math.min(3, count);
+    for (let k = 0; k < n; k++) {
+      const sx = (k - (n - 1) / 2) * 0.52;
+      ctx.fillStyle = '#d8c49c';
+      ctx.beginPath(); ctx.ellipse(sx, 0, 0.27, 0.2, 0, 0, Math.PI * 2); ctx.fill();
+      line(dark, 1); ctx.stroke();
+    }
+    if (count >= 4) { ctx.fillStyle = '#c4ad86'; ctx.fillRect(-0.4, -0.14, 0.8, 0.28); line(dark, 1); ctx.strokeRect(-0.4, -0.14, 0.8, 0.28); }
+    return;
+  }
+  if (round) {
+    ctx.fillStyle = op.cloth === true ? '#efe6d2' : wood;
+    ctx.beginPath(); ctx.arc(0, 0, f.maxX, 0, Math.PI * 2); ctx.fill();
+    line(dark, 1.2); ctx.stroke();
+    return;
+  }
+  ctx.fillStyle = o.type === 'hearth' ? '#8a8790' : o.type === 'shelf' || o.type === 'wardrobe' ? '#7a4f2e' : wood;
+  ctx.fillRect(f.minX, f.minZ, w, d);
+  if (o.type === 'bed') {
+    ctx.fillStyle = ownValue(FURNITURE_COLORS, op.blanket) ?? FURNITURE_COLORS.red;
+    ctx.fillRect(f.minX + 0.08, f.minZ + 0.7, w - 0.16, d - 0.8);
+    ctx.fillStyle = '#efe6d2';
+    const two = optNum(op.width, 1.2, 0.8, 2.4) >= 1.6;
+    for (const px of two ? [-0.25, 0.25] : [0]) ctx.fillRect(px * w - (two ? 0.18 * w : 0.3 * w), f.minZ + 0.18, two ? 0.36 * w : 0.6 * w, 0.4);
+    ctx.fillStyle = '#3a2416';
+    ctx.fillRect(f.minX, f.minZ, w, 0.12);
+  } else if (o.type === 'table') {
+    if (op.cloth === true) { ctx.fillStyle = '#efe6d2'; ctx.fillRect(f.minX + 0.04, f.minZ + 0.04, w - 0.08, d - 0.08); }
+  } else if (o.type === 'chair') {
+    ctx.fillStyle = '#3a2416';
+    ctx.fillRect(f.minX, f.minZ, w, 0.1);
+  } else if (o.type === 'shelf') {
+    const cols = ['#bf3b3b', '#3d5fb4', '#468a45', '#d9a92e', '#77428f'];
+    const k = op.kind === 'pantry' ? 0.24 : 0.12;
+    for (let i = 0, x = f.minX + 0.1; x < f.maxX - 0.1; i++, x += k) { ctx.fillStyle = cols[i % cols.length]; ctx.fillRect(x, f.maxZ - 0.2, k * 0.7, 0.14); }
+  } else if (o.type === 'hearth') {
+    ctx.fillStyle = '#5a5660';
+    ctx.fillRect(f.minX + 0.15, f.maxZ - 0.3, w - 0.3, 0.3);
+    ctx.fillStyle = op.lit === false ? '#2a2628' : '#ff8a3a';
+    ctx.fillRect(-w * 0.2, f.minZ + 0.25, w * 0.4, 0.35);
+  } else if (o.type === 'counter') {
+    ctx.fillStyle = '#5c3a22';
+    ctx.fillRect(f.minX, f.maxZ - 0.1, w, 0.1);
+  } else if (o.type === 'wardrobe') {
+    line(dark, 1);
+    ctx.beginPath();
+    if (op.kind === 'drawers') { ctx.moveTo(f.minX, f.maxZ - 0.12); ctx.lineTo(f.maxX, f.maxZ - 0.12); }
+    else { ctx.moveTo(0, f.minZ); ctx.lineTo(0, f.maxZ); }
+    ctx.stroke();
+  } else if (o.type === 'staircase') {
+    const down = op.dir === 'down';
+    const n = Math.round(optNum(op.steps, 7, 3, 14));
+    if (down) {
+      // treads fading into the well (the open end toward +Z)
+      for (let k = 0; k < n; k++) {
+        const t = k / n;
+        ctx.fillStyle = shade('#9a6a3c', -0.85 * t);
+        ctx.fillRect(f.minX + 0.12, f.maxZ - (k + 1) * (d - 0.1) / n, w - 0.24, (d - 0.1) / n - 0.03);
+      }
+    } else {
+      // steps rising toward +X (flip: −X), the low end lighter
+      const s = op.flip === true ? -1 : 1;
+      for (let k = 0; k < n; k++) {
+        ctx.fillStyle = shade('#c49358', -0.5 * (1 - k / n));
+        const x0 = s > 0 ? f.minX + (k * w) / n : f.maxX - ((k + 1) * w) / n;
+        ctx.fillRect(x0, f.minZ, w / n - 0.03, d);
+      }
+    }
+  }
+  line(dark, 1.2);
+  ctx.strokeRect(f.minX, f.minZ, w, d);
 }
 
 /** Unrotated half extents of a point object's footprint. @param {LevelObject} o */

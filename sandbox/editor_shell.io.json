@@ -153,7 +153,7 @@
   "eval": "JSON.stringify({ name: T.E.state.level.name, sub: T.E.state.level.subtitle, title: document.title })"
  },
  {
-  "eval": "(() => { window.__opened = []; window.open = (u, n) => { window.__opened.push([u, n]); return {}; }; T.key('F5'); const raw = localStorage.getItem('lumina.level.__playtest__'); return JSON.stringify({ opened: window.__opened, stored: raw ? JSON.parse(raw).name : null, objects: raw ? JSON.parse(raw).objects.length : 0 }); })()"
+  "eval": "(() => { window.__opened = []; window.open = (u, n) => { window.__opened.push([u, n]); return {}; }; T.key('F5'); const raw = localStorage.getItem('luminati.level.__playtest__'); return JSON.stringify({ opened: window.__opened, stored: raw ? JSON.parse(raw).name : null, objects: raw ? JSON.parse(raw).objects.length : 0 }); })()"
  },
  {
   "eval": "T.E.state.setSpawn(0.5, 0.5); T.key('F5'); document.querySelector('.le-dialog-title')?.textContent"
@@ -171,7 +171,7 @@
   "eval": "import('/src/engine/level/LevelStorage.js').then(async (m) => { await m.deleteProjectLevel('zz-editor-test'); m.deleteLocalLevel('zz-editor-test-local'); return JSON.stringify({ project: (await m.listProjectLevels()).map((x) => x.name), local: m.listLocalLevels().map((x) => x.slot) }); })"
  },
  {
-  "eval": "T.E.app._autosave(true); JSON.stringify(JSON.parse(localStorage.getItem('lumina.editor.autosave')))"
+  "eval": "T.E.app._autosave(true); JSON.stringify(JSON.parse(localStorage.getItem('luminati.editor.autosave')))"
  },
  {
   "shot": "07-final"

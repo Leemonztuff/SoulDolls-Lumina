@@ -4,8 +4,9 @@ import { LevelObjectBuilder, bridgeDeckHeight } from '../../engine/level/ObjectB
 import { OBJECT_TYPES, objectBounds, objectCenter } from '../../engine/level/ObjectCatalog.js';
 import { buildShadowCasters, isProxyCaster } from '../../engine/world/ShadowCasters.js';
 import { LightPool, sanitizeLightDescriptors } from '../../engine/lighting/LightPool.js';
-import { addGroundSnowCover } from '../../demo/SnowCover.js';
+import { addGroundSnowCover } from '../../game/SnowCover.js';
 import { waterfallDir } from '../../engine/world/Water.js';
+import { SMOKE, waterfallMist } from '../../game/LevelLook.js';
 
 /**
  * @import { LevelObject, TileRect } from '../../engine/level/types.js'
@@ -40,7 +41,6 @@ const batchChunkFor = (tileMap) => (tileMap && (tileMap.width > 64 || tileMap.de
 export const BATCH_LAYER = 27;
 
 /** Softer, greyer chimney / campfire smoke than the preset (the game's look). */
-const SMOKE = { alpha: 0.2, color: '#b3aca6', colorEnd: '#85828c', size: [0.3, 0.46], sizeEnd: 3.4 };
 /** Types whose picking needs a real mesh hit (their bounds contain a lot of empty space). */
 const PRECISE_PICK = new Set(['house', 'windmill', 'marketStall', 'well', 'bridge', 'fence', 'waterfall', 'tree']);
 
@@ -131,7 +131,8 @@ function placementBounds(built) {
  *                               by a fast translation)
  * @property {boolean} exact     false after a fast translation (an exact rebuild is pending)
  * @property {Emitter[]} emitters
- *                               live particle emitters (atmosphere on)
+ *                               live particle emitters (atmosphere on; disabled while the prop
+ *                               is hidden: `_emitting`)
  * @property {THREE.Material[]} emissiveMats  its registered emissive materials (one per
  *                               `built.emissives` entry; shared records in `_emissives`)
  * @property {string} chunk      batching chunk key
@@ -199,6 +200,8 @@ export class ObjectPreview {
     this.lightsDirty = true;
     /** Object types hidden in the views (state.view.hiddenTypes). */
     this.hiddenTypes = new Set();
+    /** Objects the story preview hides (src/editor/story.js). */
+    this.hiddenIds = new Set();
     /** Milliseconds spent building in the last step / sync, and how many were built. */
     this.lastBuildMs = 0;
     this.lastBuilt = 0;
@@ -437,7 +440,7 @@ export class ObjectPreview {
       offset: new THREE.Vector3(),
     };
     this._measure(e);
-    root.visible = !this.hiddenTypes.has(copy.type);
+    root.visible = !this._hides(copy.type, obj.id);
     for (const em of built.emissives ?? []) this._addEmissive(e, em);
     if (this._particles) this._spawnEmitters(e);
     this.entries.set(obj.id, e);
@@ -582,15 +585,36 @@ export class ObjectPreview {
     for (const d of e.built.emitters ?? []) {
       let cfg = d;
       if (d.preset === 'smoke') cfg = { ...d, ...SMOKE };
-      else if (d.preset === 'mist') cfg = { ...d, count: 16, alpha: 0.07 };
+      // (the game's mist: by the waterfall's width, its own `mist` first)
+      else if (d.preset === 'mist') cfg = { ...d, ...waterfallMist(e.obj) };
       try {
         const em = this._particles.createEmitter(cfg);
         // follow a translated build (the descriptor holds the build position)
         em.position.add(e.offset);
+        // a hidden prop's smoke / embers / mist stop with it (shown again with it)
+        em.enabled = this._emitting(e);
         e.emitters.push(em);
       } catch (err) {
         console.error('[Viewport3D] emitter failed:', err);
       }
+    }
+  }
+
+  /**
+   * Do a prop's emitters run: the props shown (Show objects), the prop neither of a hidden type
+   * nor hidden by the story preview?
+   * @param {PropEntry} e
+   */
+  _emitting(e) {
+    return this.object.visible && !this._hides(e.obj.type, e.id);
+  }
+
+  /** Switch every prop's emitters on / off as the props are shown. */
+  _syncEmitters() {
+    for (const e of this.entries.values()) {
+      if (!e.emitters.length) continue;
+      const on = this._emitting(e);
+      for (const em of e.emitters) if (em.enabled !== on) em.enabled = on;
     }
   }
 
@@ -633,7 +657,7 @@ export class ObjectPreview {
     if (this.object.visible) {
       for (const obj of objects) {
         const e = this.entries.get(obj.id);
-        if (!e || !e.lights.length || this.hiddenTypes.has(e.obj.type)) continue;
+        if (!e || !e.lights.length || this._hides(e.obj.type, e.id)) continue;
         for (const l of e.lights) raw.push(l);
       }
     }
@@ -711,18 +735,40 @@ export class ObjectPreview {
     if (this.object.visible === v) return;
     this.object.visible = v;
     this.lightsDirty = true;
+    this._syncEmitters();
+  }
+
+  /** Is a prop of this type / id hidden (a hidden type, or the story preview)? */
+  _hides(type, id) {
+    return this.hiddenTypes.has(type) || this.hiddenIds.has(id);
   }
 
   /** Hide the props of some object types (state.view.hiddenTypes). */
   setHiddenTypes(types) {
-    const next = new Set(types ?? []);
+    this._setHidden(new Set(types ?? []), this.hiddenIds);
+  }
+
+  /**
+   * Hide these props (the story preview: their `when` / `unless` do not allow them); they are not
+   * drawn, picked, batched or lit.
+   * @param {Iterable<string>} ids
+   */
+  setHiddenIds(ids) {
+    this._setHidden(this.hiddenTypes, new Set(ids));
+  }
+
+  /** @param {Set<string>} types @param {Set<string>} ids */
+  _setHidden(types, ids) {
     for (const e of this.entries.values()) {
-      const hide = next.has(e.obj.type);
-      if (hide !== this.hiddenTypes.has(e.obj.type)) this.batcher.invalidate(e);
+      const was = this._hides(e.obj.type, e.id);
+      const hide = types.has(e.obj.type) || ids.has(e.id);
+      if (hide !== was) this.batcher.invalidate(e);
       e.root.visible = !hide;
     }
-    this.hiddenTypes = next;
+    this.hiddenTypes = types;
+    this.hiddenIds = ids;
     this.lightsDirty = true;
+    this._syncEmitters();
   }
 
   dispose() {
@@ -857,7 +903,7 @@ class PropBatcher {
     const perEntry = new Map();
     for (const id of ids) {
       const e = P.entries.get(id);
-      if (!e || !e.exact || !e.root.visible || P.hiddenTypes.has(e.obj.type)) continue;
+      if (!e || !e.exact || !e.root.visible || P._hides(e.obj.type, e.id)) continue;
       e.root.updateMatrixWorld(true);
       const list = [];
       const visit = (o) => {

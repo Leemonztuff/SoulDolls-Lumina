@@ -2,14 +2,46 @@
 /**
  * Headless browser check harness.
  *
- * Starts a Vite dev server, opens a page in headless Chrome (real GPU when available),
+ * Starts a Vite dev server (--dist: `vite preview` on dist/), opens a page in headless Chrome (real GPU when available),
  * collects console errors / warnings / page errors / failed requests, runs an optional
  * action script, measures FPS and writes screenshots + a JSON report.
  *
  * Usage:
- *   npm run check -- [--page=index.html] [--query=autostart=1] [--out=name]
+ *   npm run check -- [--page=game.html] [--query=autostart=1] [--out=name]
  *                    [--wait=4000] [--width=1600] [--height=900]
- *                    [--script=path/to/actions.json] [--fps=3000] [--headful] [--keep-cache]
+ *                    [--script=path/to/actions.json] [--fps=3000] [--headful] [--keep-cache] [--strict]
+ *                    [--fonts=local|google|auto|google-fail|gstatic-fail] [--lang=en|ja|zh]
+ *                    [--base=project] [--dist]
+ *
+ * --base serves the project under a sub-path (Vite's `base`, slashes added: --base=project is
+ * /project/, the page opens at http://127.0.0.1:<port>/project/<page>; in Git Bash write it without
+ * the slashes, which MSYS would turn into a Windows path) — the check that nothing loads from the
+ * site root. `goto`
+ * steps resolve under it too; root paths an `eval` step writes itself (`import('/sandbox/…')`,
+ * `fetch('/levels/…')`) do not, so the action scripts that use them run without --base.
+ * --dist checks the build instead of the sources: dist/ served by `vite preview` (run
+ * `npm run build` first; index.html, game.html and editor.html only, no level API). With --base it is the build
+ * deployed under a sub-path: the build's URLs are relative (`base: './'` in vite.config.js), so the
+ * same dist/ works at any path.
+ *
+ * Fonts and language (docs/specs/I18N.md §1, §5): --fonts (default local) and --lang (default: none,
+ * i.e. English) are written into the page origin's localStorage ('luminati.fonts', 'luminati.lang') before
+ * its first script runs, once per run (page.evaluateOnNewDocument with a seeded marker), so `goto`
+ * steps and tabs the page opens (the editor's play-test pop-up) inherit them and a page that saves
+ * another language keeps it. local: the fonts built into dist/ (screenshots do not depend on the
+ * network or on Google's newer CJK builds); google / auto: Google Fonts (auto falls back to dist/);
+ * google-fail / gstatic-fail: Google's stylesheet / font files made unreachable, so the fallback
+ * runs (a failed request and a console error are expected then).
+ *
+ * Exit code: 1 on page errors (uncaught exceptions in any watched tab, a step the harness could not
+ * run: `HARNESS: …`), 2 when no Chrome / Edge is found (or an option is invalid, or --dist finds no
+ * dist/<page>), else 0. Console errors, warnings, failed
+ * requests and `eval` steps that throw are printed and kept in report.json but do not fail the run —
+ * unless --strict is given: then any of them also exits 1 (the reasons are printed as `Strict:` and
+ * kept in report.json `strictFailures`). Console errors about the favicon and plain 404s are not
+ * counted as errors (the 404 response itself is a failed request). Before the browser closes every
+ * open tab is given a macrotask, a frame and 250 ms, so an assertion the last step throws from a
+ * `setTimeout` (TESTING_AND_VERIFICATION.md §5.3) is still a page error.
  *
  * Each run gets its own Vite dependency cache, node_modules/.vite-check/<out>-<pid>, and deletes it
  * when it ends — also after a failure, an uncaught error or Ctrl+C (only a hard-killed process
@@ -33,14 +65,28 @@
  *   { "wheel": [x, y], "deltaY": -240 }      mouse wheel at a point
  *   { "type": "text", "selector"? }          type text (selector: triple-click that field first)
  *   { "combo": ["Control", "KeyZ"] }         key chord (hold all but the last key)
- *   { "goto": "editor.html?open=x" }         navigate (relative to the dev server)
- *   { "tab": "last" | 0 }                    continue in another tab, e.g. the one the editor's
- *                                            Play button opened (it does not wait for a new tab:
- *                                            TOOL-11 — test play-tests with a goto step)
+ *   { "goto": "editor.html?open=x" }         navigate (relative to the server's base)
+ *   { "tab": "last" | 0, "timeout"?: 10000 } continue in another tab. "last": the newest tab; when
+ *                                            that is the current one, the step first waits up to
+ *                                            `timeout` ms for a new tab to open (e.g. right after
+ *                                            the editor's Play / F5, which opens the named window
+ *                                            `luminati-playtest`) and fails (page error) if none
+ *                                            does. A number: tab n of the browser's list (0 is the
+ *                                            launch's about:blank, 1 the checked page), waited for
+ *                                            up to `timeout` ms. A tab opened during the run is
+ *                                            then given up to `timeout` ms to finish loading. The
+ *                                            switch is logged in `evals` as `tab …` with the URL.
+ *                                            (Loading the play-test in the same tab also works:
+ *                                            { "goto": "game.html?level=local:__playtest__&autostart=1" }.)
  *
- * Output: .check/<out>/report.json, .check/<out>/*.png ; exit code 1 on page errors.
+ * The coordinates of click, dblclick, move, wheel and drag may also be a string: a JS expression
+ * evaluated in the page whose value (or its JSON text) gives them, so a script can aim at world
+ * points instead of fixed pixels, e.g. with sandbox/editor_perf.helpers.js installed:
+ *   { "drag": "P.path('2d', [[30, 30], [31.5, 30.5]])", "steps": 3 }
+ *
+ * Output: .check/<out>/report.json, .check/<out>/*.png (exit codes: see above).
  */
-import { createServer } from 'vite';
+import { createServer, preview } from 'vite';
 import puppeteer from 'puppeteer-core';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -61,25 +107,30 @@ import { fileURLToPath } from 'node:url';
  * @property {string} [shot] screenshot name (.check/<out>/<name>.png)
  * @property {number} [fps] measure fps over this many ms, as `label`
  * @property {string} [label]
- * @property {[number, number]} [click] click at viewport coordinates (`button`, `count` presses)
+ * @property {Point|string} [click] click at viewport coordinates (`button`, `count` presses); a
+ *   string: a JS expression giving them in the page (as for every coordinate below)
  * @property {MouseButton} [button] click / mouse / drag button ('left')
  * @property {number} [count]
- * @property {[number, number]} [dblclick]
- * @property {[number, number]} [move] move the mouse there in `steps` moves (1)
+ * @property {Point|string} [dblclick]
+ * @property {Point|string} [move] move the mouse there in `steps` moves (1)
  * @property {number} [steps] drag: moves per segment (8)
  * @property {'down'|'up'} [mouse] press / release at the current mouse position
- * @property {[number, number][]} [drag] drag through the points, `pause` ms after each segment
+ * @property {Point[]|string} [drag] drag through the points, `pause` ms after each segment
  * @property {number} [pause]
  * @property {KeyInput[]} [modifiers] drag: keys held during the drag
- * @property {[number, number]} [wheel] wheel at a point by `deltaY` (-240)
+ * @property {Point|string} [wheel] wheel at a point by `deltaY` (-240)
  * @property {number} [deltaY]
  * @property {string} [type] text to type (`selector`: triple-click that field first; `delay` 10 ms)
  * @property {string} [selector]
  * @property {number} [delay]
  * @property {KeyInput[]} [combo] hold all but the last key, tap the last
  * @property {string} [goto] navigate (relative to the dev server, or an http URL)
- * @property {'last'|number} [tab] continue in the last tab or tab n (no wait for a new one: TOOL-11)
+ * @property {'last'|number} [tab] continue in the newest tab (waiting for a new one when the
+ *   newest is the current tab) or in tab n
+ * @property {number} [timeout] tab: ms to wait for the tab and for it to load (10000)
  */
+
+/** Viewport coordinates (CSS pixels). @typedef {[number, number]} Point */
 
 /**
  * One fps measurement (`label` added by the caller).
@@ -100,6 +151,13 @@ import { fileURLToPath } from 'node:url';
  * @property {({ label: string } & FpsSample)[]} fps
  * @property {string[]} shots screenshot paths relative to the repository
  * @property {string|null} gl the WebGL2 renderer string ('NO WEBGL2' without WebGL2)
+ * @property {boolean} strict the run had --strict
+ * @property {string[]} strictFailures with --strict: why it exits 1 besides page errors
+ *   ("2 console errors", "1 eval step threw" …); empty otherwise
+ * @property {string} fonts the --fonts mode seeded into the page ('local' by default)
+ * @property {string|null} lang the --lang seeded into the page (null: none, English)
+ * @property {string} base the sub-path the project was served under (--base; '/' without one)
+ * @property {boolean} dist the build in dist/ was checked (--dist), not the sources
  */
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -108,7 +166,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   return m ? [m[1], m[2] ?? true] : [a, true];
 }));
 
-const pagePath = String(args.page ?? 'index.html').replace(/^\//, '');
+const pagePath = String(args.page ?? 'game.html').replace(/^\//, '');
 const query = args.query !== undefined ? String(args.query) : 'autostart=1';
 const outName = String(args.out ?? path.basename(pagePath, '.html'));
 const outDir = path.join(root, '.check', outName);
@@ -116,6 +174,24 @@ const width = Number(args.width ?? 1600);
 const height = Number(args.height ?? 900);
 const initialWait = Number(args.wait ?? 4000);
 const fpsWindow = Number(args.fps ?? 3000);
+// --strict (or --strict=1 / true): console errors, warnings, failed requests and throwing evals fail too
+const strict = args.strict !== undefined && !/^(0|false|no|off)$/i.test(String(args.strict));
+// --fonts / --lang: the font source and the language seeded into the page's localStorage (header)
+const FONT_MODES = ['auto', 'google', 'local', 'google-fail', 'gstatic-fail'];
+const fontsMode = String(args.fonts ?? 'local').toLowerCase();
+if (!FONT_MODES.includes(fontsMode)) { console.error(`--fonts must be one of ${FONT_MODES.join(', ')}`); process.exit(2); }
+// --base: the sub-path the server serves the project under (none: the site root); slashes added,
+// so `--base=project` is /project/ — the spelling Git Bash leaves alone (it rewrites an argument
+// `/project/` into `C:/Program Files/Git/project/`, refused here)
+if (args.base === true || /^[a-z]:[\\/]|\\/i.test(String(args.base ?? ''))) {
+  console.error(`--base must be a URL path such as /project/ or project, not ${args.base === true ? 'empty' : `"${args.base}"`} (in Git Bash write --base=project or prefix MSYS_NO_PATHCONV=1)`);
+  process.exit(2);
+}
+const baseArg = args.base !== undefined ? `/${String(args.base).split('/').filter(Boolean).join('/')}/`.replace(/^\/\/$/, '/') : null;
+// --dist: the build in dist/ through `vite preview` instead of the dev server (header)
+const dist = args.dist !== undefined && !/^(0|false|no|off)$/i.test(String(args.dist));
+const langArg = args.lang !== undefined ? String(args.lang).toLowerCase() : null;
+if (langArg !== null && !['en', 'ja', 'zh'].includes(langArg)) { console.error('--lang must be en, ja or zh'); process.exit(2); }
 /** @type {Step[]} */
 const script = args.script ? JSON.parse(fs.readFileSync(path.resolve(root, String(args.script)), 'utf8')) : [];
 
@@ -135,7 +211,7 @@ for (const f of fs.readdirSync(outDir)) if (f.endsWith('.png') || f === 'report.
 /** @param {number} ms */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** @type {Report} */
-const report = { page: pagePath, query, console: [], errors: [], warnings: [], pageErrors: [], failedRequests: [], evals: [], fps: [], shots: [], gl: null };
+const report = { page: pagePath, query, console: [], errors: [], warnings: [], pageErrors: [], failedRequests: [], evals: [], fps: [], shots: [], gl: null, strict, strictFailures: [], fonts: fontsMode, lang: langArg, base: baseArg ?? '/', dist };
 
 const port = 5200 + Math.floor(Math.random() * 700);
 // A separate dep-optimizer cache per run lets several checks run concurrently without racing, and
@@ -158,11 +234,24 @@ const removeCache = () => {
 process.on('exit', removeCache);
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.once(sig, () => process.exit(130));
 
-const server = await createServer({
-  root, cacheDir, logLevel: 'error', configFile: path.join(root, 'vite.config.js'),
-  server: { port, strictPort: false, host: '127.0.0.1', hmr: false },
-});
-await server.listen();
+/** @type {import('vite').ViteDevServer | import('vite').PreviewServer} */
+let server;
+if (dist) {
+  if (!fs.existsSync(path.join(root, 'dist', pagePath))) { console.error(`--dist: no dist/${pagePath} (run npm run build first)`); process.exit(2); }
+  server = await preview({
+    root, logLevel: 'error', configFile: path.join(root, 'vite.config.js'),
+    ...(baseArg ? { base: baseArg } : {}),
+    preview: { port, strictPort: false, host: '127.0.0.1' },
+  });
+} else {
+  const dev = await createServer({
+    root, cacheDir, logLevel: 'error', configFile: path.join(root, 'vite.config.js'),
+    ...(baseArg ? { base: baseArg } : {}),
+    server: { port, strictPort: false, host: '127.0.0.1', hmr: false },
+  });
+  await dev.listen();
+  server = dev;
+}
 const base = server.resolvedUrls.local[0].replace(/\/$/, '');
 const url = `${base}/${pagePath}${query ? `?${query}` : ''}`;
 
@@ -179,8 +268,31 @@ const browser = await puppeteer.launch({
 });
 
 let exitCode = 0;
+/** @type {Set<Page>} the tabs watched for output and errors (settled before the browser closes) */
+const watched = new Set();
+
+/**
+ * Let what the script's last step scheduled run before the browser closes: an assertion thrown
+ * from a `setTimeout` (TESTING_AND_VERIFICATION §5.3) is reported as a page error only once that
+ * timer has fired and its `pageerror` event has reached the harness. In each open watched tab: a
+ * macrotask, then a frame (or 100 ms, a tab in the background draws none; 3 s at most for a busy
+ * page), then 250 ms for the events to arrive.
+ */
+const settle = async () => {
+  const open = [...watched].filter((p) => !p.isClosed());
+  await Promise.all(open.map((p) => Promise.race([
+    p.evaluate(() => new Promise((resolve) => {
+      setTimeout(() => {
+        requestAnimationFrame(() => setTimeout(resolve, 0));
+        setTimeout(resolve, 100);
+      }, 0);
+    })).catch(() => {}),
+    sleep(3000),
+  ])));
+  await sleep(250);
+};
+
 try {
-  const watched = new Set();
   /** @param {Page|null} p a tab to collect console output, errors and failed requests from */
   const watch = (p) => {
     if (!p || watched.has(p)) return;
@@ -199,8 +311,20 @@ try {
   };
   let page = await browser.newPage();
   watch(page);
+  // the font source and the language, in the origin's storage before the first script runs — once,
+  // so a page that saves another language (the title's switch) keeps it after its reload
+  await page.evaluateOnNewDocument((fonts, lang) => {
+    try {
+      if (localStorage.getItem('luminati.check.seeded')) return;
+      localStorage.setItem('luminati.fonts', fonts);
+      if (lang) localStorage.setItem('luminati.lang', lang);
+      localStorage.setItem('luminati.check.seeded', '1');
+    } catch { /* about:blank, storage off */ }
+  }, fontsMode, langArg);
   // tabs the page opens (the editor's Play button) are watched from their first request
   browser.on('targetcreated', async (t) => { if (t.type() === 'page') watch(await t.page().catch(() => null)); });
+  // the launch's about:blank and the checked page: a `tab` step waits for any other tab to load
+  const initialPages = new Set(await browser.pages());
 
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   report.gl = await page.evaluate(() => {
@@ -235,6 +359,37 @@ try {
     report.shots.push(path.relative(root, file).replace(/\\/g, '/'));
   };
 
+  /**
+   * A step's coordinates: as written, or — a string — the value of that JS expression in the
+   * current page (an array, or its JSON text).
+   * @template T
+   * @param {T|string} v
+   * @returns {Promise<T>}
+   */
+  const coords = async (v) => {
+    if (typeof v !== 'string') return v;
+    const r = await page.evaluate(v);
+    return /** @type {T} */ (typeof r === 'string' ? JSON.parse(r) : r);
+  };
+
+  /**
+   * Wait (up to `ms`) until a tab opened during the run has navigated away from its first
+   * about:blank and finished loading; false if it has not by then (the step goes on).
+   * @param {Page} p
+   * @param {number} ms
+   * @returns {Promise<boolean>}
+   */
+  const loaded = async (p, ms) => {
+    const t0 = Date.now();
+    for (;;) {
+      try {
+        if (p.url() !== 'about:blank' && (await p.evaluate(() => document.readyState)) === 'complete') return true;
+      } catch { /* (navigating: the context went away) */ }
+      if (Date.now() - t0 >= ms) return false;
+      await sleep(100);
+    }
+  };
+
   await shot('initial');
   if (fpsWindow > 0) report.fps.push({ label: 'initial', ...(await measureFps(fpsWindow)) });
 
@@ -251,16 +406,24 @@ try {
     else if (step.click) {
       // (puppeteer ≥ 22: `count` presses the button that many times — clickCount 1, 2, … — so the
       // page gets a real 'dblclick'; a lone `clickCount` option is overridden by it)
-      await page.mouse.click(step.click[0], step.click[1], { button: step.button ?? 'left', count: step.count ?? 1 });
+      const [x, y] = await coords(step.click);
+      await page.mouse.click(x, y, { button: step.button ?? 'left', count: step.count ?? 1 });
     }
-    else if (step.dblclick) await page.mouse.click(step.dblclick[0], step.dblclick[1], { count: 2 });
-    else if (step.move) await page.mouse.move(step.move[0], step.move[1], { steps: step.steps ?? 1 });
+    else if (step.dblclick) {
+      const [x, y] = await coords(step.dblclick);
+      await page.mouse.click(x, y, { count: 2 });
+    }
+    else if (step.move) {
+      const [x, y] = await coords(step.move);
+      await page.mouse.move(x, y, { steps: step.steps ?? 1 });
+    }
     else if (step.mouse === 'down' || step.mouse === 'up') {
       await page.mouse[step.mouse]({ button: step.button ?? 'left' });
     }
     else if (step.drag) {
       // real mouse drag through the points [[x,y], ...] (steps interpolated moves per segment)
-      const pts = step.drag;
+      const pts = await coords(step.drag);
+      if (!Array.isArray(pts) || pts.length < 1) throw new Error(`drag: no points (${JSON.stringify(step.drag).slice(0, 200)})`);
       const button = step.button ?? 'left';
       if (step.modifiers) for (const m of step.modifiers) await page.keyboard.down(m);
       await page.mouse.move(pts[0][0], pts[0][1]);
@@ -273,7 +436,8 @@ try {
       if (step.modifiers) for (const m of [...step.modifiers].reverse()) await page.keyboard.up(m);
     }
     else if (step.wheel) {
-      await page.mouse.move(step.wheel[0], step.wheel[1]);
+      const [x, y] = await coords(step.wheel);
+      await page.mouse.move(x, y);
       await page.mouse.wheel({ deltaY: step.deltaY ?? -240 });
     }
     else if (step.type !== undefined) {
@@ -293,28 +457,58 @@ try {
     }
     else if (step.tab !== undefined) {
       // continue in another tab (e.g. the one the editor's Play button opened): 'last' or an index
+      const timeout = Number(step.timeout ?? 10000);
       const t0 = Date.now();
       let pages = await browser.pages();
-      while (step.tab === 'last' && pages.length < 2 && Date.now() - t0 < 10000) { await sleep(200); pages = await browser.pages(); }
-      const next = step.tab === 'last' ? pages[pages.length - 1] : pages[Number(step.tab)];
-      if (!next) throw new Error(`no tab ${step.tab} (${pages.length} open)`);
-      if (next !== page) {
-        watch(next);
-        page = next;
-        await page.setViewport({ width, height });
-        await page.bringToFront();
-        report.evals.push({ code: `tab ${step.tab}`, result: page.url() });
+      /** @type {Page|null} */
+      let next = null;
+      if (step.tab === 'last') {
+        next = pages[pages.length - 1] ?? null;
+        if (!next || next === page) {
+          // the newest tab is this one: wait for the tab it is opening (a pop-up is often not
+          // listed yet right after the click / key that opens it). Tabs opened before the step
+          // are skipped by the test above, so the wait never takes an old tab.
+          const known = new Set(pages.map((p) => p.target()));
+          const t = await browser.waitForTarget((x) => x.type() === 'page' && !known.has(x), { timeout }).catch(() => null);
+          next = t ? await t.page() : null;
+          if (!next) throw new Error(`tab last: no new tab opened within ${timeout} ms (${pages.length} open, the newest is the current page)`);
+        }
+      } else {
+        const n = Number(step.tab);
+        while (!pages[n] && Date.now() - t0 < timeout) { await sleep(100); pages = await browser.pages(); }
+        next = pages[n] ?? null;
+        if (!next) throw new Error(`no tab ${step.tab} (${pages.length} open after ${timeout} ms)`);
       }
+      watch(next);
+      page = next;
+      await page.setViewport({ width, height });
+      await page.bringToFront();
+      // a tab opened during the run starts as about:blank: let it load before the next step
+      const ready = initialPages.has(page) || (await loaded(page, Math.max(0, timeout - (Date.now() - t0))));
+      report.evals.push({ code: `tab ${step.tab}`, result: ready ? page.url() : `${page.url()} (not loaded after ${timeout} ms)` });
     }
   }
 } catch (e) {
   report.pageErrors.push(`HARNESS: ${e?.stack ?? e}`);
 } finally {
+  await settle().catch(() => {});
   await browser.close();
   await server.close();
 }
 
 if (report.pageErrors.length) exitCode = 1;
+if (strict) {
+  const evalErrors = report.evals.filter((e) => e.error !== undefined).length;
+  /** @type {[number, string, string][]} count, singular, plural */
+  const counts = [
+    [report.errors.length, 'console error', 'console errors'],
+    [report.warnings.length, 'console warning', 'console warnings'],
+    [report.failedRequests.length, 'failed request', 'failed requests'],
+    [evalErrors, 'eval step threw', 'eval steps threw'],
+  ];
+  report.strictFailures = counts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  if (report.strictFailures.length) exitCode = 1;
+}
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
 
 /** @param {string[]} a */
@@ -332,7 +526,8 @@ console.log(`Failed requests (${report.failedRequests.length}):`);
 uniq(report.failedRequests).slice(0, 10).forEach((e) => console.log('  ' + e));
 if (report.evals.length) {
   console.log('Evals:');
-  report.evals.forEach((e) => console.log(`  ${e.code} => ${String(JSON.stringify(e.result ?? e.error ?? null)).slice(0, 400)}`));
+  report.evals.forEach((e) => console.log(`  ${e.code} => ${e.error !== undefined ? 'THREW ' : ''}${String(JSON.stringify(e.result ?? e.error ?? null)).slice(0, 400)}`));
 }
 console.log(`Screenshots: ${report.shots.join(', ')}`);
+if (strict) console.log(`Strict: ${report.strictFailures.length ? `FAILED — ${report.strictFailures.join(', ')}` : 'passed (no console errors, warnings, failed requests or throwing evals)'}`);
 process.exit(exitCode);
