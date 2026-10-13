@@ -145,6 +145,26 @@ html[data-lu-layout='mobile'] .lu-root:not(.lu-root--title) .lu-help {
 
 .lu-touch__btn--b { color: var(--g-kf3); }
 
+/* combat only (root's lu-root--combat, UI.enableCombat): attack (X) and lock (RS); dodge is B,
+   skills and the draught the tappable skill-bar sockets */
+.lu-touch__btn--combat { display: none; }
+.lu-root--combat .lu-touch__btn--combat {
+  display: flex;
+}
+.lu-touch__btn--atk {
+  width: max(calc(var(--px) * 24), 52px);
+  height: max(calc(var(--px) * 24), 52px);
+  font-size: max(calc(var(--px) * 10), 12px);
+}
+.lu-touch__btn--lock {
+  width: max(calc(var(--px) * 16), 36px);
+  height: max(calc(var(--px) * 16), 36px);
+  font-size: max(calc(var(--px) * 8), 10px);
+  color: var(--g-dm3);
+  align-self: flex-start;
+  margin-top: max(calc(var(--px) * 10), 10px);
+}
+
 .lu-touch__btn--run {
   width: max(calc(var(--px) * 18), 40px);
   height: max(calc(var(--px) * 18), 40px);
@@ -159,6 +179,11 @@ html[data-lu-layout='mobile'] .lu-root:not(.lu-root--title) .lu-help {
   color: var(--g-dm3);
   align-self: flex-start;
   margin-top: max(calc(var(--px) * 4), 4px);
+}
+
+/* combat: lift the cluster clear of the skill bar (CombatHUD: bottom-right, ~76 art px) */
+.lu-root--combat .lu-touch__acts {
+  bottom: max(calc(var(--px) * 86), 86px);
 }
 
 /* a very short landscape (a phone in 2 : 1): pull the clusters in so the dialog keeps the middle */

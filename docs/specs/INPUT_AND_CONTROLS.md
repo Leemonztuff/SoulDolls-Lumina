@@ -460,9 +460,18 @@ layer 5 of the UI root. The page wires its `Input` with `ui.touch.bindInput(engi
   | --- | --- | --- |
   | D-pad | `GamepadDpadUp/Down/Left/Right` | `up` / `down` / `left` / `right` |
   | A (big) | `GamepadA` | `confirm` |
-  | B | `GamepadB` | `cancel` |
+  | B | `GamepadB` | `cancel` (combat levels: also `dodge`, COMBAT.md §9) |
   | »» | `GamepadRT` | `run` |
   | « / » | `GamepadLB` / `GamepadRB` | `camLeft` / `camRight` |
+  | X (combat only) | `GamepadX` | `attack` |
+  | L (combat only) | `GamepadRS` | `lock` |
+
+  **Combat levels** (`lu-root--combat`, `UI.enableCombat`): the X and L buttons appear in the
+  cluster (hidden on peaceful levels by CSS); the cluster lifts clear of the skill bar
+  (bottom-right). **Skills and the Healing Draught need no extra buttons** — the skill-bar
+  sockets are already tappable (`CombatHUD.onSlotPress` → `CombatInput.press`), and a tap there
+  never reaches the canvas as an attack. Dodge is the same B button (combat rebinds `GamepadB` to
+  `dodge`; `cancel` is only read while the map, photo mode or a dialog is up).
 
 - **One pointer, diagonals.** The D-pad is a single element with a tracked `pointerId`
   (`setPointerCapture`): the offset from its centre sets the axes independently inside a 0.28
@@ -482,5 +491,6 @@ layer 5 of the UI root. The page wires its `Input` with `ui.touch.bindInput(engi
   component itself when created — a page without the layer never loads the table. Button faces
   (A, B, «, ») stay Latin in every language.
 
-Combat levels reuse the same layer and pad bindings; their extra action buttons (attack, dodge,
-skills) are a later additive change to `TouchControls.js` and do not change this contract.
+Combat levels reuse the same layer and pad bindings: the X (attack) and L (lock) buttons are in
+the cluster under `lu-root--combat`, dodge is B, and skills / the draught are the tappable
+skill-bar sockets — no further change to this contract is planned for them.

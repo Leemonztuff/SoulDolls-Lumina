@@ -22,7 +22,7 @@ import { GLYPHS } from './art/pieces.js';
 
 /** @import { Input } from '../core/Input.js' */
 
-/** The virtual gamepad code of each control (mapped by DEFAULT_PAD_BINDINGS). */
+/** The virtual gamepad code of each control (mapped by DEFAULT_PAD_BINDINGS / COMBAT_PAD_BINDINGS). */
 export const TOUCH_BUTTONS = Object.freeze({
   up: 'GamepadDpadUp',
   down: 'GamepadDpadDown',
@@ -33,6 +33,8 @@ export const TOUCH_BUTTONS = Object.freeze({
   run: 'GamepadRT',
   camLeft: 'GamepadLB',
   camRight: 'GamepadRB',
+  attack: 'GamepadX',
+  lock: 'GamepadRS',
 });
 
 /** The d-pad's radial dead zone as a fraction of its half-size (below: no direction). */
@@ -109,18 +111,25 @@ export class TouchControls {
     // ---- the action cluster ----
     const acts = document.createElement('div');
     acts.className = 'lu-touch__acts';
-    /** face label | aria key | css modifier (size); the virtual code comes from TOUCH_BUTTONS */
+    /**
+     * face label | aria key | css modifier (size); the virtual code comes from TOUCH_BUTTONS.
+     * `combat`: only on combat levels (the root's `lu-root--combat`, UI.enableCombat) — attack
+     * (X) and lock (RS); dodge is the B button (COMBAT_PAD_BINDINGS), skills and the draught are
+     * the tappable skill-bar sockets (CombatHUD.onSlotPress → CombatInput.press).
+     */
     const spec = /** @type {const} */ ([
       { face: 'B', key: 'cancel', mod: 'b' },
       { face: 'A', key: 'confirm', mod: 'a' },
+      { face: 'X', key: 'attack', mod: 'atk', combat: true },
+      { face: 'L', key: 'lock', mod: 'lock', combat: true },
       { face: '«', key: 'camLeft', mod: 'cam' },
       { face: '»', key: 'camRight', mod: 'cam' },
       { face: '»»', key: 'run', mod: 'run' },
     ]);
-    for (const { face, key, mod } of spec) {
+    for (const { face, key, mod, combat } of spec) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `lu-touch__btn lu-touch__btn--${mod}`;
+      btn.className = `lu-touch__btn lu-touch__btn--${mod}${combat ? ' lu-touch__btn--combat' : ''}`;
       btn.setAttribute('aria-label', t(`touch.${key}`));
       btn.textContent = face;
       this._wireButton(btn, TOUCH_BUTTONS[/** @type {keyof typeof TOUCH_BUTTONS} */ (key)]);

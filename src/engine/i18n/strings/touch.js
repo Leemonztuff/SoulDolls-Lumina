@@ -22,6 +22,8 @@ const table = {
     down: 'Move down',
     left: 'Move left',
     right: 'Move right',
+    attack: 'Attack',
+    lock: 'Lock on',
   },
   ja: {
     move: '移動',
@@ -34,6 +36,8 @@ const table = {
     down: '下に移動',
     left: '左に移動',
     right: '右に移動',
+    attack: '攻撃',
+    lock: 'ロックオン',
   },
   zh: {
     move: '移动',
@@ -46,6 +50,8 @@ const table = {
     down: '向下移动',
     left: '向左移动',
     right: '向右移动',
+    attack: '攻击',
+    lock: '锁定',
   },
 };
 export default table;
