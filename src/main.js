@@ -15,6 +15,10 @@
  *                             campaign (the editor's play-test of a campaign level)
  *   ?lang=en|ja|zh          the language of this page load (not saved; docs/specs/I18N.md §1) —
  *                           else the player's saved choice, else English
+ *   ?layout=auto|desktop|mobile
+ *                           the mode the UI is laid out for this page load (not saved; else the
+ *                           player's saved choice, else auto — engine/core/DeviceMode.js, which
+ *                           also keeps following the device while the page lives)
  *   &i18n=<table>           a content table to look the level's text up in besides its own
  *                           (`levels/<name>`: a play-test of a shipped level from browser storage;
  *                           its texts carry the shipped level's keys in the data, docs/specs/I18N.md §4.2)
@@ -26,6 +30,7 @@ import {
 } from './engine/level/LevelStorage.js';
 import { validateLevel, normalizeLevel } from './engine/level/LevelFormat.js';
 import { setLang, resolveLang, getLang, t, isCJK } from './engine/i18n/I18n.js';
+import { startLayoutWatch } from './engine/core/DeviceMode.js';
 import { loadContentTables, contentInfo, contentMisses, clearContentMisses, term } from './engine/i18n/ContentText.js';
 import { registerCoreStrings, coreStringsOf } from './engine/i18n/strings/index.js';
 import { startFonts } from './engine/ui/FontLoader.js';
@@ -140,6 +145,8 @@ async function boot() {
   // in them: t('game.…') works before the UI exists), and the fonts — Google first, else the dist/
   // copies — loading in parallel with the level (docs/specs/I18N.md §1, §5)
   const lang = setLang(resolveLang());
+  // the display mode before anything lays out (it decides the mobile layout, DeviceMode.js)
+  startLayoutWatch();
   registerCoreStrings();
   const fonts = startFonts({ lang, px: artScale({ w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 }).px });
   exposeHook({ fonts: fonts.report });

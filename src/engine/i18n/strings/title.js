@@ -23,6 +23,12 @@
  * - `language`: the language row (its aria label and the hint while it has the focus).
  * - `langSwitch` / `langBack`: the language row's hints while it has the focus (Enter Switch · Esc
  *   Back).
+ * - `layout`: the display row — the mode the UI is laid out for (auto / desktop / mobile,
+ *   engine/core/DeviceMode.js) — its aria label.
+ * - `layoutSwitch` / `layoutBack`: the display row's hints while it has the focus (Enter Switch ·
+ *   Esc Back).
+ * - `layoutAuto` / `layoutDesktop` / `layoutMobile`: the display row's three choices, in the row's
+ *   order.
  */
 /** @type {import('../I18n.js').StringTable} */
 const table = {
@@ -40,6 +46,12 @@ const table = {
     language: 'Language',
     langSwitch: 'Switch',
     langBack: 'Back',
+    layout: 'Display',
+    layoutSwitch: 'Switch',
+    layoutBack: 'Back',
+    layoutAuto: 'Auto',
+    layoutDesktop: 'Desktop',
+    layoutMobile: 'Mobile',
   },
   ja: {
     name: 'Luminati',
@@ -55,6 +67,12 @@ const table = {
     language: '言語',
     langSwitch: '切り替え',
     langBack: '戻る',
+    layout: '表示',
+    layoutSwitch: '切り替え',
+    layoutBack: '戻る',
+    layoutAuto: '自動',
+    layoutDesktop: 'デスクトップ',
+    layoutMobile: 'モバイル',
   },
   zh: {
     name: 'Luminati',
@@ -70,6 +88,12 @@ const table = {
     language: '语言',
     langSwitch: '切换',
     langBack: '返回',
+    layout: '显示',
+    layoutSwitch: '切换',
+    layoutBack: '返回',
+    layoutAuto: '自动',
+    layoutDesktop: '桌面',
+    layoutMobile: '移动端',
   },
 };
 export default table;

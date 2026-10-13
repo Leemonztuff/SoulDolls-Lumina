@@ -26,7 +26,9 @@ import './title.css';
  * as small plates, the current one lit) sits in the bottom-right corner: L or a pad shoulder button
  * gives it the focus on the current language (pressed again, moves it on), ← → choose, Enter / pad A
  * switches (the caller saves the choice and reloads), Esc / pad B goes back; a click on a plate
- * switches at once.
+ * switches at once. With `onLayout` the display row (Auto · Desktop · Mobile) sits in the
+ * top-right corner the same way, on D / pad Y — the mode the UI is laid out for
+ * (engine/core/DeviceMode.js), applied live.
  *
  * Everything is placed in art pixels of G's 640 × 360 frame (layout/layout.js `group`), drawn on
  * canvases (src/engine/ui/art/) or set in the type roles (layout/type.js), and laid out again when
@@ -64,9 +66,12 @@ const CONFIRM_KEYS = new Set(['Enter', 'NumpadEnter', 'Space']);
 const BACK_KEYS = new Set(['Escape', 'Backspace']);
 /** The key that moves the language row's focus. */
 const LANG_KEY = 'KeyL';
+/** The key that moves the display row's focus. */
+const LAYOUT_KEY = 'KeyD';
 /** Standard-mapping gamepad buttons. */
 const PAD_A = 0;
 const PAD_B = 1;
+const PAD_Y = 3;
 const PAD_LB = 4;
 const PAD_RB = 5;
 const PAD_START = 9;
@@ -192,14 +197,15 @@ export class TitleScreen {
       <div class="lu-title__part lu-title__part--sub"></div>
       <div class="lu-title__part lu-title__part--menu"></div>
       <div class="lu-title__part lu-title__part--foot"></div>
-      <div class="lu-title__part lu-title__part--lang"></div>`;
+      <div class="lu-title__part lu-title__part--lang"></div>
+      <div class="lu-title__part lu-title__part--layout"></div>`;
     parent.appendChild(el);
     this.element = el;
     /** @type {HTMLElement} the title's text (the logo canvases are aria-hidden) */
     this._name = el.querySelector('.lu-title__name');
     const part = (/** @type {string} */ n) => /** @type {HTMLElement} */ (el.querySelector(`.lu-title__part--${n}`));
     /** The layers, each animated in on its own (they persist; their content is laid out again). */
-    this._parts = { crest: part('crest'), logo: part('logo'), rule: part('rule'), sub: part('sub'), menu: part('menu'), foot: part('foot'), lang: part('lang') };
+    this._parts = { crest: part('crest'), logo: part('logo'), rule: part('rule'), sub: part('sub'), menu: part('menu'), foot: part('foot'), lang: part('lang'), layout: part('layout') };
 
     /** Seconds after show() before input is accepted (avoids accidental instant dismissal). */
     this.armDelay = 0.45;
@@ -245,6 +251,13 @@ export class TitleScreen {
     this._langFocus = false;
     /** @type {((code: string) => void) | null} */
     this._onLanguage = null;
+    /** @type {{ value: string, label: string }[] | null} the display row (show()'s `layouts` with `onLayout`) */
+    this._layouts = null;
+    this._layoutCur = 0;
+    this._layoutSel = 0;
+    this._layoutFocus = false;
+    /** @type {((value: string) => void) | null} */
+    this._onLayout = null;
     /** The art layout's state: the px and the screen width (art px) it was laid out at, the bottom of the tagline. */
     this._laidPx = 0;
     this._laidW = 0;
@@ -269,8 +282,25 @@ export class TitleScreen {
       if (!this._accepting() || e.repeat || IGNORED_KEYS.has(e.code)) return;
       e.preventDefault();
       e.stopPropagation(); // don't let the dismissing key leak into gameplay input
+      // D: the first press gives the display row the focus on the current mode, the next ones move on
+      if (this._layouts && e.code === LAYOUT_KEY) {
+        if (this._langFocus) this._blurLang();
+        if (this._layoutFocus) this._stepLayout(1); else this._focusLayout();
+        return;
+      }
       // L: the first press gives the row the focus on the current language, the next ones move on
-      if (this._langs && e.code === LANG_KEY) { if (this._langFocus) this._stepLang(1); else this._focusLang(); return; }
+      if (this._langs && e.code === LANG_KEY) {
+        if (this._layoutFocus) this._blurLayout();
+        if (this._langFocus) this._stepLang(1); else this._focusLang();
+        return;
+      }
+      if (this._layoutFocus) {
+        // the display row has the focus: ← → choose, a confirm key applies, anything else goes back
+        if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') this._stepLayout(e.code === 'ArrowLeft' ? -1 : 1);
+        else if (CONFIRM_KEYS.has(e.code)) this._applyLayout(this._layoutSel);
+        else this._blurLayout();
+        return;
+      }
       if (this._langFocus) {
         // the language row has the focus: ← → choose, a confirm key switches, anything else goes back
         if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') this._stepLang(e.code === 'ArrowLeft' ? -1 : 1);
@@ -300,7 +330,17 @@ export class TitleScreen {
         // a language plate switches at once (the current one does nothing); never dismisses
         e.preventDefault();
         e.stopPropagation();
+        if (this._layoutFocus) this._blurLayout();
         this._applyLang(Number(opt.dataset.index));
+        return;
+      }
+      const lopt = /** @type {HTMLElement|null} */ (tg?.closest?.('.lu-title__layout-opt'));
+      if (lopt && this._layouts) {
+        // a display plate applies at once (the current one does nothing); never dismisses
+        e.preventDefault();
+        e.stopPropagation();
+        if (this._langFocus) this._blurLang();
+        this._applyLayout(Number(lopt.dataset.index));
         return;
       }
       const arrow = tg?.closest?.('.lu-title__dest-arrow');
@@ -311,6 +351,7 @@ export class TitleScreen {
         this._cycle(arrow.classList.contains('lu-title__dest-arrow--prev') ? -1 : 1);
         return;
       }
+      if (this._layoutFocus) { e.preventDefault(); this._blurLayout(); return; }
       if (this._langFocus) { e.preventDefault(); this._blurLang(); return; }
       if (this._menu) {
         // a menu entry: chosen and confirmed; anywhere else: nothing
@@ -367,6 +408,16 @@ export class TitleScreen {
   }
 
   /**
+   * The display row's state (null without one): the mode the UI is laid out for, the one chosen in
+   * the row and whether the row has the keyboard / pad focus.
+   * @returns {{ current: string, selected: string, focused: boolean } | null}
+   */
+  get layoutMode() {
+    if (!this._layouts) return null;
+    return { current: this._layouts[this._layoutCur].value, selected: this._layouts[this._layoutSel].value, focused: this._layoutFocus };
+  }
+
+  /**
    * Show the title screen.
    *
    * With `destinations` a `◂ label ▸` row under the prompt offers other levels: ArrowLeft /
@@ -392,19 +443,28 @@ export class TitleScreen {
    * (pressed again, moves on), ← → choose, Enter / Space / pad A switch — `onLanguage(code)` (the
    * caller saves the choice and reloads) —, Esc / Backspace / pad B or any other key go back; a
    * click on a plate switches at once. The row never dismisses the title.
+   *
+   * With `onLayout` the display row shows in the top-right corner (`layouts`, `layout` the current
+   * mode, engine/core/DeviceMode.js): D or pad Y focuses it on the current mode (pressed again,
+   * moves on), ← → choose, Enter / Space / pad A applies — `onLayout(value)` (the caller saves the
+   * choice; it is a hot switch, no reload) —, Esc / Backspace / pad B or any other key goes back; a
+   * click on a plate applies at once. The row never dismisses the title, and the two rows hand the
+   * focus to each other (D and L, pad Y and a shoulder button).
    * @param {{ title?: string, subtitle?: string, prompt?: string, credit?: string,
    *           destinations?: { value: string, label: string, detail?: string }[], current?: string,
    *           destinationHint?: string, destinationVerb?: string, destinationPrompt?: string,
    *           menu?: boolean, titleSource?: string,
    *           languages?: { code: string, label: string }[], lang?: string,
-   *           onLanguage?: ((code: string) => void) | null }} [opts]
+   *           onLanguage?: ((code: string) => void) | null,
+   *           layouts?: { value: string, label: string }[], layout?: string,
+   *           onLayout?: ((value: string) => void) | null }} [opts]
    * @returns {Promise<'key'|'pointer'|'gamepad'|undefined>} resolves as soon as the player presses
    *   a key / clicks / presses a gamepad button (the screen then fades out over ~1.1 s), or with
    *   undefined when hide() is called programmatically.
    */
   show({ title = t('title.name'), subtitle = '', prompt = t('title.pressAnyKey'), credit = t('title.credit'),
     destinations, current, destinationHint, destinationVerb, destinationPrompt, menu = false, titleSource,
-    languages, lang, onLanguage } = {}) {
+    languages, lang, onLanguage, layouts, layout, onLayout } = {}) {
     this._settle(undefined);
     clearTimeout(this._hideTimer);
     const str = (/** @type {unknown} */ v) => (v == null ? '' : String(v));
@@ -417,6 +477,7 @@ export class TitleScreen {
     this._destHintText = destinationHint == null ? t('title.chooseLevel') : str(destinationHint).trim();
     this._setDestinations(destinations, current, !!menu);
     this._setLanguages(languages, lang, onLanguage);
+    this._setLayouts(layouts, layout, onLayout);
     const el = this.element;
     el.classList.remove('is-on', 'is-leaving', 'is-gone');
     el.classList.toggle('is-menu', this._menu);
@@ -501,8 +562,24 @@ export class TitleScreen {
    * @param {number} b
    */
   _padButton(b) {
-    // a shoulder button: the first press focuses the row (on the current language), the next ones move on
-    if (this._langs && (b === PAD_LB || b === PAD_RB)) { if (this._langFocus) this._stepLang(b === PAD_LB ? -1 : 1); else this._focusLang(); return false; }
+    // Y: the first press focuses the display row (on the current mode), the next ones move on
+    if (this._layouts && b === PAD_Y) {
+      if (this._langFocus) this._blurLang();
+      if (this._layoutFocus) this._stepLayout(1); else this._focusLayout();
+      return false;
+    }
+    // a shoulder button: the first press focuses the language row (on the current language), the next ones move on
+    if (this._langs && (b === PAD_LB || b === PAD_RB)) {
+      if (this._layoutFocus) this._blurLayout();
+      if (this._langFocus) this._stepLang(b === PAD_LB ? -1 : 1); else this._focusLang();
+      return false;
+    }
+    if (this._layoutFocus) {
+      if (b === PAD_LEFT || b === PAD_RIGHT) this._stepLayout(b === PAD_LEFT ? -1 : 1);
+      else if (b === PAD_A) this._applyLayout(this._layoutSel);
+      else this._blurLayout();
+      return false;
+    }
     if (this._langFocus) {
       if (b === PAD_LEFT || b === PAD_RIGHT) this._stepLang(b === PAD_LEFT ? -1 : 1);
       else if (b === PAD_A) this._applyLang(this._langSel);
@@ -587,6 +664,21 @@ export class TitleScreen {
     this._langFocus = false;
   }
 
+  /** The display row of a show() call (none without `onLayout`). */
+  _setLayouts(layouts, layout, onLayout) {
+    this._onLayout = typeof onLayout === 'function' ? onLayout : null;
+    const src = Array.isArray(layouts) ? layouts : [];
+    const list = this._onLayout
+      ? src.filter((l) => l && l.value != null).map((l) => ({ value: String(l.value), label: String(l.label ?? l.value) }))
+      : [];
+    this._layouts = list.length ? list : null;
+    if (!this._layouts) { this._layoutFocus = false; return; }
+    const cur = String(layout ?? 'auto');
+    this._layoutCur = Math.max(0, this._layouts.findIndex((l) => l.value === cur));
+    this._layoutSel = this._layoutCur;
+    this._layoutFocus = false;
+  }
+
   _cycle(dir) {
     const n = this._dests.length;
     this._destIndex = (this._destIndex + dir + n) % n;
@@ -642,6 +734,42 @@ export class TitleScreen {
     this._onLanguage?.(L.code);
   }
 
+  /** Give the display row the focus, on the current mode (nothing chosen yet). */
+  _focusLayout() {
+    if (!this._layouts) return;
+    this._layoutFocus = true;
+    this._layoutSel = this._layoutCur;
+    this._renderLayout();
+  }
+
+  /** Move the display row's choice (giving the row the focus). @param {number} dir */
+  _stepLayout(dir) {
+    if (!this._layouts) return;
+    if (!this._layoutFocus) { this._layoutFocus = true; this._layoutSel = this._layoutCur; }
+    const n = this._layouts.length;
+    this._layoutSel = (this._layoutSel + dir + n) % n;
+    this._renderLayout();
+  }
+
+  /** Leave the display row without applying. */
+  _blurLayout() {
+    this._layoutFocus = false;
+    if (this._layouts) this._layoutSel = this._layoutCur;
+    this._renderLayout();
+  }
+
+  /** Apply the mode at `i` (the current one: just leave the row). @param {number} i */
+  _applyLayout(i) {
+    const L = this._layouts?.[i];
+    if (!L) return;
+    if (i === this._layoutCur) { this._blurLayout(); return; }
+    this._layoutCur = i;
+    this._layoutSel = i;
+    this._layoutFocus = false;
+    this._renderLayout();
+    this._onLayout?.(L.value);
+  }
+
   // ------------------------------------------------------------------------------------------
   // Layout (art px of G's 640 × 360 frame; G's title group is 'mc' 40, 50, 560 × 300)
   // ------------------------------------------------------------------------------------------
@@ -653,6 +781,7 @@ export class TitleScreen {
     this._renderMenu();
     this._renderFoot();
     this._renderLang();
+    this._renderLayout();
   }
 
   /**
@@ -1030,6 +1159,60 @@ export class TitleScreen {
     });
     if (this._langFocus) {
       keyHints(g, [{ keys: ['←', '→'], label: t('title.language') }, { keys: ['Enter'], label: t('title.langSwitch') }, { keys: ['Esc'], label: t('title.langBack') }],
+        x1, Math.round(cy - 21), { align: 'right', color: k.tx2, ol: true });
+    }
+  }
+
+  /**
+   * The display row in the top-right corner, on the band over the title's art (y 34, clear of the
+   * crest at x 307…332 and of a head that starts at y 42 in Japanese and Chinese): the D keycap,
+   * then each mode as a small plate — the current one lit —, gold pips between; while it has the
+   * focus the chosen one carries the nudging cursor gem and the hints run above it. The same
+   * recipe as the language row (`_renderLang`), the row's box covering its hints so a focus line
+   * never draws outside it.
+   */
+  _renderLayout() {
+    const part = this._parts.layout;
+    part.replaceChildren();
+    if (!this._layouts) return;
+    const k = pal();
+    const cy = 34;
+    const ph = 13;
+    const lit = this._layoutFocus ? this._layoutSel : this._layoutCur;
+    const items = this._layouts.map((l) => {
+      const w = measure(l.label, 'line');
+      return { w, pw: Math.max(w + 18, Math.ceil(w / 0.56)) };
+    });
+    const kw = capW('D');
+    const GAP = 12, KEY_GAP = 15;
+    const total = kw + KEY_GAP + items.reduce((s, it) => s + it.pw + GAP, -GAP);
+    const x1 = 630;
+    let x = x1 - total;
+    const g = group(part, 'tr', x - 16, 6, total + 18, 48, 'lu-title__layout');
+    g.setAttribute('role', 'radiogroup');
+    g.setAttribute('aria-label', t('title.layout'));
+    key(g, 'D', x, Math.round(cy - 5.5));
+    x += kw + KEY_GAP;
+    items.forEach((it, i) => {
+      const on = i === lit;
+      const opt = box(g, x, cy - ph / 2, it.pw, ph, `lu-title__layout-opt${on ? ' is-lit' : ''}${i === this._layoutCur ? ' is-current' : ''}`);
+      opt.dataset.index = String(i);
+      opt.dataset.layout = this._layouts[i].value;
+      opt.setAttribute('role', 'radio');
+      opt.setAttribute('aria-checked', String(i === this._layoutCur));
+      opt.setAttribute('aria-label', this._layouts[i].label);
+      if (on) put(opt, plate(it.pw, ph), x, Math.round(cy - ph / 2));
+      const col = on ? (this._layoutFocus ? k.g5 : k.g4) : i === this._layoutCur ? k.g3 : k.tx3;
+      txc(opt, this._layouts[i].label, x + Math.floor((it.pw - it.w) / 2), cy, { font: 'line', color: col, ol: true });
+      if (on && this._layoutFocus) put(opt, glyph('cursorGem'), x - 12, Math.round(cy - 4.5), 1, 'nudge');
+      x += it.pw;
+      if (i < items.length - 1) {
+        if (!(this._layoutFocus && i + 1 === lit)) put(g, art(3, 3, (p) => { p.px(1, 0, k.ink0); p.px(0, 1, k.ink0); p.px(2, 1, k.ink0); p.px(1, 2, k.ink0); p.px(1, 1, k.g3); }), x + 4, Math.round(cy - 1.5));
+        x += GAP;
+      }
+    });
+    if (this._layoutFocus) {
+      keyHints(g, [{ keys: ['←', '→'], label: t('title.layout') }, { keys: ['Enter'], label: t('title.layoutSwitch') }, { keys: ['Esc'], label: t('title.layoutBack') }],
         x1, Math.round(cy - 21), { align: 'right', color: k.tx2, ol: true });
     }
   }

@@ -49,7 +49,8 @@
 .lu-title .lu-title__dest-label,
 .lu-title .lu-title__dest-arrow,
 .lu-title .lu-title__menu-item,
-.lu-title .lu-title__lang-opt { pointer-events: auto; cursor: pointer; }
+.lu-title .lu-title__lang-opt,
+.lu-title .lu-title__layout-opt { pointer-events: auto; cursor: pointer; }
 .lu-title .lu-title__prompt.is-hidden { display: none; }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -63,7 +64,8 @@
 .lu-title.is-on .lu-title__part--sub { animation: lu-title-in 0.6s steps(3, jump-none) 1.15s both; }
 .lu-title.is-on .lu-title__part--menu { animation: lu-title-in 0.6s steps(3, jump-none) 1.6s both; }
 .lu-title.is-on .lu-title__part--foot,
-.lu-title.is-on .lu-title__part--lang { animation: lu-title-in 0.8s steps(4, jump-none) 1.9s both; }
+.lu-title.is-on .lu-title__part--lang,
+.lu-title.is-on .lu-title__part--layout { animation: lu-title-in 0.8s steps(4, jump-none) 1.9s both; }
 @keyframes lu-title-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes lu-title-rule { from { clip-path: inset(0 50% 0 50%); } to { clip-path: inset(0 0 0 0); } }
 
@@ -82,6 +84,8 @@
 .lu-title .lu-title__dest-arrow--next:hover canvas { transform: translateX(var(--px)); }
 /* a language under the pointer brightens */
 .lu-title .lu-title__lang-opt:not(.is-lit):hover { filter: brightness(1.45); }
+/* a mode plate under the pointer brightens (the display row, TitleScreen.js `_renderLayout`) */
+.lu-title .lu-title__layout-opt:not(.is-lit):hover { filter: brightness(1.45); }
 /* the language names' one-device-pixel dots: below 1280 × 720 the corner groups shrink (scale < 1)
    and nearest sampling would drop whole strokes — sampled smoothly there, as the text is */
 .lu-root[data-lu-scale="shrunk"] .lu-title canvas.lu-title__lang-glyphs { image-rendering: auto; }

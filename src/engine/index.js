@@ -24,6 +24,11 @@ export { EventEmitter } from './core/EventEmitter.js';
 export { Input, DEFAULT_BINDINGS, DEFAULT_PAD_BINDINGS, GAMEPAD_BUTTON_CODES } from './core/Input.js';
 export { Engine, disposeObjectTree } from './core/Engine.js';
 export { CameraRig } from './core/CameraRig.js';
+export {
+  LAYOUT_KEY, LAYOUT_MODES, COMPACT_WIDTH, normalizeLayout, detectMobileLayout, resolveLayout,
+  saveLayout, layoutChoice, effectiveLayout, isMobileLayout, setLayoutChoice, onLayoutChange,
+  startLayoutWatch, stopLayoutWatch,
+} from './core/DeviceMode.js';
 
 // Audio -----------------------------------------------------------------------------------------
 export { AudioSystem, SFX_NAMES, AMBIENCE_LAYERS, COMBAT_SFX_NAMES, MUSIC_TRACKS, MUSIC_STINGERS } from './audio/AudioSystem.js';
@@ -70,7 +75,7 @@ export { Water, createWaterfall } from './world/Water.js';
 export { PropFactory } from './world/Props.js';
 
 // UI --------------------------------------------------------------------------------------------
-export { UI, DialogBox, Banner, TitleScreen, HUD, InteractPrompt, Fader, DebugPanel, Minimap, WorldMap } from './ui/UI.js';
+export { UI, DialogBox, Banner, TitleScreen, HUD, InteractPrompt, Fader, DebugPanel, Minimap, WorldMap, TouchControls, TOUCH_BUTTONS } from './ui/UI.js';
 export { DebugStats } from './ui/DebugPanel.js';
 export { DEFAULT_CONTROLS, TIME_PHASES, timePhase, createKeycaps } from './ui/HUD.js';
 // combat levels only (COMBAT.md §13; created by `ui.enableCombat()`)

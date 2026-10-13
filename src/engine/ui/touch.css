@@ -1,0 +1,177 @@
+/*
+ * TouchControls (TouchControls.js): the mobile layout's on-screen D-pad (bottom left) and action
+ * cluster (bottom right) — layer 5 of the UI root (ui.css). Sizes are whole art pixels via --px,
+ * but every control is at least 44 CSS px (a thumb target on a phone where --px ≈ 1 CSS px);
+ * safe-area insets keep them clear of a notch in landscape. Shown by the effective layout
+ * (html[data-lu-layout="mobile"], engine/core/DeviceMode.js); hidden with the HUD on the title
+ * screen and in photo mode (the root's own classes). The face recipe mirrors A's keycap
+ * (hud.css kbd.lu-key) at thumb size: ink outline, gilt top line, lip, dark face; .is-down lights
+ * the face. The d-pad is one plate with four arrow sectors (GLYPHS kUp … as SVG).
+ */
+
+.lu-touch {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* effective layout = mobile; not on the title screen (its own row has display), photo mode hides all children */
+html[data-lu-layout='mobile'] .lu-root:not(.lu-root--title):not(.lu-root--hidden) .lu-touch {
+  display: block;
+}
+
+/* the keyboard legend is desk furniture: the on-screen buttons and their labels replace it */
+html[data-lu-layout='mobile'] .lu-root:not(.lu-root--title) .lu-help {
+  display: none;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* The d-pad: a plus-shaped plate, bottom left, one pointer (diagonals via the tracked axes).    */
+/* -------------------------------------------------------------------------------------------- */
+
+.lu-touch__pad {
+  pointer-events: auto;
+  position: absolute;
+  left: max(calc(var(--px) * 14), env(safe-area-inset-left, 0px));
+  bottom: max(calc(var(--px) * 14), env(safe-area-inset-bottom, 0px));
+  width: max(calc(var(--px) * 54), 54px);
+  height: max(calc(var(--px) * 54), 54px);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* the plate: a dark disc with an ink rim (rounded for a thumb, not for the kit's squares) */
+  background:
+    radial-gradient(circle at 50% 42%, var(--g-kf1) 0 58%, var(--g-kf3) 58% 100%);
+  border: max(var(--px), 1px) solid var(--g-ink0);
+  border-radius: 22%;
+  box-shadow:
+    0 0 0 max(var(--px), 1px) var(--g-dm3),
+    inset 0 max(var(--px), 1px) 0 var(--g-kf0);
+}
+
+.lu-touch__pad-cell {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34%;
+  height: 34%;
+  color: var(--g-kink);
+  opacity: 0.9;
+}
+
+.lu-touch__pad-cell svg {
+  display: block;
+  width: 70%;
+  height: 70%;
+  fill: currentColor;
+}
+
+.lu-touch__pad-cell--up { top: 4%; left: 33%; }
+.lu-touch__pad-cell--down { bottom: 4%; left: 33%; }
+.lu-touch__pad-cell--left { left: 4%; top: 33%; }
+.lu-touch__pad-cell--right { right: 4%; top: 33%; }
+
+.lu-touch__pad.is-up .lu-touch__pad-cell--up,
+.lu-touch__pad.is-down .lu-touch__pad-cell--down,
+.lu-touch__pad.is-left .lu-touch__pad-cell--left,
+.lu-touch__pad.is-right .lu-touch__pad-cell--right {
+  opacity: 1;
+  color: var(--g-tx0);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* The action cluster: keycap faces (A bigger), bottom right.                                     */
+/* -------------------------------------------------------------------------------------------- */
+
+.lu-touch__acts {
+  position: absolute;
+  right: max(calc(var(--px) * 14), env(safe-area-inset-right, 0px));
+  bottom: max(calc(var(--px) * 14), env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: flex-end;
+  gap: max(calc(var(--px) * 6), 6px);
+  pointer-events: none;
+}
+
+.lu-touch__btn {
+  pointer-events: auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: max(calc(var(--px) * 20), 44px);
+  height: max(calc(var(--px) * 20), 44px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 20%;
+  color: var(--g-kink);
+  font: 400 max(calc(var(--px) * 9), 11px) / 1 Tiny5, monospace;
+  letter-spacing: 0;
+  text-shadow: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  background:
+    linear-gradient(var(--g-kf0), var(--g-kf0)) 12% 0 / 76% max(var(--px), 1px) no-repeat,
+    linear-gradient(var(--g-kf2), var(--g-kf2)) 12% 100% / 76% max(var(--px), 1px) no-repeat,
+    var(--g-kf1);
+  border: max(var(--px), 1px) solid var(--g-ink0);
+  box-shadow:
+    0 max(var(--px), 1px) 0 var(--g-ink0),
+    inset 0 max(calc(var(--px) * -2), -2px) 0 var(--g-kf3);
+}
+
+.lu-touch__btn.is-down,
+.lu-touch__btn:active {
+  background: var(--g-kf2);
+  box-shadow:
+    inset 0 max(var(--px), 1px) 0 var(--g-ink0);
+  color: var(--g-tx0);
+}
+
+/* A: the big confirm; B: cancel beside it; run and the camera buttons smaller and dimmer */
+.lu-touch__btn--a {
+  width: max(calc(var(--px) * 26), 56px);
+  height: max(calc(var(--px) * 26), 56px);
+  font-size: max(calc(var(--px) * 11), 13px);
+}
+
+.lu-touch__btn--b { color: var(--g-kf3); }
+
+.lu-touch__btn--run {
+  width: max(calc(var(--px) * 18), 40px);
+  height: max(calc(var(--px) * 18), 40px);
+  font-size: max(calc(var(--px) * 8), 10px);
+  color: var(--g-kf3);
+}
+
+.lu-touch__btn--cam {
+  width: max(calc(var(--px) * 16), 36px);
+  height: max(calc(var(--px) * 16), 36px);
+  font-size: max(calc(var(--px) * 8), 10px);
+  color: var(--g-dm3);
+  align-self: flex-start;
+  margin-top: max(calc(var(--px) * 4), 4px);
+}
+
+/* a very short landscape (a phone in 2 : 1): pull the clusters in so the dialog keeps the middle */
+@media (max-height: 420px) {
+  .lu-touch__pad {
+    width: max(calc(var(--px) * 48), 48px);
+    height: max(calc(var(--px) * 48), 48px);
+    left: max(calc(var(--px) * 8), env(safe-area-inset-left, 0px));
+    bottom: max(calc(var(--px) * 8), env(safe-area-inset-bottom, 0px));
+  }
+  .lu-touch__acts {
+    right: max(calc(var(--px) * 8), env(safe-area-inset-right, 0px));
+    bottom: max(calc(var(--px) * 8), env(safe-area-inset-bottom, 0px));
+    gap: max(calc(var(--px) * 4), 4px);
+  }
+}

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   Engine, CameraRig, PostFX, LightingSystem, TextureLibrary, Particles, GodRays, SpriteManager,
   AudioSystem, UI, DEG2RAD, DEFAULT_KEYFRAMES, clamp, lerp, smoothstep,
+  LAYOUT_MODES, layoutChoice, setLayoutChoice,
 } from '../engine/index.js';
 import { computeCameraBounds } from '../engine/level/ObjectBuilder.js';
 import { CHARACTER_PRESET_NAMES, levelHasCombat, levelHasStory } from '../engine/level/ObjectCatalog.js';
@@ -461,6 +462,7 @@ export class Game {
     this.resolution = new ResolutionGovernor({ engine, postfx: this.postfx });
 
     this.ui = new UI(document.body, this.uiOptions);
+    this.ui.touch.bindInput(engine.input);
     this.audio = new AudioSystem({ volume: 0.6 });
     // campaigns: one fixed pool of the 12 point lights for every level (LightPool `fixed`): the
     // light count — and with it every lit program — stays the same from level to level
@@ -1290,7 +1292,7 @@ export class Game {
     this.ui.title.onDismiss = () => this.audio.unlock();
     // a campaign: its title, Continue / New journey when a saved game exists (and the language row)
     if (this.campaign) {
-      const campaignOpts = { ...this.campaign.titleOptions(), ...this._languageOptions() };
+      const campaignOpts = { ...this.campaign.titleOptions(), ...this._languageOptions(), ...this._layoutOptions() };
       await this.ui.title.show(campaignOpts);
       if (this._disposed) return;
       if (this.ui.title.destination === 'new') {
@@ -1311,6 +1313,7 @@ export class Game {
       titleSource: T.title || this.level.name.toUpperCase(),
       ...(slug ? { destinations: SHIPPED_LEVELS.map((l) => ({ value: l.value, label: term(l.label) })), current: slug } : {}),
       ...this._languageOptions(),
+      ...this._layoutOptions(),
     };
     await this.ui.title.show(opts);
     if (this._disposed) return;
@@ -1341,6 +1344,23 @@ export class Game {
       languages: LANG_CODES.map((code) => ({ code, label: LANGUAGE_LABELS[code] ?? code })),
       lang: getLang(),
       onLanguage: (code) => { this.setLanguage(code); },
+    };
+  }
+
+  /**
+   * The title screen's display row (docs/specs/PIXEL_UI.md §8.1): the three choices of the mode
+   * the UI is laid out for (engine/core/DeviceMode.js), the current one — a phone in landscape
+   * reads as 'mobile' when the choice is 'auto' — and the switch. Unlike the language there is no
+   * reload: `setLayoutChoice` saves the choice, the effective mode is recomputed and the
+   * subscribers told (`onLayoutChange`), so the change is live.
+   * @returns {{ layouts: { value: string, label: string }[], layout: string, onLayout: (value: string) => void }}
+   */
+  _layoutOptions() {
+    const KEYS = { auto: 'title.layoutAuto', desktop: 'title.layoutDesktop', mobile: 'title.layoutMobile' };
+    return {
+      layouts: LAYOUT_MODES.map((value) => ({ value, label: t(KEYS[value]) })),
+      layout: layoutChoice(),
+      onLayout: (value) => { setLayoutChoice(value); },
     };
   }
 

@@ -10,7 +10,8 @@
  * (UI.useStoryUI), the party party.css (UI.usePartyUI).
  *
  * Layering inside #luminati-ui (z-index): prompt 1 · hud 2 (minimap inside) · banner 3 · dialog 4 ·
- * toasts 5 (the HUD's, but a sibling of .lu-hud, whose z-index makes it a stacking context) ·
+ * touch controls 5 (TouchControls.js, the mobile layout's D-pad and action cluster) · toasts 5
+ * (the HUD's, but a sibling of .lu-hud, whose z-index makes it a stacking context) ·
  * title 6 · world map 7 · fader 8 · debug 9.
  * Combat levels add: world labels 1 (before the prompt) · vitals, skills, loot and boss bar inside
  * the hud · announcer 3 · death screen 7. Story levels add: emotes 1 · letterbox + skip hint 2

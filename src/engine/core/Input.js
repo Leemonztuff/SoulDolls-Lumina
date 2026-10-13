@@ -16,6 +16,11 @@
  * 'Mouse1' (middle) and 'Mouse2' (right), usable in `bindings` like key codes; `lastDevice` names
  * the device of the latest pressed edge ('keyboard' | 'mouse' | 'gamepad').
  *
+ * Touch controls (TouchControls.js) inject virtual gamepad codes with `setVirtualButton()`:
+ * 'GamepadA', 'GamepadDpadUp' … held by a thumb on screen, indistinguishable from a pad's to
+ * every query, so the pad bindings map them with no rebinding (`releaseTouchButtons()` lets go
+ * of all of them at once).
+ *
  * Frame protocol (the Engine does this for you): `update()` at the start of a frame
  * (polls gamepads), queries during the frame, `endFrame()` after rendering.
  */
@@ -137,6 +142,8 @@ export class Input {
     this._pressed = new Set();
     this._released = new Set();
     this._padDown = new Set();
+    /** Virtual gamepad codes held by the on-screen touch buttons (TouchControls.js); never cleared by a pad disconnect. */
+    this._virtDown = new Set();
     this._padKnown = 0; // number of gamepads seen via events (skip polling when none)
     this._move = { x: 0, y: 0 };
     this._look = { x: 0, y: 0 };
@@ -188,7 +195,7 @@ export class Input {
 
   /** Is the key (KeyboardEvent.code or virtual gamepad code) currently held? */
   isDown(code) {
-    return this.enabled && (this._down.has(code) || this._padDown.has(code));
+    return this.enabled && (this._down.has(code) || this._padDown.has(code) || this._virtDown.has(code));
   }
 
   /** Was the key pressed since the previous frame? */
@@ -206,6 +213,34 @@ export class Input {
     return this.enabled && this._pressed.size > 0;
   }
 
+  /**
+   * Hold or release a virtual gamepad code from the on-screen touch buttons (TouchControls.js):
+   * a press lands in `_pressed` / a release in `_released` like any other edge, and every query
+   * (`isDown`, `wasPressed`, the actions) sees it. `code` is a virtual gamepad code ('GamepadA',
+   * 'GamepadDpadUp' …), so `padBindings` map it; `lastDevice` becomes 'gamepad' (the buttons
+   * mirror the pad's, so the HUD draws pad prompts while a thumb is on them). A pad disconnect
+   * (`_releasePad`) never clears these — only `releaseTouchButtons` / `reset` / `dispose` do.
+   * @param {string} code a virtual gamepad code (GAMEPAD_BUTTON_CODES)
+   * @param {boolean} down true = held, false = released
+   */
+  setVirtualButton(code, down) {
+    if (!code || this._virtDown.has(code) === !!down) return;
+    if (down) {
+      this._virtDown.add(code);
+      this._pressed.add(code);
+      this.lastDevice = 'gamepad';
+    } else {
+      this._virtDown.delete(code);
+      this._released.add(code);
+    }
+  }
+
+  /** Release every virtual button the touch controls hold (layout switch, blur, dispose). */
+  releaseTouchButtons() {
+    for (const code of this._virtDown) this._released.add(code);
+    this._virtDown.clear();
+  }
+
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
@@ -213,7 +248,8 @@ export class Input {
   /** Is any key bound to the action held? @param {ActionName} name */
   action(name) {
     if (!this.enabled) return false;
-    return this._anyOf(this.bindings[name], this._down, this._padDown) || this._anyOf(this.padBindings[name], this._padDown, null);
+    return this._anyOf(this.bindings[name], this._down, this._padDown) || this._anyOf(this.padBindings[name], this._padDown, null)
+      || this._anyOf(this.bindings[name], this._virtDown, null) || this._anyOf(this.padBindings[name], this._virtDown, null);
   }
 
   /** Was any key bound to the action pressed since the previous frame? @param {ActionName} name */
@@ -492,6 +528,7 @@ export class Input {
     this._down.clear();
     this._mouseDown.clear();
     this._releasePad();
+    this.releaseTouchButtons();
     this.pointer.down = false;
     this.pointer.buttons = 0;
     this.wheelDelta = 0;
@@ -520,6 +557,7 @@ export class Input {
     this._pressed.clear();
     this._released.clear();
     this._padDown.clear();
+    this._virtDown.clear();
   }
 
   // ---------------------------------------------------------------------------

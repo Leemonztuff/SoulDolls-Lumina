@@ -23,6 +23,7 @@ import { InteractPrompt } from './InteractPrompt.js';
 import { Fader } from './Fader.js';
 import { DebugPanel } from './DebugPanel.js';
 import { Minimap, WorldMap } from './Minimap.js';
+import { TouchControls } from './TouchControls.js';
 
 /**
  * @import * as THREE from 'three'
@@ -210,6 +211,13 @@ export class UI {
     this.fader = new Fader(root);
     /** @type {DebugPanel} */
     this.debug = new DebugPanel(root, { anchor: this.hud.clockElement });
+    /**
+     * The on-screen D-pad and action cluster for the mobile layout (TouchControls.js); shown by
+     * CSS when `<html data-lu-layout="mobile">`. The page wires its Input with
+     * `ui.touch.bindInput(engine.input)` once (Game.js) — without it the buttons are inert.
+     * @type {TouchControls}
+     */
+    this.touch = new TouchControls(root);
 
     /**
      * Combat components, created by `enableCombat()` on combat levels only (null otherwise):
@@ -739,6 +747,7 @@ export class UI {
       c.boss.dispose();
       c.hud.dispose();
     }
+    this.touch.dispose();
     this.debug.dispose();
     this.worldMap.dispose();
     this.minimap.dispose();
@@ -761,7 +770,8 @@ export class UI {
   }
 }
 
-export { DialogBox, Banner, TitleScreen, HUD, InteractPrompt, Fader, DebugPanel, Minimap, WorldMap };
+export { DialogBox, Banner, TitleScreen, HUD, InteractPrompt, Fader, DebugPanel, Minimap, WorldMap, TouchControls };
+export { TOUCH_BUTTONS } from './TouchControls.js';
 // combat levels only (COMBAT.md §13): re-exported from their own files; side-effect free
 // (vite.config.js), so a bundle that does not use them does not hold them
 export { CombatHUD } from './CombatHUD.js';

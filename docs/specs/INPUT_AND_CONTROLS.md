@@ -10,8 +10,11 @@
 > (see also [AUTOMATION_API.md](AUTOMATION_API.md)), and anyone documenting controls.
 >
 > **Source of truth.** [`src/engine/core/Input.js`](../../src/engine/core/Input.js)
-> (`DEFAULT_BINDINGS`, `DEFAULT_PAD_BINDINGS`, `GAMEPAD_BUTTON_CODES`, focus handling),
+> (`DEFAULT_BINDINGS`, `DEFAULT_PAD_BINDINGS`, `GAMEPAD_BUTTON_CODES`, `setVirtualButton` /
+> `releaseTouchButtons`, focus handling),
 > [`src/engine/core/CameraRig.js`](../../src/engine/core/CameraRig.js) (camera input),
+> [`src/engine/ui/TouchControls.js`](../../src/engine/ui/TouchControls.js) (the mobile layout's
+> on-screen D-pad and action cluster),
 > [`src/game/Game.js`](../../src/game/Game.js) (`update`, `CONTROLS`, `toggleMap`,
 > `togglePhotoMode`, `_armAudioUnlock`), [`src/game/Player.js`](../../src/game/Player.js),
 > [`src/engine/ui/DialogBox.js`](../../src/engine/ui/DialogBox.js),
@@ -43,6 +46,7 @@
 7. [Editor keyboard shortcuts](#7-editor-keyboard-shortcuts)
 8. [Editor key dispatch and focus rules](#8-editor-key-dispatch-and-focus-rules)
 9. [Combat levels](#9-combat-levels)
+10. [Touch controls (mobile layout)](#10-touch-controls-mobile-layout)
 
 ---
 
@@ -436,3 +440,47 @@ Peaceful levels keep the single legend of §4.
 
 (The legend's key labels come from `HUD`'s `KEY_LABELS`: `Mouse0` → LMB, `Mouse1` → MMB,
 `Mouse2` → RMB.)
+
+## 10. Touch controls (mobile layout)
+
+When the effective layout is `'mobile'` (DeviceMode.js: the saved choice, or `auto` with a coarse
+pointer and a viewport under 900 CSS px), the UI root shows an on-screen **D-pad** (bottom left)
+and **action cluster** (bottom right): [`TouchControls.js`](../../src/engine/ui/TouchControls.js),
+layer 5 of the UI root. The page wires its `Input` with `ui.touch.bindInput(engine.input)` once
+(Game.js); without that call the buttons are inert.
+
+- **Virtual gamepad codes.** Every button injects a standard-mapping virtual code through the
+  additive `Input.setVirtualButton(code, down)` / `releaseTouchButtons()` API — a separate
+  `_virtDown` set, never cleared by a pad disconnect (`_releasePad`), so a real gamepad and the
+  on-screen buttons can both be held. The codes are the pad's, so `DEFAULT_PAD_BINDINGS` map them
+  with no rebinding; `lastDevice` becomes `'gamepad'` while one is held (the HUD draws pad
+  prompts, matching the A / B faces on screen).
+
+  | Control | Virtual code | Action |
+  | --- | --- | --- |
+  | D-pad | `GamepadDpadUp/Down/Left/Right` | `up` / `down` / `left` / `right` |
+  | A (big) | `GamepadA` | `confirm` |
+  | B | `GamepadB` | `cancel` |
+  | »» | `GamepadRT` | `run` |
+  | « / » | `GamepadLB` / `GamepadRB` | `camLeft` / `camRight` |
+
+- **One pointer, diagonals.** The D-pad is a single element with a tracked `pointerId`
+  (`setPointerCapture`): the offset from its centre sets the axes independently inside a 0.28
+  dead zone, so one thumb walks diagonally and slides between directions without lifting. Action
+  buttons are separate elements (two thumbs at once); a lost capture / `pointercancel` / blur
+  releases every code (a notification slide-over can never leave a key stuck).
+- **Visibility.** Pure CSS on the effective layout and the root's state classes: shown when
+  `<html data-lu-layout="mobile">`, hidden on the title screen (`lu-root--title`), in photo mode
+  (`lu-root--hidden`) and on the desktop layout. A hot switch to desktop
+  (`setLayoutChoice`) fires `onLayoutChange`, and the layer releases every held code.
+- **Thumb sizes and safe areas.** Every control is `max(N art px, 44 CSS px)`; the clusters sit
+  clear of `env(safe-area-inset-*)` (game.html sets `viewport-fit=cover`); `touch-action: none`,
+  no text selection, and the context menu (long-press) is suppressed over the layer. The buttons
+  do not sit in the art-scale corner groups, so a shrunk root keeps full-size targets.
+- **Strings.** Accessible names come from the `touch` namespace
+  ([`strings/touch.js`](../../src/engine/i18n/strings/touch.js), en / ja / zh), registered by the
+  component itself when created — a page without the layer never loads the table. Button faces
+  (A, B, «, ») stay Latin in every language.
+
+Combat levels reuse the same layer and pad bindings; their extra action buttons (attack, dodge,
+skills) are a later additive change to `TouchControls.js` and do not change this contract.
