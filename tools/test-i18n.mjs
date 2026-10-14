@@ -1304,7 +1304,7 @@ begin('the real data');
   // through the real loader, with no miss, in ja and zh
   const ws = await loadWorkspace();
   const ui = await uiGlossary();
-  eq('the index lists every shipped table for ja and zh', ['ja', 'zh'].map((l) => [...(ws.index.languages.get(l) ?? [])].sort()), ['ja', 'zh'].map(() => ['campaigns/emberfall-interiors', 'campaigns/ferrymans-lantern', 'common', 'levels/brightwater-crossing', 'levels/cinderwatch-pass', 'levels/emberfall', 'levels/gildhaven', 'levels/sample-hamlet', 'levels/starfall-vale']));
+  eq('the index lists every shipped table for ja and zh', ['ja', 'zh'].map((l) => [...(ws.index.languages.get(l) ?? [])].sort()), ['ja', 'zh'].map(() => ['campaigns/emberfall-interiors', 'campaigns/ferrymans-lantern', 'campaigns/souldolls', 'common', 'levels/brightwater-crossing', 'levels/cinderwatch-pass', 'levels/emberfall', 'levels/gildhaven', 'levels/sample-hamlet', 'levels/starfall-vale']));
   ok('emberfall-interiors extends levels/emberfall', ws.closure.get('campaigns/emberfall-interiors')?.includes('levels/emberfall'), ws.closure.get('campaigns/emberfall-interiors'));
   ok('the source errors: none (no key with two Englishes in a table\'s own sources)', [...ws.sources.values()].every((s) => s.errors.length === 0), [...ws.sources].map(([id, s]) => [id, s.errors]));
   ok('the source warnings (quest texts saved filled in): none', sourceWarnings(ws.sources).length === 0, sourceWarnings(ws.sources));

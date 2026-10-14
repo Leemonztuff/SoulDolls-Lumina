@@ -31,6 +31,8 @@ const { Painter, resolvePainter, M, blob, quadGait, rampForKind, finishTexture, 
 export const CREATURE_SPECIES_IDS = Object.freeze([
   'leafling', 'emberling', 'rippling', 'mossling', 'sparrowling', 'stoneling',
   'voltling', 'slitherling', 'buzzling', 'shadeling', 'frostling', 'aurorling',
+  'peatling', 'mossmote', 'boggart', 'lanternfly', 'gloamwing', 'cinderbound',
+  'cavernmite', 'murkfin', 'shellskimmer', 'saltling', 'hollowwisp', 'tidewisp',
 ]);
 
 /** The two art poses of a species sheet. */
@@ -64,6 +66,18 @@ const SPECIES_ART = {
   shadeling: { body: 'purple', belly: 'red', accent: 'fire', type: 'fire' },
   frostling: { body: 'white', belly: 'water', accent: 'blue', type: 'water' },
   aurorling: { body: 'blue', belly: 'cream', accent: 'water', type: 'water' },
+  peatling: { body: 'grass', belly: 'cream', accent: 'leaves', type: 'grass' },
+  mossmote: { body: 'moss', belly: 'sand', accent: 'leaves', type: 'grass' },
+  boggart: { body: 'grassDry', belly: 'cream', accent: 'leaves', type: 'grass' },
+  lanternfly: { body: 'yellow', belly: 'cream', accent: 'fire', type: 'fire' },
+  gloamwing: { body: 'purple', belly: 'yellow', accent: 'fire', type: 'fire' },
+  cinderbound: { body: 'red', belly: 'sand', accent: 'fire', type: 'fire' },
+  cavernmite: { body: 'stoneWarm', belly: 'sand', accent: 'fire', type: 'fire' },
+  murkfin: { body: 'blue', belly: 'water', accent: 'blue', type: 'water' },
+  shellskimmer: { body: 'sand', belly: 'cream', accent: 'water', type: 'water' },
+  saltling: { body: 'white', belly: 'cream', accent: 'water', type: 'water' },
+  hollowwisp: { body: 'water', belly: 'cream', accent: 'water', type: 'water' },
+  tidewisp: { body: 'water', belly: 'white', accent: 'water', type: 'water' },
 };
 
 /** Frame size per pose: [width, height]. */

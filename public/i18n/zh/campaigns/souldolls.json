@@ -1,0 +1,314 @@
+{
+  "format": "luminati-i18n",
+  "version": 3,
+  "lang": "zh",
+  "source": "campaigns/souldolls",
+  "extends": [],
+  "terms": {
+    "Bram": "布拉姆",
+    "Cavern Waystone": "洞穴指路石",
+    "Corvin": "柯尔文",
+    "Elspeth": "埃尔斯佩斯",
+    "Gloamford": "幽渡镇",
+    "Gull": "加尔",
+    "Hollow Tide Cavern": "虚潮洞穴",
+    "Hushmoor Hollow": "寂荒山谷",
+    "Lantern Road": "灯笼路",
+    "Lantern Waystone": "灯笼指路石",
+    "Maren": "玛伦",
+    "Orla": "奥拉",
+    "Rowan": "罗文",
+    "Salt Toffee": "盐味太妃糖",
+    "Saltreach Quay": "盐达码头",
+    "Silenced Clapper": "寂静钟舌",
+    "Souldoll Orb": "魂偶宝珠",
+    "Souldolls": "魂偶",
+    "The Bellbindery": "钟楼装订所",
+    "The Hush of Souldolls": "魂偶之静默",
+    "Tidewatch Light": "观潮灯塔",
+    "Vane": "韦恩",
+    "Whisperfen": "低语沼泽"
+  },
+  "units": {
+    "0AE8BDD87B393363E279F0225ACE61D0": {
+      "source": "Examine Notes",
+      "target": "检查笔记"
+    },
+    "0D99CFD4BA3CFD3B102BB27503DAC83D": {
+      "source": "Lighthouse Keeper",
+      "target": "灯塔看守人"
+    },
+    "1D4291B5FCBA6137353F0CAA8D7D62E9": {
+      "source": "Chapter Two",
+      "target": "第二章"
+    },
+    "01E14123360E689C266A9B5A72B76061": {
+      "source": "Speak with Elspeth the Dollwright in Hushmoor Hollow.",
+      "target": "与寂荒山谷的人偶师埃尔斯佩斯交谈。"
+    },
+    "2AA0025D9B076F50F29A4315DD3689ED": {
+      "source": "A tale of quiet bells, forgotten names, and the dolls that remember.",
+      "target": "关于宁静之钟、被遗忘的名字与铭记一切的人偶的故事。"
+    },
+    "2AE0226AE5EFDE4A39B6B82EF243FC68": {
+      "source": "Ring the bell, traveller! Let the light shine once more!",
+      "target": "敲响大钟吧，旅人！让光芒再次照亮大海！"
+    },
+    "2D51296F304533D0F7F69CAD7C7475E1": {
+      "source": "Cross the rainy Whisperfen.",
+      "target": "穿越雨中的低语沼泽。"
+    },
+    "2E0CCCAFFCF7A176F37F40007254C68F": {
+      "source": "Enter Cavern",
+      "target": "进入洞穴"
+    },
+    "3BE8420562450A99A5C56F5EFE57E269": {
+      "source": "\"Watch your step on Lantern Road, traveller!\"",
+      "target": "“路过灯笼路时要小心，旅人！”"
+    },
+    "3E0591FCC7BFA6F6F5FBB478B8C10E3C": {
+      "source": "Rest by the fire, friend. Gloamford lies further east.",
+      "target": "在篝火旁休息一下吧，朋友。幽渡镇还在更东边。"
+    },
+    "3FB403751F08452C972952CED6B749FE": {
+      "source": "Luminati 2.5D Pixel-Art Engine",
+      "target": "Luminati 2.5D 像素艺术引擎"
+    },
+    "6CE217DDFD57A91C678153943B94F23B": {
+      "source": "Enter Bindery",
+      "target": "进入装订所"
+    },
+    "6D9E86D4A2715CC011AAA6B934187B4D": {
+      "source": "The ancient stone bindery where silent bells are crafted.",
+      "target": "制作无声之钟的古老石造装订所。"
+    },
+    "8D0A683A2405CC2B96B4AD633E51EB1A": {
+      "source": "\"THE BEACON IS LIT!\"",
+      "target": "“灯塔被点亮了！”"
+    },
+    "8D4BC92E6731E48499944D819F65428B": {
+      "source": "Chapter One",
+      "target": "第一章"
+    },
+    "8F1A5F58DC6AF56AE8DB85FBA8209515": {
+      "source": "Scholar of Gloamford",
+      "target": "幽渡镇学者"
+    },
+    "9A3A08C2F25E2E266430D72D0BBC4FA9": {
+      "source": "\"Evening falls over the hollow.\"",
+      "target": "“夜幕降临在山谷上。”"
+    },
+    "9BBAD7F33173B3E0B5C27B53267CCF69": {
+      "source": "\"Notes on the Hush: when the beacon at Tidewatch fails, memories drift like mist.\"",
+      "target": "“静默笔记：当观潮灯塔熄灭时，记忆便如雾般飘散。”"
+    },
+    "9C0C0ABD2E8E0356F2A60B2FB0451572": {
+      "source": "Choose a companion to journey with you.",
+      "target": "选择一只魂偶作为陪伴你旅行的夥伴。"
+    },
+    "9C66ECD4C28682DED7233E44481A9168": {
+      "source": "Binder Maren",
+      "target": "装订师玛伦"
+    },
+    "9F51E10722DC8212BA2792BD16DD2744": {
+      "source": "Thank you for returning the Silenced Clapper. The bindery door is open.",
+      "target": "谢谢你找回寂静钟舌。装订所的门已经打开了。"
+    },
+    "17A40DB036D3AEE85F7D6DDEDA16D44F": {
+      "source": "Greetings, traveller. The Hush is swallowing names across the moor.",
+      "target": "你好，旅人。静默正在吞噬荒野上的名字。"
+    },
+    "17AE29F5242B4870B4B0E5BC3374CD00": {
+      "source": "Travel east along Lantern Road.",
+      "target": "沿着灯笼路向东旅行。"
+    },
+    "31A759805782C77C9108DE3E6B0D532A": {
+      "source": "Dockmaster",
+      "target": "码头主管"
+    },
+    "48CE4172CA761B6794F15FE3469D8F8B": {
+      "source": "Mind the quiet on the road.",
+      "target": "注意路上的异常安静。"
+    },
+    "50FA6B7961327242A8D1750FC9071009": {
+      "source": "The Whispering Hollow",
+      "target": "低语山谷"
+    },
+    "86C3E2A8C19381DC761BF8D71E357378": {
+      "source": "Ring Beacon Bell",
+      "target": "敲响灯塔大钟"
+    },
+    "95B232FE7A5BE1C08B05BA9EEE403610": {
+      "source": "\"Rain falls over Whisperfen.\"",
+      "target": "“雨水倾泻在低语沼泽。”"
+    },
+    "414BF2B79E83FA81FD1DFA51CD4040F5": {
+      "source": "Exit Cavern",
+      "target": "离开洞穴"
+    },
+    "669F495A0427FC15689BB5707269ECBF": {
+      "source": "The Dollwright",
+      "target": "人偶师"
+    },
+    "787C5BF488D6126FC542754E6230021F": {
+      "source": "The Rain and the Tide",
+      "target": "雨与潮汐"
+    },
+    "893AC32998959DC73F98A4E5F0BB451D": {
+      "source": "Hollow Tide Cavern connects the fen to our quay. Watch your step.",
+      "target": "虚潮洞穴连接着沼泽与我们的码头。脚下留神。"
+    },
+    "992C61C981F39B4CCCF83B82425BF851": {
+      "source": "The workshop smells of carved wood and dried lavender.",
+      "target": "工坊里弥漫着雕刻木材和干燥薰衣草的香气。"
+    },
+    "1690BBAE0CCD69D8F8EAFA429F2CAA32": {
+      "source": "Light the Tidewatch Beacon.",
+      "target": "点亮观潮灯塔。"
+    },
+    "1971E0C14A3B397E154EBAB729E234EF": {
+      "source": "Keep your souldolls close. The Hush turns wild critters restless.",
+      "target": "把你的魂偶带在身边。静默让野生的生灵变得躁动不安。"
+    },
+    "2609AE86EEA0FFF32122D1D6F8032068": {
+      "source": "Fen Guide",
+      "target": "沼泽向导"
+    },
+    "3765ACBE53E2CF03BB022B7D75D98D4B": {
+      "source": "The Bellbindery holds the ancient logs of all named dolls.",
+      "target": "钟楼装订所保存着所有拥有名字的魂偶的古老记录。"
+    },
+    "7181FAE413EFE7CE17FAD36E0289191D": {
+      "source": "Tidewisp (Water)",
+      "target": "潮汐灵（水）"
+    },
+    "9165D60C4434AD2B0F1D5A0F93B35839": {
+      "source": "Gloamwing's flame will warm your way!",
+      "target": "微光翼的火焰会温暖你的旅途！"
+    },
+    "78542A372DC47A95A7064EB8B20FB578": {
+      "source": "The bindery door is locked. A clapper motif is etched on the lock.",
+      "target": "装订所的门锁着。锁上刻着钟舌图案。"
+    },
+    "293005A8ECDEF94B86E24DA86F004AF5": {
+      "source": "\"Welcome to Gloamford!\"",
+      "target": "“欢迎来到幽渡镇！”"
+    },
+    "760219ED29088A343F58C2FEEBB274D4": {
+      "source": "\"Leaving Hushmoor Hollow.\"",
+      "target": "“离开了寂荒山谷。”"
+    },
+    "761202FFB4784466CDC2BFE91B4B9704": {
+      "source": "The well is deep and cold. You make a small wish.",
+      "target": "水井深邃而冰凉。你许下了一个小小的愿望。"
+    },
+    "6437732FD78C56A548F451E9B7BE8FCE": {
+      "source": "\"The Hush dissipates across the coast.\"",
+      "target": "“静默在海岸线上渐渐散去。”"
+    },
+    "192380310EF1BFF4AC496ABC15659F5D": {
+      "source": "Which souldoll will you take?",
+      "target": "你要选择哪一只魂偶？"
+    },
+    "A039988C86702D703313F64646022ABF": {
+      "source": "A sweet coastal treat made in Saltreach Quay.",
+      "target": "盐达码头制作的沿海甜食。"
+    },
+    "B2ED0AE71E7F5E69BC03E2D813E1994E": {
+      "source": "Take these orbs to catch wild critters along the road.",
+      "target": "拿着这些宝珠，可以在路上捕捉野生生灵。"
+    },
+    "B06EA49F25A7E12722A8B20CE1E071A0": {
+      "source": "Visit the Bellbindery in Gloamford.",
+      "target": "拜访幽渡镇的钟楼装订所。"
+    },
+    "C2C3328E5DB88C94EAD428764E9A2439": {
+      "source": "Peatling (Grass)",
+      "target": "泥炭灵（草）"
+    },
+    "CD2ADB849CD4DEAE2A589579072BFB6B": {
+      "source": "Gloamwing (Fire)",
+      "target": "微光翼（火）"
+    },
+    "CD378644DA047FC5415974B7E2C2BC3F": {
+      "source": "Reach Saltreach Quay.",
+      "target": "到达盐达码头。"
+    },
+    "CF8D881D4B9E66633E540D203633E7F8": {
+      "source": "Tidewatch Beacon",
+      "target": "观潮灯塔"
+    },
+    "D2BECFC82EC83E1A563144E6B9426F56": {
+      "source": "Chapter Three",
+      "target": "第三章"
+    },
+    "D82FEAEA3CD13DCEC05A6698DE8D929F": {
+      "source": "A glass orb used to capture wild souldolls.",
+      "target": "用于捕捉野生魂偶的玻璃宝珠。"
+    },
+    "D652405FE16D6ADF1B64190B42EBE842": {
+      "source": "Explore Hollow Tide Cavern.",
+      "target": "探索虚潮洞穴。"
+    },
+    "DD590872F5587BAE69504A4A3E23D14C": {
+      "source": "The missing clapper of the Bellbindery.",
+      "target": "钟楼装订所失落的钟舌。"
+    },
+    "DE778678A40C5AA0F3F62EF21BC78E09": {
+      "source": "\"An ancient boundary stone. It feels cold.\"",
+      "target": "“一块古老的界石。摸起来很冰凉。”"
+    },
+    "DF69ED733FBBBEB306B3F23E860A743D": {
+      "source": "Take good care of your souldoll!",
+      "target": "好好照顾你的魂偶！"
+    },
+    "E0D2AD1477C35D88B0CBA2DE6AE6716A": {
+      "source": "\"A souldoll has joined your party!\"",
+      "target": "“一只魂偶加入了你的队伍！”"
+    },
+    "E0FFEB30348E3020D12396CA0327B5CA": {
+      "source": "Leave Bindery",
+      "target": "离开装订所"
+    },
+    "E02DA9B1A25DC7FC28B01B0F7396B207": {
+      "source": "Tidewisp will guide you through the tides!",
+      "target": "潮汐灵会在浪潮中为你指引方向！"
+    },
+    "E12A118061057DD84998FFFA96BCAF5D": {
+      "source": "Hollow Watcher",
+      "target": "山谷守望者"
+    },
+    "E39F8DDF9CD9CB3EC5AED1192F71C4E1": {
+      "source": "Take good care of Peatling!",
+      "target": "好好照顾泥炭灵！"
+    },
+    "E383EB0356E3C18B2E11A82A25A7A40C": {
+      "source": "Inspect Stone",
+      "target": "检查石碑"
+    },
+    "E3576AF2B666F288ED123A6998DA2E75": {
+      "source": "\"ECHOES IN THE CAVERN\"",
+      "target": "“洞穴的回声”"
+    },
+    "EE3C35A22A53976436F10ED0D09370A8": {
+      "source": "\"Welcome to Hushmoor Hollow.\"",
+      "target": "“欢迎来到寂荒山谷。”"
+    },
+    "EE6648E469488C4188F6D7D5C2720E50": {
+      "source": "SOULDOLLS",
+      "target": "魂偶"
+    },
+    "F7EB0C0869CEBD962E1CB31DF08B9B39": {
+      "source": "\"The bats scattered! The passage is open.\"",
+      "target": "“蝙蝠散开了！通路已经打开。”"
+    },
+    "F659AED97E1E03B71A8ADFF2DDAEEFF9": {
+      "source": "Wayfarer",
+      "target": "旅人"
+    },
+    "FF875F1725C59981614DB3A2EDDA4454": {
+      "source": "The rain in Whisperfen never truly stops, but the path is clear.",
+      "target": "低语沼泽的雨从未真正停过，但道路是畅通的。"
+    }
+  }
+}

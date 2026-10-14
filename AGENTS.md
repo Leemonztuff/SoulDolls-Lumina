@@ -95,7 +95,7 @@ platforms and report verification limitations. It defaults to `--page=game.html 
 ## Content and verification
 
 The six level/campaign generators are `tools/make-starfall-vale.mjs`, `make-sample-hamlet.mjs`,
-`make-cinderwatch-pass.mjs`, `make-gildhaven.mjs`, `make-ferrymans-lantern.mjs`, and
+`make-cinderwatch-pass.mjs`, `make-gildhaven.mjs`, `make-ferrymans-lantern.mjs`, `make-souldolls.mjs`, and
 `make-emberfall-interiors.mjs`. Use `--check` to verify committed output or `--out=<scratch-path>`
 to inspect changes. The interiors generator reads Emberfall, so an Emberfall edit may require
 regenerating that campaign too. Never hand-edit generated output.

@@ -1,0 +1,85 @@
+{
+  "format": "luminati-campaign",
+  "version": 1,
+  "name": "Souldolls",
+  "subtitle": "",
+  "title": {
+    "title": "SOULDOLLS",
+    "subtitle": "A tale of quiet bells, forgotten names, and the dolls that remember.",
+    "credit": "Luminati 2.5D Pixel-Art Engine"
+  },
+  "start": {
+    "level": "hushmoor-hollow",
+    "entrance": "hollow-start"
+  },
+  "levels": [
+    {
+      "id": "hushmoor-hollow",
+      "at": [0, 0]
+    },
+    {
+      "id": "lantern-road",
+      "at": [40, 6]
+    },
+    {
+      "id": "gloamford",
+      "at": [96, 0]
+    },
+    {
+      "id": "bellbindery"
+    },
+    {
+      "id": "whisperfen",
+      "at": [96, 40]
+    },
+    {
+      "id": "hollow-tide-cavern"
+    },
+    {
+      "id": "saltreach-quay",
+      "at": [96, 72]
+    },
+    {
+      "id": "tidewatch-light",
+      "at": [144, 78]
+    }
+  ],
+  "chapters": [
+    {
+      "id": "ch1",
+      "title": "Chapter One",
+      "subtitle": "The Whispering Hollow",
+      "textKeys": {
+        "title": "8D4BC92E6731E48499944D819F65428B",
+        "subtitle": "50FA6B7961327242A8D1750FC9071009"
+      }
+    },
+    {
+      "id": "ch2",
+      "title": "Chapter Two",
+      "subtitle": "The Rain and the Tide",
+      "textKeys": {
+        "title": "1D4291B5FCBA6137353F0CAA8D7D62E9",
+        "subtitle": "787C5BF488D6126FC542754E6230021F"
+      }
+    },
+    {
+      "id": "ch3",
+      "title": "Chapter Three",
+      "subtitle": "Tidewatch Beacon",
+      "textKeys": {
+        "title": "D2BECFC82EC83E1A563144E6B9426F56",
+        "subtitle": "CF8D881D4B9E66633E540D203633E7F8"
+      }
+    }
+  ],
+  "story": [
+    "main.json",
+    "dialogue.story"
+  ],
+  "textKeys": {
+    "title.title": "EE6648E469488C4188F6D7D5C2720E50",
+    "title.subtitle": "2AA0025D9B076F50F29A4315DD3689ED",
+    "title.credit": "3FB403751F08452C972952CED6B749FE"
+  }
+}

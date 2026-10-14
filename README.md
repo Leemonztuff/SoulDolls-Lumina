@@ -50,6 +50,7 @@ Choose a destination in the launcher, or append one of these paths to your local
 | **Willowmere**             | `game.html?level=sample-hamlet`          | A compact generated example level.                                                                              |
 | **The Ferryman's Lantern** | `game.html?campaign=ferrymans-lantern`   | A short story across several levels, with quests, cutscenes, combat and saved progress.                         |
 | **Emberfall — Open Doors** | `game.html?campaign=emberfall-interiors` | Furnished rooms behind every door, with upper floors in the inn, windmill and barn.                             |
+| **Souldolls**              | `game.html?campaign=souldolls`           | A 3-chapter story campaign with 8 levels, 12 new creature species, 4 encounter zones and saved progress.         |
 
 Campaign progress and editor browser saves belong to the current browser and site address; they
 do not sync between devices. Export levels you want to keep as files.

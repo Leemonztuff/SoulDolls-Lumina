@@ -131,6 +131,8 @@ export const ENEMY_INFO = Object.freeze({
 export const CREATURE_KINDS = Object.freeze([
   'leafling', 'emberling', 'rippling', 'mossling', 'sparrowling', 'stoneling',
   'voltling', 'slitherling', 'buzzling', 'shadeling', 'frostling', 'aurorling',
+  'peatling', 'mossmote', 'boggart', 'lanternfly', 'gloamwing', 'cinderbound',
+  'cavernmite', 'murkfin', 'shellskimmer', 'saltling', 'hollowwisp', 'tidewisp',
 ]);
 
 /** Editor labels of every creature species (mirror `CREATURE_DEFS[].name` in src/game/creatures/defs.js). */
@@ -147,6 +149,18 @@ export const CREATURE_INFO = Object.freeze({
   shadeling:   { label: 'Shadeling' },
   frostling:   { label: 'Frostling' },
   aurorling:   { label: 'Aurorling' },
+  peatling:    { label: 'Peatling' },
+  mossmote:    { label: 'Mossmote' },
+  boggart:     { label: 'Boggart' },
+  lanternfly:  { label: 'Lanternfly' },
+  gloamwing:   { label: 'Gloamwing' },
+  cinderbound: { label: 'Cinderbound' },
+  cavernmite:  { label: 'Cavernmite' },
+  murkfin:     { label: 'Murkfin' },
+  shellskimmer:{ label: 'Shellskimmer' },
+  saltling:    { label: 'Saltling' },
+  hollowwisp:  { label: 'Hollowwisp' },
+  tidewisp:    { label: 'Tidewisp' },
 });
 
 /**
@@ -154,7 +168,7 @@ export const CREATURE_INFO = Object.freeze({
  * (the engine, the editor and the Node tools read this list; the game fetches the JSON at runtime).
  * @type {readonly string[]}
  */
-export const CREATURE_TABLES = Object.freeze(['meadow', 'forest', 'mountains', 'shore']);
+export const CREATURE_TABLES = Object.freeze(['meadow', 'forest', 'mountains', 'shore', 'heath', 'fen', 'cavern', 'tide']);
 
 /** What a `chest` can hold besides gold and draughts (COMBAT.md §6.1: +20 max HP, +10 max MP, +3 attack). */
 export const CHEST_UPGRADES = ['none', 'maxHp', 'maxMp', 'attack'];
