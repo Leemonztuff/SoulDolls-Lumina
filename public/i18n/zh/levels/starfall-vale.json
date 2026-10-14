@@ -38,8 +38,10 @@
     "Old Lumen": "流明旧城",
     "Old Nell": "内尔婆婆",
     "Old Thistle": "老西斯尔",
+    "Orb": "宝珠",
     "Paper Lantern": "纸灯笼",
     "Poppy": "波比",
+    "Professor Linden Ashgrove": "林登·阿什格罗夫教授",
     "Professor Ptolemy Marrow": "托勒密·马罗教授",
     "Quentin Fairweather": "昆廷·费尔韦瑟",
     "Reedmouth": "芦苇河口",
@@ -1011,6 +1013,50 @@
     "FFF52B51D1166610E9A83AE84F147DA9": {
       "source": "Somebody inside is arguing, very cheerfully, about which star will fall first.",
       "target": "屋里有人正兴高采烈地争论着，哪颗星星会最先落下。"
+    },
+    "1BE927138877066F6697DCBF5D66731C": {
+      "source": "Keeper of the Critter Register",
+      "target": "生灵名录守护者"
+    },
+    "7BDC02FAFC4152EC1176ABA2BB25E2BA": {
+      "source": "Back again! Your companion is looking well. Keep a few orbs in your pocket — a wild critter will not catch itself.",
+      "target": "又见面了！你的伙伴看上去气色不错。口袋里多揣几颗宝珠——野生生灵可不会自己送上门来。"
+    },
+    "ECAD27A2D70B239A87086E7297C5C98B": {
+      "source": "Ah, a new face — and on Starfall night, no less! I keep the critter register of {Starfall Vale}: every hopper, buzzer and splasher, down to the last tadpole.",
+      "target": "哦，是新面孔——而且还是在星降之夜！我掌管着{星落谷}的生灵名录：会跳的、会嗡鸣的、会溅水的，连最后一只小蝌蚪都不落下。"
+    },
+    "DE16EE4DAE6F2D126F9F3147F9453CF5": {
+      "source": "Three young ones are in my care, and all three have made it very clear — each in their own way — that they would rather walk the road than listen to me talk about moss.",
+      "target": "我照看着三个小家伙，而它们三个都各用自己的方式把话说得很明白——比起听我讲苔藓，它们更想上路走走。"
+    },
+    "AD506B55F31FA7CB8096A94CB48E4AF1": {
+      "source": "Which one will you take with you?",
+      "target": "你要带上哪一只？"
+    },
+    "6F445634B61FA248C1546D92FEE74E80": {
+      "source": "Leafling",
+      "target": "叶灵"
+    },
+    "72ADAA0EED9CFE8929AAE52688E7CD04": {
+      "source": "Emberling",
+      "target": "烬灵"
+    },
+    "043863490F1DEAAEE7718A6E4499920E": {
+      "source": "Rippling",
+      "target": "涟漪灵"
+    },
+    "EB1FE2162D9626E2D4AE4BF4FD4AB518": {
+      "source": "The steady one! Give it a sunny path and it will never let you down. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.",
+      "target": "稳重的那个！给它一条洒满阳光的路，它绝不会让你失望。这个也拿着——五颗宝珠。宝珠是用来与野生生灵交朋友的，省着点用。"
+    },
+    "1A2B1EE1C71A3C4836E89AF5B3025554": {
+      "source": "The bold one! Keep it clear of dry grass — and of your eyebrows. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.",
+      "target": "胆大的那个！让它远离枯草——还有你的眉毛。这个也拿着——五颗宝珠。宝珠是用来与野生生灵交朋友的，省着点用。"
+    },
+    "C5C4792987E1A6A596649DDBEC8DD900": {
+      "source": "The calm one — fine company on a long road. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.",
+      "target": "沉静的那个——长途路上是个好伙伴。这个也拿着——五颗宝珠。宝珠是用来与野生生灵交朋友的，省着点用。"
     }
   }
 }

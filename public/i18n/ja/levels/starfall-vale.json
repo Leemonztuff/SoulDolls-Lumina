@@ -38,8 +38,10 @@
     "Old Lumen": "旧ルーメン",
     "Old Nell": "ネルばあさん",
     "Old Thistle": "シスルじいさん",
+    "Orb": "オーブ",
     "Paper Lantern": "紙灯籠",
     "Poppy": "ポピー",
+    "Professor Linden Ashgrove": "リンデン・アッシュグローブ教授",
     "Professor Ptolemy Marrow": "トレミー・マロウ教授",
     "Quentin Fairweather": "クエンティン・フェアウェザー",
     "Reedmouth": "葦の河口",
@@ -1011,6 +1013,50 @@
     "FFF52B51D1166610E9A83AE84F147DA9": {
       "source": "Somebody inside is arguing, very cheerfully, about which star will fall first.",
       "target": "中では誰かが、どの星が最初に落ちるかで、やけに楽しそうに言い争っている。"
+    },
+    "1BE927138877066F6697DCBF5D66731C": {
+      "source": "Keeper of the Critter Register",
+      "target": "いきもの名簿の守り手"
+    },
+    "7BDC02FAFC4152EC1176ABA2BB25E2BA": {
+      "source": "Back again! Your companion is looking well. Keep a few orbs in your pocket — a wild critter will not catch itself.",
+      "target": "また会いましたね！　連れの子も元気そうで何よりです。ポケットにオーブをいくつか入れておきなさい――野生のいきものは自分から捕まってはくれませんから。"
+    },
+    "ECAD27A2D70B239A87086E7297C5C98B": {
+      "source": "Ah, a new face — and on Starfall night, no less! I keep the critter register of {Starfall Vale}: every hopper, buzzer and splasher, down to the last tadpole.",
+      "target": "おや、見ない顔だ――しかも星降りの夜に！　わたしは{星降りの谷}のいきもの名簿を預かっています。跳ねるもの、羽音を立てるもの、水しぶきを上げるもの、最後の一滴のオタマジャクシまで、全部です。"
+    },
+    "DE16EE4DAE6F2D126F9F3147F9453CF5": {
+      "source": "Three young ones are in my care, and all three have made it very clear — each in their own way — that they would rather walk the road than listen to me talk about moss.",
+      "target": "三匹の幼い子たちを預かっていますが、その三匹そろって、それぞれのやり方で、わたしの苔の講釈を聞くより道を歩きたいと、はっきり示しています。"
+    },
+    "AD506B55F31FA7CB8096A94CB48E4AF1": {
+      "source": "Which one will you take with you?",
+      "target": "どの子を連れていきますか？"
+    },
+    "6F445634B61FA248C1546D92FEE74E80": {
+      "source": "Leafling",
+      "target": "リーフリング"
+    },
+    "72ADAA0EED9CFE8929AAE52688E7CD04": {
+      "source": "Emberling",
+      "target": "エンバーリング"
+    },
+    "043863490F1DEAAEE7718A6E4499920E": {
+      "source": "Rippling",
+      "target": "リップリング"
+    },
+    "EB1FE2162D9626E2D4AE4BF4FD4AB518": {
+      "source": "The steady one! Give it a sunny path and it will never let you down. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.",
+      "target": "しっかり者の子です！　日の当たる道を歩かせてやれば、決して期待を裏切りませんよ。これもどうぞ――オーブを五つ。野生のいきものと友だちになるにはオーブが要りますから、大切に使いなさい。"
+    },
+    "1A2B1EE1C71A3C4836E89AF5B3025554": {
+      "source": "The bold one! Keep it clear of dry grass — and of your eyebrows. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.",
+      "target": "大胆な子です！　枯れ草から、そしてあなたの眉毛からも遠ざけておきなさい。これもどうぞ――オーブを五つ。野生のいきものと友だちになるにはオーブが要りますから、大切に使いなさい。"
+    },
+    "C5C4792987E1A6A596649DDBEC8DD900": {
+      "source": "The calm one — fine company on a long road. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.",
+      "target": "落ち着いた子です――長い道のりにはいい連れになりますよ。これもどうぞ――オーブを五つ。野生のいきものと友だちになるにはオーブが要りますから、大切に使いなさい。"
     }
   }
 }

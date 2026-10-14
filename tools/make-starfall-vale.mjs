@@ -1140,6 +1140,9 @@ function meadowlands() {
   emit('fireflies', 83, 112, [10, 2.2, 8], 30, 0.9);
   emit('fireflies', 60, 112, [22, 2.2, 12], 34, 1);
   emit('embers', 62.4, 99.7, [2.4, 2.5, 2.4], 14, 0.8);
+  // a patch of open meadow east of the road (the birches and the meadow birds stand in it): walk
+  // through it and a wild creature turns up — where the orbs Professor Ashgrove hands out are spent
+  add('creature_zone', { id: 'meadow_critters', table: 'meadow', minX: 76, maxX: 86, minZ: 96, maxZ: 106 });
 }
 
 /** Emberwood — the autumn forest: the woodcutter's camp, the hunter, the hidden glade. */
@@ -1300,6 +1303,38 @@ function people() {
     'I have dropped eleven coins. Nothing yet. I think the stars are shy. Or saving up.',
     '{Grandmother Isolde} at the lake says the stars sleep under the water. That\'s silly. Stars can\'t swim. ...Can they?',
   ], { wander: 2.2, speed: 1.6 });
+  // The vale's critter-keeper, at the south gate of the square where the road from the spawn enters
+  // it (the "Critters Collection" starter — plan §11): his `talk` offers one of the three starters
+  // and a handful of orbs, once, then changes. The plain pages stay as the fallback the catalog wants.
+  npc('linden', 'Professor Linden Ashgrove', 'scholar', 69.3, 64.5, '#8fb96a', [
+    'Good day! Mind the well — a critter got in last week and I am still coaxing it back out.',
+    'Everything that hops, buzzes or splashes in {Starfall Vale} ends up in my register in the end. It takes patience, and a sturdy net.',
+  ], {
+    wander: 0.6, speed: 0.7, behaviour: 'post', facing: 'down', title: 'Keeper of the Critter Register',
+    talk: [
+      'if starter_chosen',
+      '  Professor Linden Ashgrove: Back again! Your companion is looking well. Keep a few orbs in your pocket — a wild critter will not catch itself.',
+      '  stop',
+      'Professor Linden Ashgrove: Ah, a new face — and on Starfall night, no less! I keep the critter register of {Starfall Vale}: every hopper, buzzer and splasher, down to the last tadpole.',
+      'Professor Linden Ashgrove: Three young ones are in my care, and all three have made it very clear — each in their own way — that they would rather walk the road than listen to me talk about moss.',
+      'choice Which one will you take with you?',
+      '  > Leafling',
+      '    creature give leafling level 5',
+      '    give orb 5',
+      '    set starter_chosen',
+      '    Professor Linden Ashgrove: The steady one! Give it a sunny path and it will never let you down. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.',
+      '  > Emberling',
+      '    creature give emberling level 5',
+      '    give orb 5',
+      '    set starter_chosen',
+      '    Professor Linden Ashgrove: The bold one! Keep it clear of dry grass — and of your eyebrows. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.',
+      '  > Rippling',
+      '    creature give rippling level 5',
+      '    give orb 5',
+      '    set starter_chosen',
+      '    Professor Linden Ashgrove: The calm one — fine company on a long road. Here — five orbs as well. An orb is how you befriend a wild critter, so spend them wisely.',
+    ],
+  });
 
   // ---- Goldenfield Farms
   npc('hollis', 'Hollis Barleycorn', 'farmer', 17.5, 68.6, '#cfb25a', [
