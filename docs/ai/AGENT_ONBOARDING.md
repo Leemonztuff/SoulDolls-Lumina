@@ -194,6 +194,7 @@ luminati/
 │  ├─ make-cinderwatch-pass.mjs  Cinderwatch Pass generator + validator (the combat level)
 │  ├─ make-gildhaven.mjs         Gildhaven generator + validator (the 128 × 128 town)
 │  ├─ make-ferrymans-lantern.mjs the demo campaign's generator
+│  ├─ make-souldolls.mjs the Souldolls campaign generator
 │  ├─ make-emberfall-interiors.mjs  the rooms demo's generator (Emberfall + ten rooms)
 │  ├─ lib/levelgen.mjs           helpers shared by the Cinderwatch and Gildhaven generators
 │  ├─ lib/levelcheck.mjs         the level checks (checkLevel), shared by make-gildhaven and check-level

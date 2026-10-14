@@ -274,6 +274,9 @@ are units of the table of the file that holds them.
 | Chapter Two | 第二章 | The standard chapter heading. |
 | Lanterns Home | 家路を照らす灯 | The village lights lamps to bring Ilse home. |
 | The Lantern Home | ランタン、家路へ | The ending title: the lantern comes home. |
+| Souldolls | ソウルドールズ | The campaign name. |
+| SOULDOLLS | ソウルドールズ | Title-screen name. |
+| A tale of quiet bells, forgotten names, and the dolls that remember. | 静かな鐘、忘れられた名前、探す人形たちの物語。 | Campaign subtitle. |
 
 ### 3.3 Villagers who appear in more than one level
 
@@ -422,7 +425,34 @@ Where: `campaigns/ferrymans-lantern` (levels and story files).
 | Ferry Lantern | 渡し舟のランタン | The name as in its own row + a kanji generic. |
 | The Missing Ferryman | 消えた渡し守 | Quest title. |
 
-### 3.8 Brightwater Crossing
+### 3.8 Souldolls
+
+Where: `campaigns/souldolls` (levels and story files).
+
+| English | 日本語 | Why |
+|---|---|---|
+| Hushmoor Hollow | ハシュモア・ホロウ | Start level. |
+| Lantern Road | ランタンロード | Level 2. |
+| Gloamford | グロームフォード | Level 3. |
+| The Bellbindery | ベルバインダリー | Level 4. |
+| Whisperfen | ウィスパーフェン | Level 5. |
+| Hollow Tide Cavern | ホロウタイド洞窟 | Level 6. |
+| Saltreach Quay | ソルトリーチ港 | Level 7. |
+| Tidewatch Light | タイドウォッチ灯台 | Level 8. |
+| Elspeth | エルスペス | The Dollwright. |
+| Corvin | コルビン | Hollow Watcher. |
+| Maren | マレン | Binder Maren. |
+| Bram | ブラム | Wayfarer. |
+| Orla | オーラ | Scholar of Gloamford. |
+| Rowan | ローワン | Fen Guide. |
+| Gull | ガル | Dockmaster. |
+| Vane | ヴェイン | Lighthouse Keeper. |
+| Souldoll Orb | ソウルドールオーブ | Item. |
+| Salt Toffee | ソルトタフィー | Item. |
+| Silenced Clapper | 静寂の舌 | Item. |
+| The Hush of Souldolls | ソウルドールズの静寂 | Quest title. |
+
+### 3.9 Brightwater Crossing
 
 Where: `levels/brightwater-crossing`.
 
@@ -439,7 +469,7 @@ Where: `levels/brightwater-crossing`.
 | Brightwater Square | ブライトウォーター広場 | The name as in its own row + a kanji generic. |
 | Where the river bends and the lanterns glow | 川が曲がり、灯のともるところ | Banner. |
 
-### 3.9 Willowmere (sample-hamlet)
+### 3.10 Willowmere (sample-hamlet)
 
 Where: `levels/sample-hamlet`.
 
@@ -453,7 +483,7 @@ Where: `levels/sample-hamlet`.
 | Mirror Pond | 鏡池 | Mirror = 鏡 (Mirror Falls, Mirrormere). |
 | Willowmere Green | ウィロウミアの草地 | The name as in its own row + a kanji generic. |
 
-### 3.10 Gildhaven
+### 3.11 Gildhaven
 
 Where: `levels/gildhaven`.
 
@@ -573,7 +603,7 @@ Where: `levels/gildhaven`.
 | Barlow's Farm | バーロウの農場 | The name as in its own row + a kanji generic. |
 | Outside the South Gate · Fair day | 南門の外・祭りの日 | Banner. |
 
-### 3.11 Starfall Vale
+### 3.12 Starfall Vale
 
 Where: `levels/starfall-vale`.
 
@@ -659,7 +689,7 @@ Where: `levels/starfall-vale`.
 | Woodcutter's Camp | きこりの野営地 | Meaningful rendering in kanji. |
 | The forest that remembers autumn | 秋を覚えている森 | Banner. |
 
-### 3.12 Names that appear only inside lines
+### 3.13 Names that appear only inside lines
 
 Where: every table: write these inside sentences and {gold} spans. Not terms: write them inside lines.
 
@@ -719,7 +749,7 @@ Where: every table: write these inside sentences and {gold} spans. Not terms: wr
 | the elder | 長老 | The English sound; the title as in §1.1. |
 | traveller / traveler | 旅人 | The UI mockup's word for the player; both English spellings. |
 
-### 3.13 Recurring terms the content shares with the UI
+### 3.14 Recurring terms the content shares with the UI
 
 Where: lines, banners and the combat/party UI (`src/game/*/strings.js`). Not terms: write them inside lines.
 
@@ -820,6 +850,9 @@ are units of the table of the file that holds them.
 | Chapter Two | 第二章 | The standard chapter heading. |
 | Lanterns Home | 灯火归途 | Lamps lighting the way home. |
 | The Lantern Home | 提灯归家 | The ending title. |
+| Souldolls | 魂偶 | The campaign name. |
+| SOULDOLLS | 魂偶 | Title-screen name. |
+| A tale of quiet bells, forgotten names, and the dolls that remember. | 关于宁静之钟、被遗忘的名字与铭记一切的人偶的故事。 | Campaign subtitle. |
 
 ### 4.3 Villagers who appear in more than one level
 
@@ -968,7 +1001,34 @@ Where: `campaigns/ferrymans-lantern` (levels and story files).
 | Ferry Lantern | 渡船提灯 | The name as in its own row + a generic word. |
 | The Missing Ferryman | 失踪的摆渡人 | Quest title. |
 
-### 4.8 Brightwater Crossing
+### 4.8 Souldolls
+
+Where: `campaigns/souldolls` (levels and story files).
+
+| English | 中文 | Why |
+|---|---|---|
+| Hushmoor Hollow | 寂荒山谷 | Start level. |
+| Lantern Road | 灯笼路 | Level 2. |
+| Gloamford | 幽渡镇 | Level 3. |
+| The Bellbindery | 钟楼装订所 | Level 4. |
+| Whisperfen | 低语沼泽 | Level 5. |
+| Hollow Tide Cavern | 虚潮洞穴 | Level 6. |
+| Saltreach Quay | 盐达码头 | Level 7. |
+| Tidewatch Light | 观潮灯塔 | Level 8. |
+| Elspeth | 埃尔斯佩斯 | The Dollwright. |
+| Corvin | 柯尔文 | Hollow Watcher. |
+| Maren | 玛伦 | Binder Maren. |
+| Bram | 布拉姆 | Wayfarer. |
+| Orla | 奥拉 | Scholar of Gloamford. |
+| Rowan | 罗文 | Fen Guide. |
+| Gull | 加尔 | Dockmaster. |
+| Vane | 韦恩 | Lighthouse Keeper. |
+| Souldoll Orb | 魂偶宝珠 | Item. |
+| Salt Toffee | 盐味太妃糖 | Item. |
+| Silenced Clapper | 寂静钟舌 | Item. |
+| The Hush of Souldolls | 魂偶之静默 | Quest title. |
+
+### 4.9 Brightwater Crossing
 
 Where: `levels/brightwater-crossing`.
 
@@ -985,7 +1045,7 @@ Where: `levels/brightwater-crossing`.
 | Brightwater Square | 明水广场 | The name as in its own row + a generic word. |
 | Where the river bends and the lanterns glow | 河水转弯、灯火闪烁之处 | Banner. |
 
-### 4.9 Willowmere (sample-hamlet)
+### 4.10 Willowmere (sample-hamlet)
 
 Where: `levels/sample-hamlet`.
 
@@ -999,7 +1059,7 @@ Where: `levels/sample-hamlet`.
 | Mirror Pond | 镜池 | Mirror = 镜. |
 | Willowmere Green | 柳湖村绿地 | The name as in its own row + a generic word. |
 
-### 4.10 Gildhaven
+### 4.11 Gildhaven
 
 Where: `levels/gildhaven`.
 
@@ -1119,7 +1179,7 @@ Where: `levels/gildhaven`.
 | Barlow's Farm | 巴洛农场 | The name as in its own row + a generic word. |
 | Outside the South Gate · Fair day | 南门外 · 集市日 | Banner. |
 
-### 4.11 Starfall Vale
+### 4.12 Starfall Vale
 
 Where: `levels/starfall-vale`.
 
@@ -1205,7 +1265,7 @@ Where: `levels/starfall-vale`.
 | Woodcutter's Camp | 樵夫营地 | Meaningful rendering. |
 | The forest that remembers autumn | 记得秋天的森林 | Banner. |
 
-### 4.12 Names that appear only inside lines
+### 4.13 Names that appear only inside lines
 
 Where: every table: write these inside sentences and {gold} spans. Not terms: write them inside lines.
 
@@ -1265,7 +1325,7 @@ Where: every table: write these inside sentences and {gold} spans. Not terms: wr
 | the elder | 长老 | Transliteration; the title as in §1.1. |
 | traveller / traveler | 旅人 | Both English spellings. |
 
-### 4.13 Recurring terms the content shares with the UI
+### 4.14 Recurring terms the content shares with the UI
 
 Where: lines, banners and the combat/party UI (`src/game/*/strings.js`). Not terms: write them inside lines.
 

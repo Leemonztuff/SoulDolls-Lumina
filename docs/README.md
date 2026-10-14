@@ -92,8 +92,9 @@ Details: [user/GETTING_STARTED.md](user/GETTING_STARTED.md).
    [Cinderwatch Pass](design/levels/cinderwatch-pass.md) (96 × 120, generated, combat).
    A story of several levels: [specs/CAMPAIGN_FORMAT.md](specs/CAMPAIGN_FORMAT.md), its story
    language [specs/STORY_SCRIPT.md](specs/STORY_SCRIPT.md) and the demo campaigns
-   [The Ferryman's Lantern](design/campaigns/ferrymans-lantern.md) and
-   [Emberfall — Open Doors](design/campaigns/emberfall-interiors.md) (rooms behind every door).
+   [The Ferryman's Lantern](design/campaigns/ferrymans-lantern.md),
+   [Emberfall — Open Doors](design/campaigns/emberfall-interiors.md) (rooms behind every door), and
+   [Souldolls](design/campaigns/souldolls.md).
 6. Writing levels by hand or with a script: [specs/LEVEL_FORMAT.md](specs/LEVEL_FORMAT.md) and
    [specs/LEVEL_STORAGE_API.md](specs/LEVEL_STORAGE_API.md).
 7. The look you are designing for: [design/VISUAL_DESIGN.md](design/VISUAL_DESIGN.md).
@@ -273,6 +274,8 @@ describes the code.
     - [emberfall-interiors.md](design/campaigns/emberfall-interiors.md) — Emberfall — Open Doors,
       the generated rooms demo: Emberfall's map with a furnished room behind every door, upper
       floors, the furniture and its placement, measured travel times.
+    - [souldolls.md](design/campaigns/souldolls.md) — Souldolls, the generated 3-chapter campaign
+      with 8 levels, 12 creature species, and 4 encounter tables.
 - **development/** — working on the repository
   - [DEVELOPMENT_WORKFLOW.md](development/DEVELOPMENT_WORKFLOW.md) — setup, layout, running and
     building, sandbox-first work, levels, regression practice and platform notes.

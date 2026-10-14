@@ -49,6 +49,10 @@ const SPECIES_JA = {
   mossling: 'モスリング', sparrowling: 'スパロウリング', stoneling: 'ストーンリング',
   voltling: 'ボルトリング', slitherling: 'スリザーリング', buzzling: 'バズリング',
   shadeling: 'シェードリング', frostling: 'フロストリング', aurorling: 'オーロラリング',
+  peatling: 'ピートリング', mossmote: 'モスモート', boggart: 'ボガート',
+  lanternfly: 'ランタンフライ', gloamwing: 'グロームウィング', cinderbound: 'シンダーバウンド',
+  cavernmite: 'カヴァマイト', murkfin: 'マーフィン', shellskimmer: 'シェルスキマー',
+  saltling: 'ソルトリング', hollowwisp: 'ホロウウィスプ', tidewisp: 'タイドウィスプ',
 };
 /** @type {Record<string, string>} */
 const SPECIES_ZH = {
@@ -56,6 +60,10 @@ const SPECIES_ZH = {
   mossling: '苔藓灵', sparrowling: '雀灵', stoneling: '石灵',
   voltling: '电灵', slitherling: '蛇灵', buzzling: '嗡灵',
   shadeling: '影灵', frostling: '霜灵', aurorling: '极光灵',
+  peatling: '泥炭灵', mossmote: '苔尘', boggart: '沼泽怪',
+  lanternfly: '灯笼蝇', gloamwing: '微光翼', cinderbound: '余烬缚灵',
+  cavernmite: '洞穴螨', murkfin: '暗鳍', shellskimmer: '贝掠灵',
+  saltling: '盐灵', hollowwisp: '虚幽灵', tidewisp: '潮汐灵',
 };
 /** @type {Record<string, string>} */
 const MOVE_JA = {

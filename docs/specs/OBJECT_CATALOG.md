@@ -151,9 +151,9 @@ Enumerations exported by the catalog:
 | `CARDINALS` | `N`, `S`, `E`, `W` |
 | `CHARACTER_PRESET_NAMES` | `traveler`, `swordsman`, `merchant`, `cleric`, `scholar`, `dancer`, `hunter`, `villager`, `farmer`, `elder`, `child`, `guard`, `innkeeper`, `bard` |
 | `CRITTER_KINDS` | `chicken`, `cat`, `bird`, `dog` |
-| `CREATURE_KINDS` | `leafling`, `emberling`, `rippling`, `mossling`, `sparrowling`, `stoneling`, `voltling`, `slitherling`, `buzzling`, `shadeling`, `frostling`, `aurorling` |
+| `CREATURE_KINDS` | `leafling`, `emberling`, `rippling`, `mossling`, `sparrowling`, `stoneling`, `voltling`, `slitherling`, `buzzling`, `shadeling`, `frostling`, `aurorling`, `peatling`, `mossmote`, `boggart`, `lanternfly`, `gloamwing`, `cinderbound`, `cavernmite`, `murkfin`, `shellskimmer`, `saltling`, `hollowwisp`, `tidewisp` |
 | `CREATURE_INFO` | frozen `{ label }` per species (the editor labels; mirrors `CREATURE_DEFS[].name` in `src/game/creatures/defs.js`) |
-| `CREATURE_TABLES` | `meadow`, `forest`, `mountains`, `shore` (keys of `public/data/creatures/encounters.json`) |
+| `CREATURE_TABLES` | `meadow`, `forest`, `mountains`, `shore`, `heath`, `fen`, `cavern`, `tide` (keys of `public/data/creatures/encounters.json`) |
 | `EMITTER_PRESETS` | `fireflies`, `leaves`, `petals`, `dust`, `embers`, `smoke`, `mist`, `sparkle`, `snow`, `rain` |
 | `NPC_ACTIONS` | `none` (Just talk), `rest` (Innkeeper), `shop` (Merchant), `music` (Bard) |
 | `NPC_BEHAVIOURS` | `wander`, `post`, `perform`, `chase` |
@@ -1078,7 +1078,7 @@ Marker: the game reads it, nothing is built; the editor draws it (✧, green).
 
 | Field | Type | Default | Editor range / options | Notes |
 | --- | --- | --- | --- | --- |
-| `table` | select | `meadow` | `CREATURE_TABLES` | The encounter table: keys of `public/data/creatures/encounters.json` — `meadow` 90, `forest` 80, `mountains` 100, `shore` 85 steps per encounter, and the species / levels each table rolls. Unknown, or a file that fails to load: the zones stay empty (a warning). |
+| `table` | select | `meadow` | `CREATURE_TABLES` | The encounter table: keys of `public/data/creatures/encounters.json` — `meadow` 90, `forest` 80, `mountains` 100, `shore` 85, `heath` 85, `fen` 95, `cavern` 110, `tide` 90 steps per encounter, and the species / levels each table rolls. Unknown, or a file that fails to load: the zones stay empty (a warning). |
 | `steps` | int | (absent = the table's `stepsPerEncounter`) | 1–200 | How far (world units) the player must walk inside before a creature appears. Absent or 0 = the table's default, so files that do not use it do not change. |
 
 **In the game:** entering the rect starts the counter; **leaving resets it** (a teleport counts:

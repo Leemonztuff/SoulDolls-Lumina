@@ -12,7 +12,8 @@
         "levels/sample-hamlet",
         "levels/starfall-vale",
         "campaigns/emberfall-interiors",
-        "campaigns/ferrymans-lantern"
+        "campaigns/ferrymans-lantern",
+        "campaigns/souldolls"
       ]
     },
     "zh": {
@@ -25,7 +26,8 @@
         "levels/sample-hamlet",
         "levels/starfall-vale",
         "campaigns/emberfall-interiors",
-        "campaigns/ferrymans-lantern"
+        "campaigns/ferrymans-lantern",
+        "campaigns/souldolls"
       ]
     }
   }
