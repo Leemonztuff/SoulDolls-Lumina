@@ -1568,6 +1568,10 @@ begin('Q: the creatures (plan §13)');
   eq('give (a level of 5 by default)', args('creature give leafling'), { verb: 'give', species: 'leafling', level: 5 });
   eq('give at a level', args('creature give emberling level 7'), { verb: 'give', species: 'emberling', level: 7 });
   eq('give a quoted species keeps it', args('creature give "leafling"'), { verb: 'give', species: 'leafling', level: 5 });
+  // `creature give orb [<n>]`: the orb sugar (plan §13) — the item, never a species
+  eq('give orb (a count of 1 by default)', args('creature give orb'), { verb: 'give', item: 'orb', count: 1 });
+  eq('give orb at a count', [args('creature give orb 5'), args('creature give Orb 12')], [{ verb: 'give', item: 'orb', count: 5 }, { verb: 'give', item: 'orb', count: 12 }]);
+  eq('a quoted "orb" is a species, not the sugar', args('creature give "orb"'), { verb: 'give', species: 'orb', level: 5 });
   eq('active / box (a species, or none)', [args('creature active leafling'), args('creature active'), args('creature box rippling')], [{ verb: 'active', species: 'leafling' }, { verb: 'active' }, { verb: 'box', species: 'rippling' }]);
   eq('heal', args('creature heal'), { verb: 'heal' });
   eq('menu (a species, or none)', [args('creature menu'), args('creature menu leafling')], [{ verb: 'menu' }, { verb: 'menu' }]);
@@ -1581,6 +1585,8 @@ begin('Q: the creatures (plan §13)');
   ok('give: a bad level', e('creature give leafling level 0').includes('the level must be a whole number from 1 to 100') && e('creature give leafling level x').includes('the level must be'), [e('creature give leafling level 0'), e('creature give leafling level x')]);
   ok('give: level without a number', e('creature give leafling level') === 'creature give <species> [level <n>]', e('creature give leafling level'));
   ok('give: a word after the species', e('creature give leafling now') === 'creature give <species> [level <n>]', e('creature give leafling now'));
+  eq('give orb: a bad count', [e('creature give orb 0'), e('creature give orb x')], ['creature give orb [<n>]: the count must be a whole number from 1 to 999', 'creature give orb [<n>]: the count must be a whole number from 1 to 999']);
+  ok('give orb: nothing after the count', e('creature give orb 3 now') === 'creature give orb [<n>]: nothing after the count', e('creature give orb 3 now'));
   ok('heal takes nothing', e('creature heal now') === 'creature heal takes nothing after it', e('creature heal now'));
   ok('menu: at most one species', e('creature menu leafling rippling') === 'creature menu [<species>] — at most one species, nothing after it', e('creature menu leafling rippling'));
   ok('active: at most one species', e('creature active a b') === 'creature active [<species>] — at most one species, nothing after it', e('creature active a b'));
@@ -1589,9 +1595,11 @@ begin('Q: the creatures (plan §13)');
   const r = scriptRefs(nodes(['creature give leafling', 'creature give emberling level 3', 'if creature:rippling', '  creature box rippling', 'creature starter']));
   eq('scriptRefs: the species named by give / starter / conditions', [...r.creatures].sort(), ['emberling', 'leafling', 'rippling']);
   ok('… not members, actors, flags or reads', !r.members.size && !r.actors.size && !r.reads.size && !r.writes.size, r);
+  const rOrb = scriptRefs(nodes(['creature give orb 3']));
+  eq('scriptRefs: give orb tracks the item, not a species', [[...rOrb.items], [...rOrb.gives], [...rOrb.creatures]], [['orb'], ['orb'], []]);
   // background
   const bg = (line) => backgroundIssue(node([line]));
-  eq('background: give, active, box, heal, starter may run there', ['creature give leafling', 'creature give leafling level 5', 'creature active leafling', 'creature box leafling', 'creature heal', 'creature starter'].map(bg), ['', '', '', '', '', '']);
+  eq('background: give (species and orb), active, box, heal, starter may run there', ['creature give leafling', 'creature give leafling level 5', 'creature give orb 3', 'creature active leafling', 'creature box leafling', 'creature heal', 'creature starter'].map(bg), ['', '', '', '', '', '', '']);
   eq('background: menu may not', [bg('creature menu'), bg('creature menu leafling')], ['the roster panel needs the player', 'the roster panel needs the player']);
   eq('backgroundErrors: the check message', backgroundErrors(nodes(['creature give leafling', 'creature menu'])), [{ line: 2, msg: 'cannot run in the background: the roster panel needs the player — drop "background"' }]);
 }

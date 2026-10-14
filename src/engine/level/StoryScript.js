@@ -142,8 +142,8 @@ export const SCRIPT_COMMANDS = {
     help: 'the player\'s party: a villager here joins (`party join sela as warden guardian` — classes warden, ranger, mystic; presets balanced, aggressive, guardian, support, hunter, passive) or a member leaves; a member\'s combat rule becomes a preset, or one field changes (`party set sela heal often`); `menu` opens the tactics panel and waits until it closes. Conditions read `party` (how many members) and `party:sela`',
   },
   creature: {
-    args: 'give <species> [level <n>] | active [<species>] | box [<species>] | heal | menu | starter [<species>]',
-    help: 'the player\'s creatures ("Critters Collection"): `give` adds a creature to the roster (active slot if there is room, else the box); `active` moves the named species to the front of the party (the battle leader), `box` moves it to the box; `heal` restores the whole roster; `menu` opens the roster panel and waits until it closes; `starter` gives the named species at level 5 (`leafling` when none is named). Conditions read `creature` (how many the roster holds) and `creature:<species>` (whether it holds one)',
+    args: 'give <species> [level <n>] | give orb [<n>] | active [<species>] | box [<species>] | heal | menu | starter [<species>]',
+    help: 'the player\'s creatures ("Critters Collection"): `give` adds a creature to the roster (active slot if there is room, else the box); `give orb [<n>]` gives orbs (the story item `orb`, the one source the battle reads — sugar for the generic `give orb <n>`); `active` moves the named species to the front of the party (the battle leader), `box` moves it to the box; `heal` restores the whole roster; `menu` opens the roster panel and waits until it closes; `starter` gives the named species at level 5 (`leafling` when none is named). Conditions read `creature` (how many the roster holds) and `creature:<species>` (whether it holds one)',
   },
   teleport: { args: '<who> <x> <z> | <who> <place> [facing]', help: 'put an actor somewhere at once' },
   camera: { args: '<who> [seconds] | <x> <z> [seconds] | reset [seconds]', help: 'look at an actor, an object or a point (until `camera reset` or the script ends)' },
@@ -644,6 +644,17 @@ function creatureArgs(W, isWord) {
       return { verb };
     }
     case 'give': {
+      // `creature give orb [<n>]` (plan §13): a thin alias of the generic `give orb <n>` — orbs are
+      // the story item `orb`, not a creature, and the battle reads that one store
+      if (W[1] && !W[1].quoted && W[1].text.toLowerCase() === 'orb') {
+        if (W.length === 2) return { verb, item: 'orb', count: 1 };
+        if (W.length === 3) {
+          const n = num(W[2].text);
+          if (!Number.isInteger(n) || n < 1 || n > 999) throw new Error('creature give orb [<n>]: the count must be a whole number from 1 to 999');
+          return { verb, item: 'orb', count: n };
+        }
+        throw new Error('creature give orb [<n>]: nothing after the count');
+      }
       const sp = species(1);
       if (W.length === 2) return { verb, species: sp, level: 5 };
       if (W.length === 4 && isWord(2, 'level')) {
@@ -1170,7 +1181,9 @@ function cmdRefs(n, out) {
       else if (a.who) out.members?.add(a.who);
       break;
     case 'creature':
-      if (a.species) out.creatures?.add(a.species);
+      // `give orb`: the item store (what the checks track), not a species
+      if (a.item) { out.items.add(a.item); out.gives.add(a.item); }
+      else if (a.species) out.creatures?.add(a.species);
       break;
     default: break;
   }

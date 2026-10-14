@@ -1823,6 +1823,12 @@ export class StoryRunner {
       await this._until(() => !sys.rosterOpen, run);
       return '';
     }
+    // `creature give orb [<n>]`: sugar for the generic `give orb <n>` (plan §13) — orbs are the story
+    // item `orb`, the one store the battle reads, so they need no creature system at all
+    if (a.verb === 'give' && a.item === 'orb') {
+      this._items('orb', a.count ?? 1, run);
+      return '';
+    }
     const sys = typeof g.ensureCreatures === 'function' ? await g.ensureCreatures() : g.creatures;
     if (!sys) {
       this._warn(run, `${at}: this game has no creature system`);
@@ -1832,7 +1838,7 @@ export class StoryRunner {
       case 'give': case 'starter': {
         const species = a.species || 'leafling';
         const level = a.verb === 'starter' ? 5 : a.level ?? 5;
-        const c = sys.give(species, level);
+        const c = sys.give(species, level, { quiet: run.fast });
         if (c) this._trace.push(`  [creature: ${species} joins]`);
         else this._warn(run, `${at}: "${species}" could not be given`);
         break;

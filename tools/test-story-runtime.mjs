@@ -1045,6 +1045,12 @@ begin('creature: give, starter, heal, active, box, menu');
   for (let k = 0; k < 3; k++) { r.update(0.016); await settle(); }
   ok('a background run: creature give works beside play, creature menu is an error that ends it', r.test('creature:slitherling') && r.errors === errs + 1 && r.state.get('never') === 0
     && warned.some((w) => w.includes('event:here.cbg') && w.includes('roster panel')), warned.slice(-2));
+  // `creature give orb [<n>]`: sugar for the generic `give orb <n>` — the item store, no creature system
+  const madeBefore = g.ensures;
+  await run(['creature give orb 3']);
+  eq('give orb: the item joins the story state, no creature system is made', [r.state.count('orb'), g.ensures], [3, madeBefore]);
+  await run(['creature give orb']);
+  eq('give orb: a count of 1 by default', r.state.count('orb'), 4);
 }
 
 begin('creature: an empty roster and a game with no system');

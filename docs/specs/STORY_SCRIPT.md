@@ -321,7 +321,7 @@ name has spaces.
 | party | `party join <who> [as <class>] [<preset>]` | a villager of this level joins the player's party (at most 3) — as a class (`warden`, `ranger`, `mystic`; else by the weapon it carries) and with a preset rule (`balanced` — the default —, `aggressive`, `guardian`, `support`, `hunter`, `passive`; the two in any order): `party join sela as warden guardian`. Its villager is hidden; the member walks with the player from level to level |
 | | `party leave <who>` · `party rule <who> <preset>` · `party set <who> <field> <value>` | a member leaves (its villager is back where the member stood) · its combat rule becomes the preset's · one field of its rule changes (`party set sela heal often`; the fields and their values: [PARTY.md §3](PARTY.md#3-rules-presets-classes)) — a toast names the rule (quiet while a cutscene is skipped) |
 | | `party menu [<who>]` | the tactics panel (on that member) — the script waits until the player closes it |
-| creature | `creature give <species> [level <n>]` · `creature starter [<species>]` | the player's roster (the "Critters Collection"): a new creature of `species` (`CREATURE_KINDS`, e.g. `leafling`) joins the party, or the box when it is full — `give` at `level` (1–100, default 5), `starter` at 5 (no species = `leafling`). The system is made lazily, so a `creature give` in a peaceful town works (`Game.ensureCreatures`) |
+| creature | `creature give <species> [level <n>]` · `creature give orb [<n>]` · `creature starter [<species>]` | the player's roster (the "Critters Collection"): a new creature of `species` (`CREATURE_KINDS`, e.g. `leafling`) joins the party, or the box when it is full — `give` at `level` (1–100, default 5), `starter` at 5 (no species = `leafling`); a toast names it (`creature.ui.got`, quiet while a cutscene is skipped). `creature give orb [<n>]` gives `n` orbs (1–999, default 1) — sugar for the generic `give orb <n>`, the one item the battle spends. The system is made lazily, so a `creature give <species>` in a peaceful town works (`Game.ensureCreatures`); the orb form touches only the story state, so it needs no system |
 | | `creature heal` | every creature's HP restored |
 | | `creature active [<species>]` · `creature box [<species>]` | bring that species to the **front** of the party (a boxed one is brought into it) · move it to the box — both need the species named |
 | | `creature menu [<species>]` | the roster panel (on that species) — the script waits until the player closes it |
@@ -343,8 +343,11 @@ the other commands do nothing without one.
 The creature commands never stop a run either: an unknown species (the parser accepts any name; the
 runtime knows the species), none of that species in the roster, an `active` / `box` without a name —
 a warning in the console, and the script goes on. A `creature menu` needs a made system and a
-non-empty roster (else a warning). Unlike `party`, a `creature give` makes the system even on a
-level that plays no creatures: a starter in a peaceful town (`Game.ensureCreatures`, plan §13).
+non-empty roster (else a warning). Unlike `party`, a `creature give <species>` makes the system even
+on a level that plays no creatures: a starter in a peaceful town (`Game.ensureCreatures`, plan §13).
+`creature give orb [<n>]` is the exception — it is sugar for the generic `give orb <n>`, so it makes
+no creature system and needs none (its item `orb` is declared in the campaign's item table like any
+other, plan §4).
 
 Objects come and go only through **flags and conditions** (`set bridge-built` and the bridge's
 `when: bridge-built`) — there is no `show` / `hide`. Coordinates a script names (`walk`, `teleport`,

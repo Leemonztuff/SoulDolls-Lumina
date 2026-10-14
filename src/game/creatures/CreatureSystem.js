@@ -842,17 +842,22 @@ export class CreatureSystem {
   /**
    * Give the player a creature (`creature give` / `creature starter`): a new one of `species` at
    * `level`, to the party while it has room, else the box. Returns it, or null (an unknown species,
-   * a full box) with a warning logged by the caller.
+   * a full box) with a warning logged by the caller. A toast (`creature.ui.got`) names what joined
+   * — `opts.quiet` (a skipped cutscene) skips it.
    * @param {string} species
    * @param {number} [level]
+   * @param {{ quiet?: boolean }} [opts]
    * @returns {Creature|null}
    */
-  give(species, level = 5) {
+  give(species, level = 5, opts = {}) {
     if (!CREATURE_KINDS.includes(species)) return null;
     const added = this.roster.add(new Creature(species, { level }));
     if (!added) return null;
     this.roster.save();
     this._syncStory();
+    if (!opts.quiet) {
+      this.game.ui?.hud?.toast?.(ct('ui.got', 'You got {name}!', { name: this._nameOf(added) }), 2.6, { kind: 'item' });
+    }
     return added;
   }
 

@@ -2161,31 +2161,33 @@ export class Game {
     if (playing) {
       if (input.actionPressed('debug')) ui.debug.toggle();
       // world map: N / Tab (gamepad Back) opens it; the map key or Esc closes it
-    if (this.mapOpen) {
-      if (input.actionPressed('map') || input.actionPressed('cancel')) this.toggleMap(false);
-    } else if (this.journalOpen) {
-      // the story journal (B): B or Esc closes it
-      if (input.actionPressed('journal') || input.actionPressed('cancel')) this.toggleJournal(false);
-    } else if (this.partyMenuOpen) {
-      // the party's tactics panel (G): G or Esc closes it (the press is the game's: consumed)
-      if (input.actionPressed('party') || input.actionPressed('cancel')) {
+      if (this.mapOpen) {
+        if (input.actionPressed('map') || input.actionPressed('cancel')) this.toggleMap(false);
+      } else if (this.journalOpen) {
+        // the story journal (B): B or Esc closes it
+        if (input.actionPressed('journal') || input.actionPressed('cancel')) this.toggleJournal(false);
+      } else if (this.partyMenuOpen) {
+        // the party's tactics panel (G): G or Esc closes it (the press is the game's: consumed)
+        if (input.actionPressed('party') || input.actionPressed('cancel')) {
+          input.consumeAction?.('party');
+          this.togglePartyMenu(false);
+        }
+      } else if (this.creatureRosterOpen) {
+        // back out one level / close on cancel is the panel's own (UI.update); C toggles it closed
+        if (input.consumeAction?.('creatureRoster') || input.actionPressed('creatureRoster')) this.creatures?.closeRoster?.();
+      } else if (!talking && !this.photoMode && input.actionPressed('map')) this.toggleMap(true);
+      else if (this.story && !talking && !this.photoMode && input.actionPressed('journal')) this.toggleJournal(true);
+      else if (this.party && !talking && !this.photoMode && input.actionPressed('party')) {
         input.consumeAction?.('party');
-        this.togglePartyMenu(false);
+        this.togglePartyMenu(true);
       }
-    } else if (this.creatureRosterOpen) {
-      // back out one level / close on cancel is the panel's own (UI.update); C toggles it closed
-      if (input.consumeAction?.('creatureRoster') || input.actionPressed('creatureRoster')) this.creatures?.closeRoster?.();
-    } else if (!talking && !this.photoMode && input.actionPressed('map')) this.toggleMap(true);
-    else if (this.story && !talking && !this.photoMode && input.actionPressed('journal')) this.toggleJournal(true);
-    else if (this.party && !talking && !this.photoMode && input.actionPressed('party')) {
-      input.consumeAction?.('party');
-      this.togglePartyMenu(true);
-    }
-    if (playing && this.creaturesEnabled && !talking && !this.photoMode && !this.mapOpen && !this.journalOpen && !this.partyMenuOpen && !this.creatureRosterOpen) {
-      if (input.consumeAction?.('creatureRoster') || input.actionPressed('creatureRoster')) {
-        this.creatures?.openRoster?.();
+      // the roster (C): a level that plays creatures at build, or one whose story gave a creature
+      // (Game.ensureCreatures makes the system lazily — it carries the C binding either way)
+      if (playing && this.creatures && !talking && !this.photoMode && !this.mapOpen && !this.journalOpen && !this.partyMenuOpen && !this.creatureRosterOpen) {
+        if (input.consumeAction?.('creatureRoster') || input.actionPressed('creatureRoster')) {
+          this.creatures?.openRoster?.();
+        }
       }
-    }
     }
     // (the journal and the party's tactics panel pause play like the map)
     const mapOpen = this.mapOpen || this.journalOpen || this.partyMenuOpen || this.creatureRosterOpen;
