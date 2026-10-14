@@ -5,7 +5,7 @@ import {
   LAYOUT_MODES, layoutChoice, setLayoutChoice,
 } from '../engine/index.js';
 import { computeCameraBounds } from '../engine/level/ObjectBuilder.js';
-import { CHARACTER_PRESET_NAMES, levelHasCombat, levelHasStory } from '../engine/level/ObjectCatalog.js';
+import { CHARACTER_PRESET_NAMES, levelHasCombat, levelHasCreatures, levelHasStory } from '../engine/level/ObjectCatalog.js';
 import { renderLevelMap } from '../engine/level/LevelMap.js';
 import { hasStoryCondition } from '../engine/level/Travel.js';
 import { makeShadowOnly, primeShadowPrograms } from '../engine/world/ShadowCasters.js';
@@ -295,6 +295,12 @@ export class Game {
     /** @type {CombatSystem|null} */
     this.combat = null;
     /**
+     * The wild-creature overworld system (the "Critters Collection" FASE 5): a level with a
+     * `creature` or `creature_zone` object (`levelHasCreatures`), created by `_buildLevel`.
+     * @type {import('./creatures/CreatureSystem.js').CreatureSystem|null}
+     */
+    this.creatures = null;
+    /**
      * The story runtime (docs/specs/STORY_SCRIPT.md): a campaign, or a level with events / talk
      * scripts (`levelHasStory`); null otherwise — such a level plays exactly as before.
      * @type {import('./story/StoryRunner.js').StoryRunner|null}
@@ -344,6 +350,8 @@ export class Game {
     this.region = '';
     /** Combat level (COMBAT.md §3): evaluated per level; `combat` is created by `_buildLevel`. */
     this.combatEnabled = levelHasCombat(level);
+    /** Creature level (docs/specs/OBJECT_CATALOG.md "creature"): `creatures` is created by `_buildLevel`. */
+    this.creaturesEnabled = levelHasCreatures(level);
     this._cine = { t: 0, target: new THREE.Vector3(), ...this._titleCamera() };
     this._cine.target.set(this._cine.x, this._cine.y, this._cine.z + Math.sin(1) * this._cine.driftZ);
   }
@@ -676,14 +684,26 @@ export class Game {
       this.combat = new CombatSystem({ game: this });
       await this.combat.load();
     }
+    // wild creatures and encounter zones (docs/specs/OBJECT_CATALOG.md "creature"/"creature_zone",
+    // the "Critters Collection" FASE 5): free-roaming actors and zone steps, loaded with the level;
+    // the battle UI and bindings are loaded when a battle starts (the CreatureSystem chunk)
+    if (this.creaturesEnabled) {
+      const { CreatureSystem } = await import('./creatures/CreatureSystem.js');
+      this.creatures = new CreatureSystem({
+        game: this, tileMap: this.tileMap, scene,
+        spriteManager: this.spriteManager, objects: this.level.objects,
+      });
+      void this.creatures.load();
+    }
     // warm fill on every character / critter sprite (fades down at night)
     // big level (and every combat level): every blob contact shadow in one instanced draw call (a
     // busy view holds dozens)
-    const batchActors = this.world.batching || !!this.combat;
+    const batchActors = this.world.batching || !!this.combat || !!this.creatures;
     // (a level set aside keeps its batch: its actors' blobs are adopted already)
     this.blobs = kept ? kept.blobs : batchActors ? new BlobBatch() : null;
     const actors = this._actorSprites();
     if (this.combat) actors.push(...this.combat.actorSprites);
+    if (this.creatures) actors.push(...this.creatures.actorSprites);
     /** The actors' warm-fill registrations (released with the level, or when it is set aside). */
     this._actorEmissives = [];
     for (const s of actors) {
@@ -1067,6 +1087,15 @@ export class Game {
       this.combat = null;
       delete window.__game?.combat;
     }
+    // the wild-creature system goes with the level, like combat: its actors re-seed from the level
+    // objects when the level is built again; the roster and the orbs live on (plan §5)
+    if (this.creatures) {
+      try { this.creatures.dispose(); } catch (err) { console.warn('[Luminati] creature system dispose failed:', err); }
+      this.creatures = null;
+      delete window.__game?.creatures;
+    }
+    // (a lazily-made system must be made again for the next level)
+    this._creatureLoad = null;
     return old;
   }
 
@@ -1453,6 +1482,35 @@ export class Game {
   }
 
   /**
+   * The wild-creature system, made on first use (its chunk, its UI, the C key): resolves to
+   * `this.creatures`. A level that already plays creatures (`levelHasCreatures`) made one at build
+   * time; this makes it for a level that plays none, so a `creature give` from the story (a starter
+   * NPC in a peaceful town) still works — a level whose story gives none creates none (plan §13).
+   * @returns {Promise<import('./creatures/CreatureSystem.js').CreatureSystem>}
+   */
+  async ensureCreatures() {
+    if (this.creatures) return this.creatures;
+    const pending = this._creatureLoad ??= (async () => {
+      const { CreatureSystem } = await import('./creatures/CreatureSystem.js');
+      const sys = new CreatureSystem({
+        game: this, tileMap: this.tileMap, scene: this.engine.scene,
+        spriteManager: this.spriteManager, objects: this.level?.objects ?? [],
+      });
+      this.creatures = sys;
+      // (a level built without creatures exposes no hook; a story that gives one here does — §5)
+      if (typeof window !== 'undefined' && window.__game) window.__game.creatures = sys.hooks;
+      void sys.load();
+      return sys;
+    })();
+    try {
+      return await pending;
+    } catch (err) {
+      this._creatureLoad = null;
+      throw err;
+    }
+  }
+
+  /**
    * The party's key: G (`party`) — keyboard only: every pad button is taken on a combat level (and
    * the pad opens the panel through a member's talk, *Tactics…*; PARTY.md §4.4). Bound by
    * `ensureParty` and again by every level built while a party exists (a combat level's
@@ -1532,6 +1590,10 @@ export class Game {
   /** Is the party's tactics panel open? (Play pauses meanwhile, like the journal.) */
   get partyMenuOpen() {
     return !!this.party?.menuOpen;
+  }
+
+  get creatureRosterOpen() {
+    return !!this.creatures?.rosterOpen;
   }
 
   /**
@@ -2085,6 +2147,12 @@ export class Game {
     if (this.mode === 'travel') return;
     const { engine, ui, rig, player } = this;
     const input = engine.input;
+    // a creature battle freezes the frame behind the overlay: the battle owns the input until it
+    // ends (the "Critters Collection" FASE 5 — the battle is a gate, not a mode)
+    if (this.creatures?.battle) {
+      this.creatures.updateBattle(dt);
+      return;
+    }
     const playing = this.mode === 'play';
     const talking = this.busy || ui.dialog.isOpen;
     if (this._talkCooldown > 0) this._talkCooldown -= dt;
@@ -2093,26 +2161,34 @@ export class Game {
     if (playing) {
       if (input.actionPressed('debug')) ui.debug.toggle();
       // world map: N / Tab (gamepad Back) opens it; the map key or Esc closes it
-      if (this.mapOpen) {
-        if (input.actionPressed('map') || input.actionPressed('cancel')) this.toggleMap(false);
-      } else if (this.journalOpen) {
-        // the story journal (B): B or Esc closes it
-        if (input.actionPressed('journal') || input.actionPressed('cancel')) this.toggleJournal(false);
-      } else if (this.partyMenuOpen) {
-        // the party's tactics panel (G): G or Esc closes it (the press is the game's: consumed)
-        if (input.actionPressed('party') || input.actionPressed('cancel')) {
-          input.consumeAction?.('party');
-          this.togglePartyMenu(false);
-        }
-      } else if (!talking && !this.photoMode && input.actionPressed('map')) this.toggleMap(true);
-      else if (this.story && !talking && !this.photoMode && input.actionPressed('journal')) this.toggleJournal(true);
-      else if (this.party && !talking && !this.photoMode && input.actionPressed('party')) {
+    if (this.mapOpen) {
+      if (input.actionPressed('map') || input.actionPressed('cancel')) this.toggleMap(false);
+    } else if (this.journalOpen) {
+      // the story journal (B): B or Esc closes it
+      if (input.actionPressed('journal') || input.actionPressed('cancel')) this.toggleJournal(false);
+    } else if (this.partyMenuOpen) {
+      // the party's tactics panel (G): G or Esc closes it (the press is the game's: consumed)
+      if (input.actionPressed('party') || input.actionPressed('cancel')) {
         input.consumeAction?.('party');
-        this.togglePartyMenu(true);
+        this.togglePartyMenu(false);
+      }
+    } else if (this.creatureRosterOpen) {
+      // back out one level / close on cancel is the panel's own (UI.update); C toggles it closed
+      if (input.consumeAction?.('creatureRoster') || input.actionPressed('creatureRoster')) this.creatures?.closeRoster?.();
+    } else if (!talking && !this.photoMode && input.actionPressed('map')) this.toggleMap(true);
+    else if (this.story && !talking && !this.photoMode && input.actionPressed('journal')) this.toggleJournal(true);
+    else if (this.party && !talking && !this.photoMode && input.actionPressed('party')) {
+      input.consumeAction?.('party');
+      this.togglePartyMenu(true);
+    }
+    if (playing && this.creaturesEnabled && !talking && !this.photoMode && !this.mapOpen && !this.journalOpen && !this.partyMenuOpen && !this.creatureRosterOpen) {
+      if (input.consumeAction?.('creatureRoster') || input.actionPressed('creatureRoster')) {
+        this.creatures?.openRoster?.();
       }
     }
+    }
     // (the journal and the party's tactics panel pause play like the map)
-    const mapOpen = this.mapOpen || this.journalOpen || this.partyMenuOpen;
+    const mapOpen = this.mapOpen || this.journalOpen || this.partyMenuOpen || this.creatureRosterOpen;
     // combat levels: photo mode is on an LS click, ignored while (and 0.3 s after) the move
     // vector is deflected (COMBAT.md §5.2)
     let photoPad = false;
@@ -2143,6 +2219,9 @@ export class Game {
     combat?.update(dt, active);
     player.update(dt, input);
     combat?.afterPlayer(dt, active);
+    // wild creatures: the actors roam and the encounter zones count the player's steps while the
+    // player is on foot, frozen while talking / in a map / in photo mode (plan §5)
+    this.creatures?.update(dt, { active });
     // the story: triggers, the run going on (its walks, waits, camera)
     this.story?.update(dt);
     // the party's members: the follow (the combat drives a member in a fight)
@@ -2410,6 +2489,8 @@ export class Game {
     };
     // combat levels only (COMBAT.md §20.2)
     if (this.combat) s.combat = this.combat.state();
+    // creature levels only (the "Critters Collection" FASE 5)
+    if (this.creatures) s.creatures = this.creatures.state();
     // campaigns only (docs/specs/CAMPAIGN_FORMAT.md)
     if (this.campaign) s.campaign = this.campaign.info();
     // a story only (docs/specs/STORY_SCRIPT.md)
@@ -2478,6 +2559,8 @@ export class Game {
    * @property {() => GameState} state  the snapshot above
    * @property {CombatHooks} [combat]  combat levels only: the combat test hooks (§3.4, COMBAT.md
    *   §20.1)
+   * @property {import('./creatures/types.d.ts').CreatureHooks} [creatures]  creature levels
+   *   only: wild actors, the roster and battles (§3.4, the "Critters Collection" plan §5)
    * @property {CampaignHooks} [campaign]  campaigns only: travel, story flags, saves (§3.6)
    * @property {import('./story/StoryRunner.js').StoryHooks} [story]  a story only: values, scripts,
    *   events, the trace (§3.7)
@@ -2528,6 +2611,8 @@ export class Game {
     };
     // combat levels only: the combat test hooks (COMBAT.md §20.1)
     if (g.combat) window.__game.combat = g.combat.hooks;
+    // creature levels only: the wild creatures and battles (the "Critters Collection" FASE 5)
+    if (g.creatures) window.__game.creatures = g.creatures.hooks;
     // campaigns only: travel, story flags, saves
     if (g.campaign) window.__game.campaign = g.campaign.hooks;
     // a story only: values, scripts, events, the trace
@@ -2549,6 +2634,7 @@ export class Game {
       // (the campaign's levels set aside, while the renderer is alive)
       () => this.campaign?.dropAside(),
       () => this.combat?.dispose(),
+      () => this.creatures?.dispose(),
       () => this.party?.dispose(),
       () => this.resolution?.dispose(),
       () => this.blobs?.dispose(),

@@ -20,6 +20,7 @@ import { StoryState } from '../story/StoryState.js';
  * @import { Campaign } from './CampaignFormat.js'
  * @import { Story } from './StoryFormat.js'
  * @import { LevelSpawn } from '../../engine/level/types.js'
+ * @import { CreatureRosterData } from '../creatures/types.js'
  */
 
 /** @type {LevelSpawn['facing'][]} */
@@ -27,7 +28,7 @@ const FACINGS = ['down', 'up', 'left', 'right'];
 const PREFIX = 'luminati.campaign.';
 export const SAVE_VERSION = 2;
 /** The top-level keys of a save this engine reads (the rest are kept in `extra`). */
-const KNOWN = new Set(['version', 'story', 'level', 'at', 'via', 'time', 'weather', 'combat', 'opened', 'cleared', 'visited', 'chapter', 'savedAt', 'playTime']);
+const KNOWN = new Set(['version', 'story', 'level', 'at', 'via', 'time', 'weather', 'combat', 'opened', 'cleared', 'visited', 'chapter', 'savedAt', 'playTime', 'creatures']);
 /** At most this many group ids per level in `cleared` (a saved game is untrusted). */
 const MAX_IDS = 4096;
 /** Keys never copied into `extra` (they would change its prototype, not add a field). */
@@ -98,6 +99,14 @@ export class CampaignState {
     this.weather = 'clear';
     /** @type {CombatProgress|null} */
     this.combat = null;
+    /**
+     * The mirror of the creature roster (`CreatureRoster`; "Critters Collection" plan §12): the
+     * plain `CreatureRosterData` blob kept with the save, so it travels with the campaign. Null
+     * until the creature layer writes one; this module never reads its rows (the roster validates
+     * them), it only carries and rewrites it.
+     * @type {CreatureRosterData|null}
+     */
+    this.creatures = null;
     /** @type {Record<string, string[]>} level id → chests opened there */
     this.opened = Object.create(null);
     /**
@@ -156,6 +165,7 @@ export class CampaignState {
       time: this.time,
       weather: this.weather,
       combat: this.combat,
+      ...(this.creatures ? { creatures: this.creatures } : {}),
       opened: { ...this.opened },
       cleared: { ...this.cleared },
       visited: [...this.visited],
@@ -201,6 +211,8 @@ export class CampaignState {
         wares: Array.isArray(c.wares) ? c.wares.filter((w) => typeof w === 'string') : [],
       };
     }
+    // (the creature mirror is kept as it is: the roster reads its rows, not this module)
+    if (isPlain(d.creatures)) s.creatures = d.creatures;
     if (Array.isArray(d.visited)) s.visited = d.visited.filter((id) => typeof id === 'string' && campaign.levels.some((l) => l.id === id));
     for (const [k, v] of Object.entries(isPlain(d.opened) ? d.opened : {})) {
       if (Array.isArray(v)) s.opened[k] = v.filter((id) => typeof id === 'string');

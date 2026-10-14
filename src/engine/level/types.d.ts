@@ -250,6 +250,15 @@ export interface LevelEnvironment
   /** Combat: absent = auto (on iff an `enemy` exists), true / false force it (`levelHasCombat`). */
   combat?: boolean;
   /**
+   * Wild creatures: absent = auto (on iff a `creature` / `creature_zone` exists), true / false
+   * force it (`levelHasCreatures`).
+   */
+  creatures?: boolean;
+  /**
+   * Creature battles may capture (`false`: every foe is fight-only; absent = yes).
+   */
+  capture?: boolean;
+  /**
    * An interior's surround instead of the sky (absent: the sky): 'void' (black) or a `#rrggbb`
    * colour — no sky, the fog and the background that colour (LEVEL_FORMAT.md §9).
    */
@@ -391,6 +400,11 @@ export interface ObjectTypeDef {
    * it, Starfall Vale's coverage skips it.
    */
   combat?: boolean;
+  /**
+   * Creature type (creature, creature_zone — the "Critters Collection"): Starfall Vale's coverage
+   * skips it; a level with one of them plays with wild creatures.
+   */
+  creature?: boolean;
   /**
    * Campaign type (exit, entrance — docs/specs/CAMPAIGN_FORMAT.md): a level played on its own
    * ignores it; Starfall Vale's coverage skips it, the campaign generators cover it.
@@ -772,6 +786,21 @@ export interface ObjectExtras {
     bounds?: Rect;
     /** Legacy absolute `spotOffsets` (converted on load; the game still reads it). */
     spots?: XZ[];
+  };
+  creature: {
+    /**
+     * Wanders near its home (absent / true: yes; `false`: stands still — walking close still
+     * starts a battle). Never written by default.
+     */
+    wander?: boolean;
+  };
+  creature_zone: {
+    /**
+     * How far (world units) the player must walk inside the rectangle before a creature appears;
+     * absent / 0 = the table's `stepsPerEncounter` (`public/data/creatures/encounters.json`).
+     * Never written by default.
+     */
+    steps?: number;
   };
   emitter: {
     /** Box size [x, y, z]. */

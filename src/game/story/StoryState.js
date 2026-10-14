@@ -180,6 +180,19 @@ export function partyHas(records, who) {
 }
 
 /**
+ * Does the player's roster hold this species? The species list the creature system writes
+ * (`setCreatures`), in lower case as the game finds them (`creature:Leafling` is `creature:leafling`).
+ * @param {readonly string[]|undefined} species the roster's species ids
+ * @param {string} who
+ * @returns {boolean}
+ */
+export function creatureHas(species, who) {
+  if (!species?.length) return false;
+  const low = String(who).toLowerCase();
+  return species.some((s) => s.toLowerCase() === low);
+}
+
+/**
  * What a reader of the story's values needs beyond the state (`storyReader`).
  * @typedef {object} ReaderContext
  * @property {Story|null} [story]  the story files (declared stage order); null: nothing declared
@@ -235,6 +248,8 @@ export function storyReader(stateOf, ctx) {
         case 'visited': return ctx.visited?.().includes(ref.name) ? 1 : 0;
         // (`party:<who>`: a member, by id, actor or name — PARTY.md §7.2)
         case 'party': return partyHas(s.party, ref.name) ? 1 : 0;
+        // (`creature:<species>`: a species the roster holds — plan §13)
+        case 'creature': return creatureHas(s.creatures, ref.name) ? 1 : 0;
         // (`done:<id>`: this level's event; `done:<level>.<id>` another level's; a story file's
         // event; a `once` block's key)
         case 'done': return s.isDone(`${ctx.level()}.${ref.name}`) || s.isDone(ref.name) || s.isDone(`story.${ref.name}`) || s.isDone(`once:${ref.name}`) ? 1 : 0;
@@ -243,6 +258,8 @@ export function storyReader(stateOf, ctx) {
           if (ref.name === 'level') return ctx.level();
           // (how many members: the records the Party writes after every change)
           if (ref.name === 'party') return s.party?.length ?? 0;
+          // (how many creatures: the species list the creature system writes after every change)
+          if (ref.name === 'creature') return s.creatures?.length ?? 0;
           const v = ctx.game?.(ref.name);
           if (v !== undefined) return v;
           if (ref.name === 'gold') return s.gold;
@@ -317,6 +334,13 @@ export class StoryState {
      * @type {PartyRecord[]}
      */
     this.party = [];
+    /**
+     * The species the player's roster holds (plan §13): written by the creature system after every
+     * change (`setCreatures`) and read back on Continue (`fromJSON`). What a `creature` /
+     * `creature:<species>` condition reads; empty on a level that plays no creatures.
+     * @type {string[]}
+     */
+    this.creatures = [];
     /** Bumped by every change (the story runtime re-checks conditions when it moves). */
     this.version = 0;
   }
@@ -327,6 +351,15 @@ export class StoryState {
    */
   setParty(records) {
     this.party = records.map((r) => ({ ...r, spec: r.spec ? { ...r.spec } : null, rule: { ...r.rule } }));
+    this.version++;
+  }
+
+  /**
+   * The species the roster holds now (a copy; the creature system writes it after every change).
+   * @param {readonly string[]} species
+   */
+  setCreatures(species) {
+    this.creatures = [...species];
     this.version++;
   }
 
@@ -561,6 +594,8 @@ export class StoryState {
       ...(this.seed ? { seed: this.seed } : {}),
       // (absent without members: a save of a game nobody joined is as it was before the party)
       ...(this.party.length ? { party: this.party.map((r) => ({ ...r, spec: r.spec ? JSON.parse(JSON.stringify(r.spec)) : null, rule: { ...r.rule } })) } : {}),
+      // (absent without creatures: a save of a game that holds none is as it was before them)
+      ...(this.creatures.length ? { creatures: [...this.creatures] } : {}),
     };
   }
 
@@ -622,6 +657,28 @@ export class StoryState {
     if (Array.isArray(d.pending)) s.pending = d.pending.filter((k) => typeof k === 'string' && k.length <= 300 && /^(event|story|talk):/.test(k)).slice(0, 64);
     s.seed = Number.isInteger(d.seed) && d.seed > 0 && d.seed <= 0xffffffff ? d.seed : 0;
     s.party = readPartyRecords(d.party);
+    s.creatures = readCreatureSpecies(d.creatures);
     return s;
   }
+}
+
+/**
+ * The species list of a saved story read back (untrusted): names only, lower case, no repeats, at
+ * most `MAX` (a save holds far fewer).
+ * @param {unknown} v
+ * @returns {string[]}
+ */
+function readCreatureSpecies(v) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const x of v.slice(0, MAX * 4)) {
+    if (typeof x !== 'string' || !isStoryName(x)) continue;
+    const low = x.toLowerCase();
+    if (seen.has(low)) continue;
+    seen.add(low);
+    out.push(low);
+    if (out.length >= MAX) break;
+  }
+  return out;
 }

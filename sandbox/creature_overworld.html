@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Luminati · Creature Overworld sandbox</title>
+  <style>
+    body { margin: 0; padding: 1.25rem; background: #17181c; color: #dfe2e8; font: 14px/1.5 system-ui, sans-serif; }
+    h1 { font-size: 1.1rem; margin: 0 0 0.4rem; }
+    p { max-width: 60rem; margin: 0.4rem 0; color: #aab0ba; }
+    code { font: 12px/1.4 ui-monospace, Consolas, monospace; background: #23252b; padding: 1px 5px; border-radius: 3px; color: #8fc1ff; }
+    button { font: inherit; padding: 0.3rem 0.8rem; margin-right: 0.5rem; background: #23252b; color: #dfe2e8; border: 1px solid #3a3d45; border-radius: 4px; cursor: pointer; }
+    button:hover { border-color: #8fc1ff; }
+    iframe { width: 100%; height: 72vh; margin-top: 0.8rem; border: 1px solid #3a3d45; background: #000; display: block; }
+  </style>
+</head>
+<body>
+  <h1>Creature overworld — "Critters Collection" FASE 5</h1>
+  <p>The wild overworld of <code>CreatureSystem</code> on the real game page: a free-roaming
+    <code>creature</code> (contact starts a seeded battle that freezes the world), the
+    <code>ui.noParty</code> toast when nobody travels with you, and <code>creature_zone</code>s that
+    roll a fight after the player's steps inside (a <code>steps</code> override, or the table's
+    default). Two levels are saved into <code>local:</code> storage on this page; the scripted
+    checks live in <code>sandbox/creature.encounter.json</code>.</p>
+  <p>
+    <button id="demo">Creature demo (roamer + zones)</button>
+    <button id="peaceful">Peaceful (no creatures)</button>
+  </p>
+  <iframe id="frame" title="The creature overworld demo"></iframe>
+  <script type="module">
+    const frame = document.getElementById('frame');
+    const show = (slot) => {
+      frame.src = `../game.html?level=local:${slot}&autostart=1`;
+    };
+    await import('./creature_overworld.js').then((m) => m.saveFixtures());
+    document.getElementById('demo').addEventListener('click', () => show('creature-demo'));
+    document.getElementById('peaceful').addEventListener('click', () => show('creature-peaceful'));
+    show('creature-demo');
+  </script>
+</body>
+</html>

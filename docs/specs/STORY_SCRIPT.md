@@ -146,15 +146,20 @@ name  := letters, digits, _ . -  (not a number)
   for both, the turns are counted together (the checks warn; one actor's villagers count as one).
 - **`visited:<level>`** reads a base level id of the campaign (the checks warn about any other);
   on a single level it never holds.
-- **Reserved words** — `hour day gold chapter level weather visits party and or not true false
-  ending self random player time none` — cannot be flag names in a condition (`set gold` is an
-  error). `party` was kept for later until it became a game value (the number of members); alone
-  in a `when` / `unless` (the flag rule below) it is still a flag that can never be set — an error
-  with the hint (`party > 0`, `party:<who>`).
+- **Reserved words** — `hour day gold chapter level weather visits party creature and or not true
+  false ending self random player time none` — cannot be flag names in a condition (`set gold` is
+  an error). `party` and `creature` were kept for later until they became game values (the number
+  of members, the number of creatures held); alone in a `when` / `unless` (the flag rule below)
+  each is still a flag that can never be set — an error with the hint (`party > 0`, `party:<who>`,
+  `creature:<species>`).
 - **`party:<who>`** is 1 while that villager is a member of the player's party, else 0 — by its
   id, its story actor or its name, in any case (a name with spaces cannot be written here: use the
   id or the actor). A member joined in one level is a member in every level
   ([PARTY.md §7.2](PARTY.md#72-conditions)).
+- **`creature`** (the number the roster holds, anywhere) and **`creature:<species>`** (1 when the
+  roster holds that species, else 0 — the species in any case; a species is a data id, so `leafling`
+  is written as is). No `who`: the roster is the player's alone. The story reads the species snapshot
+  the creature system keeps (§9.8), so this works on a level that plays no creatures.
 - **Two rules for a bare name.** The fields written before conditions existed — `when`, `unless`,
   an exit's `requires`, a chapter's `when` — keep the **flag rule**: one bare name is always that
   flag, and a value that does not parse is read as one literal flag name (`level:check` and the
@@ -316,6 +321,10 @@ name has spaces.
 | party | `party join <who> [as <class>] [<preset>]` | a villager of this level joins the player's party (at most 3) — as a class (`warden`, `ranger`, `mystic`; else by the weapon it carries) and with a preset rule (`balanced` — the default —, `aggressive`, `guardian`, `support`, `hunter`, `passive`; the two in any order): `party join sela as warden guardian`. Its villager is hidden; the member walks with the player from level to level |
 | | `party leave <who>` · `party rule <who> <preset>` · `party set <who> <field> <value>` | a member leaves (its villager is back where the member stood) · its combat rule becomes the preset's · one field of its rule changes (`party set sela heal often`; the fields and their values: [PARTY.md §3](PARTY.md#3-rules-presets-classes)) — a toast names the rule (quiet while a cutscene is skipped) |
 | | `party menu [<who>]` | the tactics panel (on that member) — the script waits until the player closes it |
+| creature | `creature give <species> [level <n>]` · `creature starter [<species>]` | the player's roster (the "Critters Collection"): a new creature of `species` (`CREATURE_KINDS`, e.g. `leafling`) joins the party, or the box when it is full — `give` at `level` (1–100, default 5), `starter` at 5 (no species = `leafling`). The system is made lazily, so a `creature give` in a peaceful town works (`Game.ensureCreatures`) |
+| | `creature heal` | every creature's HP restored |
+| | `creature active [<species>]` · `creature box [<species>]` | bring that species to the **front** of the party (a boxed one is brought into it) · move it to the box — both need the species named |
+| | `creature menu [<species>]` | the roster panel (on that species) — the script waits until the player closes it |
 | feedback | `banner <title> [\| subtitle]` · `toast <text>` · `sfx <sound>` · `music <track> / on / off` | |
 
 The party commands never stop a run: a full party, a villager who is not here (or not there as
@@ -330,6 +339,12 @@ which it is (`party rule sela warden` → the class is chosen when it joins: `pa
 warden`); `party join player` is an error too (the player leads the party). Only a `party join`
 that happens makes the party (a game nobody joins loads none of it: a refused join makes none);
 the other commands do nothing without one.
+
+The creature commands never stop a run either: an unknown species (the parser accepts any name; the
+runtime knows the species), none of that species in the roster, an `active` / `box` without a name —
+a warning in the console, and the script goes on. A `creature menu` needs a made system and a
+non-empty roster (else a warning). Unlike `party`, a `creature give` makes the system even on a
+level that plays no creatures: a starter in a peaceful town (`Game.ensureCreatures`, plan §13).
 
 Objects come and go only through **flags and conditions** (`set bridge-built` and the bridge's
 `when: bridge-built`) — there is no `show` / `hide`. Coordinates a script names (`walk`, `teleport`,
@@ -375,8 +390,8 @@ emote hollis note
 
 | May | Command |
 | --- | --- |
-| yes | `bark` · `emote` · `walk` / `face` / `teleport` (villagers and party members only — never `player`) · `home` · `wait` · `set` · `clear` · `var` · `give` · `take` · `quest` · `heal` · `party join` / `leave` / `rule` / `set` · `sfx` · `toast` · `banner` · `music` · `weather` · `shake` · `call` · `stop` · `break`; the blocks `if` / `elif` / `else`, `loop`, `once`, `cycle` / `seq` / `pick` (their lines follow the same rule) |
-| no | dialogue (`Name: text`, `: text`, `- text` — write a `bark`) and `choice` (they need the player) · `cutscene`, `camera`, `fade` (the screen and the camera stay the player's) · `travel`, `rest`, `shop`, `builtin`, `ending` (they hold or move the player) · `time` (a clock jump re-lights the scene and runs the `time` events between at once — a scene change, for a run that holds the player) · `party menu` (the tactics panel needs the player) |
+| yes | `bark` · `emote` · `walk` / `face` / `teleport` (villagers and party members only — never `player`) · `home` · `wait` · `set` · `clear` · `var` · `give` · `take` · `quest` · `heal` · `party join` / `leave` / `rule` / `set` · `creature give` / `starter` / `heal` / `active` / `box` · `sfx` · `toast` · `banner` · `music` · `weather` · `shake` · `call` · `stop` · `break`; the blocks `if` / `elif` / `else`, `loop`, `once`, `cycle` / `seq` / `pick` (their lines follow the same rule) |
+| no | dialogue (`Name: text`, `: text`, `- text` — write a `bark`) and `choice` (they need the player) · `cutscene`, `camera`, `fade` (the screen and the camera stay the player's) · `travel`, `rest`, `shop`, `builtin`, `ending` (they hold or move the player) · `time` (a clock jump re-lights the scene and runs the `time` events between at once — a scene change, for a run that holds the player) · `party menu` (the tactics panel needs the player) · `creature menu` (the roster panel needs the player) |
 
 `banner`, `music`, `weather` and `shake` are allowed: they need no input and move no one (the
 region banner, the music and the weather change while the player walks anyway; a shake jolts the
@@ -638,6 +653,20 @@ party holds is not there as the story stands (`present`): its `Npc` stays hidden
 and in every chapter variant, whatever its `when` / `unless` say, and comes back when it leaves.
 `heal` refills the members too.
 
+### 9.8 The creatures
+
+The player's roster (the "Critters Collection") belongs to the creature system, not the story; the
+story only touches it through `creature`. The system keeps the **species the roster holds** in the
+story's state after every change (`StoryState.creatures`, written by `CreatureSystem._syncStory`)
+and restores it on Continue, so the `creature` and `creature:<species>` conditions read it even on a
+level that plays no creatures, and a campaign's save carries it (verified by `story:test`). Unlike
+the party, no condition counts *who* joined: `creature` is the number held, `creature:<species>`
+whether that species is anywhere in the roster (party or box), the name in any case.
+
+A `creature give` (and `creature starter`) makes the system when the level has none
+(`Game.ensureCreatures`, exposed as `__game.creatures`), so a starter NPC works in a peaceful town;
+the system is disposed with the level (`_detachLevel`). `creature heal` also refills the roster.
+
 ## 10. Checks, the editor, tests
 
 - **`npm run level:check -- <level>`** lists a level's story problems (`StoryChecks.storyIssues`):
@@ -653,7 +682,9 @@ and in every chapter variant, whatever its `when` / `unless` say, and comes back
   `bark`, `camera` …) or gives a line to is no warning when the script tests `party:<it>` — in its
   lines, its event's `if` or the object's `when` (`StoryChecks.partyTests`): the member came along.
   The story states read `party` and `party:<who>` together (no member while `party = 0`, never
-  more than `party` counts or 3; names in any case).
+  more than `party` counts or 3; names in any case). The creature commands and conditions
+  (`creature`, `creature:<species>`) are read but not checked against declarations: a species is a
+  data id the game knows, and the runtime warns about an unknown one (§9.8).
   Where conditions apply, the walk and the other level checks run once per **story state** (every
   combination of what the `when` / `unless` test): objects never there together do not overlap,
   what is reached only with a flag is a warning that names it —

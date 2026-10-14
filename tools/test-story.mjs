@@ -20,7 +20,7 @@ import {
   scriptLines, hasScript, splitArgs, scriptRefs, interpolate, varyIndex, editDistance, SCRIPT_LIMITS, SCRIPT_COMMANDS, RESERVED_WORDS,
   isPlayerName,
   cachedScriptCondition, plainNumber, parseRef, isBareName, emptyRefs, addConditionRefs,
-  BACKGROUND_OPS, backgroundIssue, backgroundIssues, walkNodes, PARTY_VERBS, closestName,
+  BACKGROUND_OPS, backgroundIssue, backgroundIssues, walkNodes, PARTY_VERBS, CREATURE_VERBS, closestName,
 } from '../src/engine/level/StoryScript.js';
 import { PRESET_NAMES, CLASS_NAMES, RULE_KEYS, RULE_FIELDS, MAX_PARTY } from '../src/engine/level/PartyRules.js';
 import { valueRange } from '../src/engine/level/StoryStates.js';
@@ -32,6 +32,7 @@ import {
 } from '../src/engine/level/StoryChecks.js';
 import { OBJECT_TYPES } from '../src/engine/level/ObjectCatalog.js';
 import { CampaignState } from '../src/game/campaign/CampaignState.js';
+import { StoryState, storyReader, creatureHas } from '../src/game/story/StoryState.js';
 import {
   storyExclusive, applyStory, storyAllows, findEntrance, entranceName, storyFlags, conditionTester, LIVE_STORY_TYPES,
 } from '../src/engine/level/Travel.js';
@@ -1072,7 +1073,7 @@ begin('L: bark');
 // =================================================================================================
 begin('M: background runs');
 {
-  eq('BACKGROUND_OPS', [...BACKGROUND_OPS].sort(), ['banner', 'bark', 'break', 'call', 'clear', 'emote', 'face', 'give', 'heal', 'home', 'music', 'party', 'quest', 'set', 'sfx', 'shake', 'stop', 'take', 'teleport', 'toast', 'var', 'wait', 'walk', 'weather']);
+  eq('BACKGROUND_OPS', [...BACKGROUND_OPS].sort(), ['banner', 'bark', 'break', 'call', 'clear', 'creature', 'emote', 'face', 'give', 'heal', 'home', 'music', 'party', 'quest', 'set', 'sfx', 'shake', 'stop', 'take', 'teleport', 'toast', 'var', 'wait', 'walk', 'weather']);
   ok('BACKGROUND_OPS: commands of the language, none a block', [...BACKGROUND_OPS].every((op) => Object.hasOwn(SCRIPT_COMMANDS, op)) && !['if', 'elif', 'else', 'choice', 'loop', 'once', 'cycle', 'seq', 'pick'].some((op) => BACKGROUND_OPS.has(op)));
   const one = (line) => backgroundIssue(node([line]));
   eq('backgroundIssue: dialogue, the narrator, "- text"', [one('Hollis: Hi.'), one(': The river roars.'), one('- Hm.')], ['dialogue needs the player', 'dialogue needs the player', 'dialogue needs the player']);
@@ -1556,6 +1557,85 @@ begin('P: the party (docs/specs/PARTY.md §7)');
   ok('a story event\'s if: party:<who> naming nobody', hasMsg(r.warnings, 'event "ev2": if "party:ghost3"', '"ghost3" (party)') && !hasMsg(all, 'event "ev": if'), all);
   ok('an actor named only by party commands is in use', !hasMsg(r.info, 'actor "hollis" is declared') && hasMsg(r.info, 'actor "odo" is declared'), r.info);
   ok('party is no flag: nothing read but never set', !hasMsg(all, 'story flag "party"') && !hasMsg(all, 'story flag "sela"'), all);
+}
+
+// =================================================================================================
+begin('Q: the creatures (plan §13)');
+{
+  // the command and its forms
+  ok('creature: in the command reference', SCRIPT_COMMANDS.creature?.args.startsWith('give <species>') && SCRIPT_COMMANDS.creature.help.includes('Critters Collection'), SCRIPT_COMMANDS.creature);
+  eq('CREATURE_VERBS', [...CREATURE_VERBS], ['give', 'active', 'box', 'heal', 'menu', 'starter']);
+  eq('give (a level of 5 by default)', args('creature give leafling'), { verb: 'give', species: 'leafling', level: 5 });
+  eq('give at a level', args('creature give emberling level 7'), { verb: 'give', species: 'emberling', level: 7 });
+  eq('give a quoted species keeps it', args('creature give "leafling"'), { verb: 'give', species: 'leafling', level: 5 });
+  eq('active / box (a species, or none)', [args('creature active leafling'), args('creature active'), args('creature box rippling')], [{ verb: 'active', species: 'leafling' }, { verb: 'active' }, { verb: 'box', species: 'rippling' }]);
+  eq('heal', args('creature heal'), { verb: 'heal' });
+  eq('menu (a species, or none)', [args('creature menu'), args('creature menu leafling')], [{ verb: 'menu' }, { verb: 'menu' }]);
+  eq('starter (the species named, or the default at runtime)', [args('creature starter'), args('creature starter rippling')], [{ verb: 'starter' }, { verb: 'starter', species: 'rippling' }]);
+  // errors
+  const e = (line) => error([line]);
+  ok('creature alone: the forms', e('creature').includes('creature give | active | box | heal | menu | starter'), e('creature'));
+  ok('an unknown verb: did you mean', e('creature giv leafling') === '"giv" is not a creature command (give, active, box, heal, menu, starter) — did you mean "give"?', e('creature giv leafling'));
+  ok('a verb in quotes is no verb', e('creature "give" leafling').includes('creature give | active'), e('creature "give" leafling'));
+  ok('give: the species is missing', e('creature give') === 'creature give <species> [level <n>]: the species is missing (a name)', e('creature give'));
+  ok('give: a bad level', e('creature give leafling level 0').includes('the level must be a whole number from 1 to 100') && e('creature give leafling level x').includes('the level must be'), [e('creature give leafling level 0'), e('creature give leafling level x')]);
+  ok('give: level without a number', e('creature give leafling level') === 'creature give <species> [level <n>]', e('creature give leafling level'));
+  ok('give: a word after the species', e('creature give leafling now') === 'creature give <species> [level <n>]', e('creature give leafling now'));
+  ok('heal takes nothing', e('creature heal now') === 'creature heal takes nothing after it', e('creature heal now'));
+  ok('menu: at most one species', e('creature menu leafling rippling') === 'creature menu [<species>] — at most one species, nothing after it', e('creature menu leafling rippling'));
+  ok('active: at most one species', e('creature active a b') === 'creature active [<species>] — at most one species, nothing after it', e('creature active a b'));
+  ok('creature takes no block', error(['creature give leafling', '  stop']).includes('"creature" takes no indented block'));
+  // references
+  const r = scriptRefs(nodes(['creature give leafling', 'creature give emberling level 3', 'if creature:rippling', '  creature box rippling', 'creature starter']));
+  eq('scriptRefs: the species named by give / starter / conditions', [...r.creatures].sort(), ['emberling', 'leafling', 'rippling']);
+  ok('… not members, actors, flags or reads', !r.members.size && !r.actors.size && !r.reads.size && !r.writes.size, r);
+  // background
+  const bg = (line) => backgroundIssue(node([line]));
+  eq('background: give, active, box, heal, starter may run there', ['creature give leafling', 'creature give leafling level 5', 'creature active leafling', 'creature box leafling', 'creature heal', 'creature starter'].map(bg), ['', '', '', '', '', '']);
+  eq('background: menu may not', [bg('creature menu'), bg('creature menu leafling')], ['the roster panel needs the player', 'the roster panel needs the player']);
+  eq('backgroundErrors: the check message', backgroundErrors(nodes(['creature give leafling', 'creature menu'])), [{ line: 2, msg: 'cannot run in the background: the roster panel needs the player — drop "background"' }]);
+}
+{
+  // conditions
+  eq('parseRef: creature and creature:<species>', [parseRef('creature'), parseRef('CREATURE'), parseRef('creature:Leafling')], [{ kind: 'game', name: 'creature' }, { kind: 'game', name: 'creature' }, { kind: 'creature', name: 'Leafling' }]);
+  ok('creature is no flag name', !isFlagName('creature') && !isFlagName('Creature') && error(['set creature']).includes('reserved') && error(['var creature = 2']).includes('reserved'));
+  ok('creature:<species> needs a name', condErr('creature:') !== '' && condErr('creature:3').includes('"3" is not a name'), [condErr('creature:'), condErr('creature:3')]);
+  eq('the flag rule: creature alone is a flag (an error with a hint)', flagCondition('creature'), { op: 'ref', ref: { kind: '', name: 'creature' } });
+  eq('valueRange: creature:<species> 0 / 1, creature 0 to MAX_CREATURES', [valueRange({ kind: 'creature', name: 'x' }), valueRange({ kind: 'game', name: 'creature' })], [{ int: true, min: 0, max: 1 }, { int: true, min: 0, max: 246 }]);
+  const refs = emptyRefs();
+  addConditionRefs(cond('creature:leafling and creature >= 1 and met'), refs);
+  eq('addConditionRefs: creature:<species> is a species, creature no flag', [[...refs.creatures], [...refs.reads]], [['leafling'], ['met']]);
+  // the reader: the roster snapshot the creature system keeps in the story state
+  const st = new StoryState();
+  st.setCreatures(['leafling', 'emberling']);
+  const rd = storyReader(() => st, { level: () => 'x' });
+  eq('creatureHas', [creatureHas(st.creatures, 'Leafling'), creatureHas(st.creatures, 'wren'), creatureHas(undefined, 'x')], [true, false, false]);
+  eq('the reader: creature:<species> 1 / 0, creature the count', [rd.get({ kind: 'creature', name: 'Leafling' }), rd.get({ kind: 'creature', name: 'wren' }), rd.get({ kind: 'game', name: 'creature' })], [1, 0, 2]);
+  // the word/state surface is unchanged by an empty roster
+  const st0 = new StoryState();
+  eq('an empty roster reads 0', storyReader(() => st0, { level: () => 'x' }).get({ kind: 'game', name: 'creature' }), 0);
+  // storyExclusive: a species and the count are read together
+  ok('storyExclusive: a species and an empty roster never hold together', storyExclusive(obj({ when: 'creature:leafling' }), obj({ unless: 'creature > 0' })) && storyExclusive(obj({ when: 'creature:leafling' }), obj({ when: 'creature = 0' }))
+    && !storyExclusive(obj({ when: 'creature:leafling' }), obj({ when: 'creature = 1' })));
+  ok('storyExclusive: creature:<species> in any case is one test', storyExclusive(obj({ when: 'creature:leafling' }), obj({ unless: 'creature:Leafling' })));
+  ok('storyExclusive: two species can hold together', !storyExclusive(obj({ when: 'creature:leafling' }), obj({ when: 'creature:emberling' })));
+  // the vocabulary stays out of what every level loads (CREATURE_PURE)
+  const importsOf = (file) => [...readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').matchAll(/^import [^;]*? from '([^']+)'/gm)].map((m) => m[1]);
+  for (const f of ['src/engine/level/StoryStates.js', 'src/engine/level/StoryCondition.js']) {
+    ok(`${f} does not import the creature data`, !importsOf(f).some((x) => x.includes('/creatures/')), importsOf(f));
+  }
+}
+{
+  // the level checks: the engine cannot know species ids, so it never warns about one
+  const L = makeLevel('creature-checks', [
+    ['npc', 4, 4, { id: 'keeper', name: 'Keeper', talk: ['if not starter_chosen', '  creature give leafling level 5', '  set starter_chosen', 'creature heal', 'creature menu'] }],
+    ['event', 6, 6, { id: 'gift', on: 'enter', background: true, run: ['creature give emberling', 'creature menu'] }],
+    ['rock', 2, 2, { id: 'held', when: 'creature:leafling and creature >= 1' }],
+  ]);
+  const msgs = storyIssues(L).map((i) => `${i.severity} ${formatStoryIssue(i, L)}`);
+  ok('give / heal / starter: no warning about an unknown species', !msgs.some((m) => /leafling|emberling/.test(m)), msgs);
+  ok('creature:<species> in a condition: no warning', !hasMsg(msgs, 'rock held'), msgs);
+  ok('a background event: give is fine, menu is an error', hasMsg(msgs, 'error', 'event gift › run:2: cannot run in the background: the roster panel needs the player') && !hasMsg(msgs, 'event gift › run:1'), msgs);
 }
 
 // =================================================================================================

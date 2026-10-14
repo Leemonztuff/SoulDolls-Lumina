@@ -426,7 +426,7 @@ start, i.e. an editor play-test: `….test`), JSON, **version 2**:
 ```
 { version: 2, story: { vars, items, itemNames?, gold, quests, done, counters, visits, day, levels, ending?, pending?, seed?, party? },
   level, at: { x, z, facing }, via?: { from, entrance }, time, weather, combat, opened, cleared,
-  visited, chapter, savedAt, playTime }
+  creatures?, visited, chapter, savedAt, playTime }
 ```
 
 - **Per level.** `opened` (base level id → the chests opened there) and `cleared` (base level id →
@@ -435,6 +435,12 @@ start, i.e. an editor play-test: `….test`), JSON, **version 2**:
   leaves the key out). `cleared` is additive to version 2: an older engine keeps it as an unknown
   field and writes it back. On load only levels of the campaign keep a list, of text ids (≤ 200
   characters, each once, at most 4 096).
+- **The creature roster mirror** (`creatures`, additive to version 2). The creature layer's saved
+  roster (`CreatureRosterData`: the active party and the box) is carried with the save as it is,
+  so it travels with the campaign — the layer reads and writes its rows, the campaign engine only
+  mirrors the blob. Absent until a roster is saved; an older engine keeps it as an unknown field
+  and writes it back. In this engine the mirror is read ahead of the standalone
+  `luminati.creatures` key.
 
 - **When.** After every travel, when the story changes (not while a script runs) and when the page
   is hidden or left (`visibilitychange`, `pagehide`) — never before the game has started (a page

@@ -54,6 +54,8 @@ declare module './Game.js' {
     _actorEmissives?: { dispose: () => void }[];
     /** `ensureParty`'s load in progress (the party's chunk and UI). */
     _partyLoad?: Promise<import('./party/Party.js').Party>;
+    /** `ensureCreatures`'s load in progress (the creature chunk and UI), cleared with the level. */
+    _creatureLoad?: Promise<import('./creatures/CreatureSystem.js').CreatureSystem> | null;
   }
 }
 

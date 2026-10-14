@@ -231,6 +231,7 @@ const BARE_HINTS = {
   level: 'to read the level write "level = <level id>"',
   weather: 'to read the weather write e.g. "weather = rain"',
   party: 'to read the party write "party > 0" (how many members) or "party:<who>" (one of them)',
+  creature: 'to read the roster write "creature > 0" (how many creatures) or "creature:<species>" (whether one is held)',
   true: 'a blank field means "always"',
   false: 'write "not true" for "never"',
 };

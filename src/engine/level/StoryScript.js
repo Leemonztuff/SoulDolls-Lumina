@@ -141,6 +141,10 @@ export const SCRIPT_COMMANDS = {
     args: 'join <who> [as <class>] [<preset>] | leave <who> | rule <who> <preset> | set <who> <field> <value> | menu [<who>]',
     help: 'the player\'s party: a villager here joins (`party join sela as warden guardian` — classes warden, ranger, mystic; presets balanced, aggressive, guardian, support, hunter, passive) or a member leaves; a member\'s combat rule becomes a preset, or one field changes (`party set sela heal often`); `menu` opens the tactics panel and waits until it closes. Conditions read `party` (how many members) and `party:sela`',
   },
+  creature: {
+    args: 'give <species> [level <n>] | active [<species>] | box [<species>] | heal | menu | starter [<species>]',
+    help: 'the player\'s creatures ("Critters Collection"): `give` adds a creature to the roster (active slot if there is room, else the box); `active` moves the named species to the front of the party (the battle leader), `box` moves it to the box; `heal` restores the whole roster; `menu` opens the roster panel and waits until it closes; `starter` gives the named species at level 5 (`leafling` when none is named). Conditions read `creature` (how many the roster holds) and `creature:<species>` (whether it holds one)',
+  },
   teleport: { args: '<who> <x> <z> | <who> <place> [facing]', help: 'put an actor somewhere at once' },
   camera: { args: '<who> [seconds] | <x> <z> [seconds] | reset [seconds]', help: 'look at an actor, an object or a point (until `camera reset` or the script ends)' },
   shake: { args: '[amount]', help: 'shake the camera' },
@@ -430,6 +434,8 @@ function commandArgs(op, rest) {
       return { track: name(w[0], 'track') };
     case 'party':
       return partyArgs(W, who, isWord);
+    case 'creature':
+      return creatureArgs(W, isWord);
     default:
       throw new Error(`"${op}" is not a command`);
   }
@@ -591,6 +597,66 @@ function partyArgs(W, who, isWord) {
       // menu
       if (W.length > 2) throw new Error(`${usage} — at most one member, nothing after it`);
       return { verb, who: W[1] ? villager() : '' };
+    }
+  }
+}
+
+/** The forms of `creature` (its verbs, in the order the help lists them). */
+export const CREATURE_VERBS = /** @type {const} */ (['give', 'active', 'box', 'heal', 'menu', 'starter']);
+/** Each `creature` form as written (for the errors). */
+const CREATURE_USAGE = Object.freeze({
+  give: 'creature give <species> [level <n>]',
+  active: 'creature active [<species>]',
+  box: 'creature box [<species>]',
+  heal: 'creature heal',
+  menu: 'creature menu [<species>]',
+  starter: 'creature starter [<species>]',
+});
+
+/**
+ * The arguments of `creature …` (plan §13) → `{ verb, species?, level? }`. A species is a name the
+ * parser cannot know (the species catalog is the game's, `src/game/creatures/defs.js`): the runtime
+ * warns about an unknown one. `active` / `box` / `starter` name one at most (a bare `active`, `box`
+ * or `starter` picks the default species at runtime); `menu` accepts at most one species and ignores
+ * it (the panel opens on the first row).
+ * @param {{ text: string, quoted: boolean }[]} W the words after `creature`
+ * @param {(k: number, ...words: string[]) => boolean} isWord
+ * @returns {Record<string, any>}
+ */
+function creatureArgs(W, isWord) {
+  const verb = W[0] && !W[0].quoted ? W[0].text : '';
+  if (!verb) throw new Error(`creature ${CREATURE_VERBS.join(' | ')} — ${Object.values(CREATURE_USAGE).join(' · ')}`);
+  if (!isOwnKey(CREATURE_USAGE, verb)) throw notOneOf(verb, 'a creature command', CREATURE_VERBS);
+  const usage = CREATURE_USAGE[verb];
+  /** A species: a name (the runtime knows which ids are real; quotes are allowed, as for a name). */
+  const species = (k) => {
+    const x = W[k];
+    if (!x || !isStoryName(x.text)) throw new Error(`${usage}: the species is missing (a name)`);
+    return x.text;
+  };
+  switch (verb) {
+    case 'heal':
+      if (W.length > 1) throw new Error(`${usage} takes nothing after it`);
+      return { verb };
+    case 'menu': {
+      if (W.length > 2) throw new Error(`${usage} — at most one species, nothing after it`);
+      if (W.length === 2 && !isStoryName(W[1].text)) throw new Error(`${usage}: "${W[1].text}" is no species`);
+      return { verb };
+    }
+    case 'give': {
+      const sp = species(1);
+      if (W.length === 2) return { verb, species: sp, level: 5 };
+      if (W.length === 4 && isWord(2, 'level')) {
+        const n = num(W[3].text);
+        if (!Number.isInteger(n) || n < 1 || n > 100) throw new Error(`${usage}: the level must be a whole number from 1 to 100`);
+        return { verb, species: sp, level: n };
+      }
+      throw new Error(usage);
+    }
+    default: {
+      // active / box / starter: a species at most
+      if (W.length > 2) throw new Error(`${usage} — at most one species, nothing after it`);
+      return W.length === 2 ? { verb, species: species(1) } : { verb };
     }
   }
 }
@@ -1002,6 +1068,8 @@ export function parseScript(source) {
  *   runs in)
  * @property {Set<string>} members  party members named by `party:<who>` and by `party leave` /
  *   `rule` / `set` / `menu` (a villager of any level of the campaign, or an actor of the story)
+ * @property {Set<string>} creatures  species named by `creature give` / `active` / `box` /
+ *   `starter` and by `creature:<species>` conditions (the game's catalog knows the real ids)
  */
 
 /** @returns {ScriptRefs} */
@@ -1010,7 +1078,7 @@ export function emptyRefs() {
     reads: new Set(), writes: new Set(), items: new Set(), gives: new Set(), quests: new Set(), stages: [], stageReads: new Set(),
     scripts: new Set(), builtins: new Set(), actors: new Set(), speakers: new Set(), targets: new Set(), levels: new Set(),
     visited: new Set(), travels: [], done: new Set(), onces: new Set(), onceKeys: new Set(), varyKeys: new Set(),
-    sounds: new Set(), tracks: new Set(), joins: new Set(), members: new Set(),
+    sounds: new Set(), tracks: new Set(), joins: new Set(), members: new Set(), creatures: new Set(),
   };
 }
 
@@ -1032,6 +1100,7 @@ export function addConditionRefs(c, out) {
     else if (r.kind === 'done') out.done.add(r.name);
     else if (r.kind === 'visits') out.actors.add(r.name);
     else if (r.kind === 'party') out.members?.add(r.name);
+    else if (r.kind === 'creature') out.creatures?.add(r.name);
     // a variable on the right of a numeric comparison (`gold >= inn.price`)
     if (typeof value === 'string' && !isTextRef(r) && r.kind !== 'stage') out.reads.add(value);
   }
@@ -1099,6 +1168,9 @@ function cmdRefs(n, out) {
     case 'party':
       if (a.verb === 'join') out.joins?.add(a.who);
       else if (a.who) out.members?.add(a.who);
+      break;
+    case 'creature':
+      if (a.species) out.creatures?.add(a.species);
       break;
     default: break;
   }
@@ -1235,7 +1307,9 @@ export function varyIndex(mode, n, count, key, day, seed = 0) {
  * and move no one (the region banner, the music and the weather change while the player walks
  * anyway; a shake jolts the camera without taking it, as a hit in combat does). `party` is in for
  * `join`, `leave`, `rule` and `set` (a villager joins or leaves, a rule changes — no input);
- * `party menu` is not (`backgroundIssue`: the tactics panel needs the player).
+ * `party menu` is not (`backgroundIssue`: the tactics panel needs the player). `creature` is in for
+ * `give`, `active`, `box`, `heal` and `starter` (the roster changes — no input); `creature menu` is
+ * not (`backgroundIssue`: the roster panel needs the player).
  * @type {ReadonlySet<string>}
  */
 export const BACKGROUND_OPS = new Set([
@@ -1245,6 +1319,8 @@ export const BACKGROUND_OPS = new Set([
   'call', 'stop', 'break',
   // (`party join` / `leave` / `rule` / `set` — not `party menu`, which needs the player)
   'party',
+  // (`creature give` / `active` / `box` / `heal` / `starter` — not `creature menu`, which needs the player)
+  'creature',
 ]);
 
 /** Why a command outside `BACKGROUND_OPS` cannot run in the background. */
@@ -1280,6 +1356,7 @@ export function backgroundIssue(node) {
       if (!BACKGROUND_OPS.has(op)) return isOwnKey(BACKGROUND_REASONS, op) ? BACKGROUND_REASONS[op] : `"${op}" needs the player`;
       if ((op === 'walk' || op === 'face' || op === 'teleport') && isPlayerName(node.args?.who)) return `"${op} player": the player is the player's in the background`;
       if (op === 'party' && node.args?.verb === 'menu') return 'the tactics panel needs the player';
+      if (op === 'creature' && node.args?.verb === 'menu') return 'the roster panel needs the player';
       return '';
     }
     default: return 'not a line a background run knows';

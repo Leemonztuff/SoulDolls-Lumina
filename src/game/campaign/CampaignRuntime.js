@@ -123,6 +123,16 @@ export class CampaignRuntime {
     this.game = null;
     /** @type {StoryRunner|null} the game's story runtime (`attachStory`) */
     this.runner = null;
+    /**
+     * The creature layer a later phase installs ("Critters Collection" plan §5, §12): the roster is
+     * repointed at the save on a new journey (`setState`) and told of every travel (`onTravel`), so
+     * its mirror follows the campaign. Null until then, and every call guarded, so a campaign
+     * without creatures carries no creature code and pays nothing.
+     * @type {null | {
+     *   setState?: (state: CampaignState) => void,
+     *   onTravel?: (to: string, from: string, fresh: boolean) => void }}
+     */
+    this.creatures = null;
     /** @type {LevelObjectOf<'exit'>[]} the current level's exits */
     this._exits = [];
     /** @type {Map<LevelObjectOf<'exit'>, any>} Space exits' prompts */
@@ -758,6 +768,8 @@ export class CampaignRuntime {
       this.stats.lastAside = left ? slot : '';
       if (left) this._putAside(slot, { id: from, fileId: fromFile, text: keepText, raw: prevRaw, kept: left });
       this._enterLevel(level);
+      // (the creature layer, once installed, follows the travel into the new level)
+      this.creatures?.onTravel?.(to, from, fresh);
       this._armed = false;
       this.state.level = to;
       this.state.via = { from, entrance };
@@ -1035,6 +1047,8 @@ export class CampaignRuntime {
     CampaignState.clear(this.name, { test: this.state.test });
     this.state = new CampaignState(this.campaign, this.name, { story: this.story, test: this.state.test });
     this.state.story.seed = journeySeed();
+    // (the creature layer, once installed, is repointed at the new save)
+    this.creatures?.setState?.(this.state);
     this._applyStartPreset();
     this.runner?.setState(this.state.story);
     g.visits.clear();

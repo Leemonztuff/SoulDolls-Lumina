@@ -74,16 +74,22 @@ const text = (v) => (typeof v === 'string' ? v.trim() : '');
  * preloads); `npm run story:test` checks that the two agree.
  */
 const MAX_PARTY = 3;
+/**
+ * The most creatures a roster holds: CreatureRoster.js `MAX_ACTIVE + MAX_BOX` — not imported, for
+ * the same reason as `MAX_PARTY` (the creature vocabulary stays out of every level's preload).
+ */
+const MAX_CREATURES = 246;
 /** A value standing alone holds (as `evalCondition` reads it). */
 const truthy = (v) => (typeof v === 'number' ? v !== 0 : v !== '' && v !== 'none' && v != null);
 /** A reference as written. @param {Ref} r */
 const refName = (r) => (r.kind === '' || r.kind === 'game' ? r.name : `${r.kind}:${r.name}`);
 /**
- * A reference's identity: kind and name — a party member's name in lower case, as the game finds
- * members (`party:Sela` is `party:sela`). @param {Ref} r
+ * A reference's identity: kind and name — a party member's or creature species' name in lower case,
+ * as the game finds them (`party:Sela` is `party:sela`, `creature:Leafling` is `creature:leafling`).
+ * @param {Ref} r
  */
-const refKey = (r) => `${r.kind}:${r.kind === 'party' ? r.name.toLowerCase() : r.name}`;
-/** The most `party:<who>` names whose combinations with the party's size are worked out (more: free of it). */
+const refKey = (r) => `${r.kind}:${r.kind === 'party' || r.kind === 'creature' ? r.name.toLowerCase() : r.name}`;
+/** The most names of a group whose combinations with its size are worked out (more: free of it). */
 const MAX_MEMBER_NAMES = 24;
 /** A comparison read the other way round. */
 const FLIP = { '=': '!=', '!=': '=', '<': '>=', '>=': '<', '>': '<=', '<=': '>' };
@@ -103,21 +109,22 @@ function compare(a, cmp, b) {
 
 /**
  * The numbers one story can give a reference that is a number (StoryState.js `storyReader`):
- * whole or any, from `min` to `max`. `visited:` / `done:` / `party:` are 0 or 1; items, visits and
- * stage numbers (0: no stage yet) whole numbers from 0, gold too, the day from 1; the party 0 to
- * `MAX_PARTY` members; the hour 0 to 24; flags and variables any number (`var x = 1.5`,
- * `var x - 4`; story files declare any start value).
+ * whole or any, from `min` to `max`. `visited:` / `done:` / `party:` / `creature:` are 0 or 1;
+ * items, visits and stage numbers (0: no stage yet) whole numbers from 0, gold too, the day from 1;
+ * the party 0 to `MAX_PARTY` members, the roster 0 to `MAX_CREATURES` creatures; the hour 0 to 24;
+ * flags and variables any number (`var x = 1.5`, `var x - 4`; story files declare any start value).
  * @param {Ref} ref
  * @returns {{ int: boolean, min: number, max: number }}
  */
 export function valueRange(ref) {
   switch (ref.kind) {
-    case 'visited': case 'done': case 'party': return { int: true, min: 0, max: 1 };
+    case 'visited': case 'done': case 'party': case 'creature': return { int: true, min: 0, max: 1 };
     case 'item': case 'visits': case 'stage': return { int: true, min: 0, max: Infinity };
     case 'game':
       if (ref.name === 'day') return { int: true, min: 1, max: Infinity };
       if (ref.name === 'gold' || ref.name === 'visits') return { int: true, min: 0, max: Infinity };
       if (ref.name === 'party') return { int: true, min: 0, max: MAX_PARTY };
+      if (ref.name === 'creature') return { int: true, min: 0, max: MAX_CREATURES };
       if (ref.name === 'hour') return { int: false, min: 0, max: 24 };
       return { int: false, min: -Infinity, max: Infinity };
     default: return { int: false, min: -Infinity, max: Infinity };
@@ -251,8 +258,10 @@ export function conditionSpace(conds) {
   });
   /** @type {{ idx: number[], patterns: Set<string> }[]} */
   const refGroups = [];
-  const party = partyPatterns(tests, byRef);
+  const party = kindPatterns(tests, byRef, 'party', 'game:party', MAX_PARTY);
   if (party) refGroups.push(party);
+  const creature = kindPatterns(tests, byRef, 'creature', 'game:creature', MAX_CREATURES);
+  if (creature) refGroups.push(creature);
   for (const idx of byRef.values()) {
     const values = refValues(tests[idx[0]].ref, idx.map((i) => tests[i]));
     refGroups.push({ idx, patterns: new Set(values.map((v) => idx.map((i) => (tests[i].test(v) ? '1' : '0')).join(''))) });
@@ -301,19 +310,22 @@ export function conditionSpace(conds) {
 }
 
 /**
- * The party's size (`party`) and its members (`party:<who>`) as one reference: the outcome patterns
- * of their tests that can happen together — a size from 0 to `MAX_PARTY` and members held up to
- * that size, each name (in lower case) another member. Their tests leave `byRef`. Null when no
- * test names a member, or more than `MAX_MEMBER_NAMES` do (each then read on its own, free of the
- * size).
+ * The size of a group (`party` / `creature`) and its members (`party:<who>` / `creature:<species>`)
+ * as one reference: the outcome patterns of their tests that can happen together — a size from 0
+ * to `max` and members held up to that size, each name (in lower case) another member. Their tests
+ * leave `byRef`. Null when no test names a member, or more than `MAX_MEMBER_NAMES` do (each then
+ * read on its own, free of the size).
  * @param {StoryTest[]} tests
- * @param {Map<string, number[]>} byRef reference → its testable tests (the party's are taken out)
+ * @param {Map<string, number[]>} byRef reference → its testable tests (the group's are taken out)
+ * @param {string} kind the member reference kind (`party`, `creature`)
+ * @param {string} sizeKey the size reference key (`game:party`, `game:creature`)
+ * @param {number} max the most members the group holds (`MAX_PARTY`, `MAX_CREATURES`)
  * @returns {{ idx: number[], patterns: Set<string> }|null}
  */
-function partyPatterns(tests, byRef) {
-  const names = [...byRef.keys()].filter((k) => k.startsWith('party:'));
+function kindPatterns(tests, byRef, kind, sizeKey, max) {
+  const names = [...byRef.keys()].filter((k) => k.startsWith(`${kind}:`));
   if (!names.length || names.length > MAX_MEMBER_NAMES) return null;
-  const sizeIdx = byRef.get('game:party') ?? [];
+  const sizeIdx = byRef.get(sizeKey) ?? [];
   const memberIdx = names.map((k) => /** @type {number[]} */ (byRef.get(k)));
   const held = new Uint8Array(names.length);
   const patterns = new Set();
@@ -333,8 +345,8 @@ function partyPatterns(tests, byRef) {
       held[m] = 0;
     }
   };
-  for (let size = 0; size <= MAX_PARTY; size++) choose(0, size, size);
-  byRef.delete('game:party');
+  for (let size = 0; size <= max; size++) choose(0, size, size);
+  byRef.delete(sizeKey);
   for (const k of names) byRef.delete(k);
   return { idx: [...sizeIdx, ...memberIdx.flat()], patterns };
 }

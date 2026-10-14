@@ -928,6 +928,136 @@ begin('review fixes: a choice after a block goes on the held line');
   eq('a choice with its question and lines before it: as before (the question a line of its own)', [opens.length, opens[0].map((l) => l.text), opens[0][1].choices], [1, ['Hello.', 'Which way?'], ['North', 'South']]);
 }
 
+// The creatures (creatures-plan.md §13): a stub CreatureSystem on the stub game
+// =================================================================================================
+
+/**
+ * A stub CreatureSystem (the contract `_creature` touches): a roster of `{species, level}`, made
+ * on demand. `give` / `heal` / `makeActive` / `moveToBox` write the story's species snapshot, as the
+ * system does after every change (`setCreatures`), so the `creature` conditions follow.
+ * @returns {any}
+ */
+const STUB_SPECIES = new Set(['leafling', 'emberling', 'rippling', 'mossling', 'sparrowling', 'stoneling', 'voltling', 'slitherling', 'buzzling', 'shadeling', 'frostling', 'aurorling']);
+
+function stubCreatures(state) {
+  return {
+    _open: false, calls: [],
+    roster: {
+      active: [], box: [], calls: [],
+      get count() { return this.active.length + this.box.length; },
+      get all() { return [...this.active, ...this.box]; },
+      toActive(uid, i) { const c = this.box.find((x) => x.uid === uid); if (!c) return false; this.box.splice(this.box.indexOf(c), 1); this.active.splice(i, 0, c); return true; },
+      toBox(uid) { const c = this.active.find((x) => x.uid === uid); if (!c) return false; this.active.splice(this.active.indexOf(c), 1); this.box.push(c); return true; },
+      healAll() { let n = 0; for (const c of this.all) { n += Math.max(0, c.maxHp - c.hp); c.hp = c.maxHp; } return n; },
+    },
+    _of(sp) {
+      const low = String(sp).toLowerCase();
+      return this.roster.active.find((c) => c.species.toLowerCase() === low) ?? this.roster.box.find((c) => c.species.toLowerCase() === low) ?? null;
+    },
+    _sync() { state.setCreatures(this.roster.all.map((c) => c.species)); },
+    give(species, level = 5) {
+      this.calls.push(['give', species, level]);
+      if (!STUB_SPECIES.has(String(species).toLowerCase())) return null;
+      const c = { uid: `${species}-${this.roster.count}`, species: String(species).toLowerCase(), level, hp: 10, maxHp: 10 };
+      this.roster.active.push(c);
+      this._sync();
+      return c;
+    },
+    heal() { const n = this.roster.healAll(); this._sync(); return n; },
+    makeActive(sp) {
+      const c = this._of(sp);
+      if (!c) return false;
+      const i = this.roster.active.indexOf(c);
+      if (i < 0) return this.roster.toActive(c.uid, 0);
+      if (i > 0) { this.roster.active.splice(i, 1); this.roster.active.unshift(c); }
+      this._sync();
+      return true;
+    },
+    moveToBox(sp) { const c = this._of(sp); if (!c || this.roster.active.indexOf(c) < 0) return false; this.roster.toBox(c.uid); this._sync(); return true; },
+    openRoster() { this.calls.push(['openRoster']); if (!this.roster.count) return false; this._open = true; return true; },
+    get rosterOpen() { return this._open; },
+  };
+}
+
+/**
+ * A runner on a stub game with a creature system made on demand (`ensureCreatures`), or none.
+ * @param {{ state?: StoryState, ensure?: boolean }} [opts]
+ */
+function creatureRunner({ state = new StoryState(partyStory), ensure = true } = {}) {
+  const g = stubGame({});
+  g.ensures = 0;
+  g.creatures = null;
+  let r;
+  if (ensure) g.ensureCreatures = async () => { if (!g.creatures) { g.ensures++; g.creatures = stubCreatures(r.state); } return g.creatures; };
+  r = new StoryRunner({ game: g, story: partyStory, state, levelId: 'here' });
+  g.story = r;
+  r.attachLevel('here');
+  const run = async (lines, key = `test:${lines[0]}`) => {
+    const p = parseScript(lines);
+    if (p.errors.length) throw new Error(JSON.stringify(p.errors));
+    await r._exec({ kind: 'test', key, nodes: p.nodes }, { ownBusy: true });
+  };
+  return { g, r, run };
+}
+
+begin('creature: give, starter, heal, active, box, menu');
+{
+  const { g, r, run } = creatureRunner();
+  ok('no system is made before a command', g.creatures === null && g.ensures === 0);
+  await run(['creature give leafling', 'creature give emberling level 12']);
+  eq('give: the system is made once, the species joins at the level (default 5)', [g.ensures, g.creatures.roster.active.map((c) => [c.species, c.level])], [1, [['leafling', 5], ['emberling', 12]]]);
+  ok('conditions: creature (the count), creature:<species> in any case, = / >= / >', r.test('creature') && r.test('creature = 2') && r.test('creature >= 2')
+    && r.test('creature:leafling') && r.test('creature:Leafling') && !r.test('creature:rippling') && !r.test('creature > 2'), [r.test('creature'), r.test('creature:leafling')]);
+  await run(['creature starter']);
+  eq('starter: no species means leafling at level 5', [g.creatures.roster.active.at(-1).species, g.creatures.roster.active.at(-1).level, r.test('creature:leafling')], ['leafling', 5, true]);
+  await run(['creature active emberling']);
+  ok('active: the species comes to the front (a party member)', g.creatures.roster.active[0].species === 'emberling' && g.creatures.roster.active.length === 3);
+  await run(['creature box leafling']);
+  eq('box: the first leafling leaves the party for the box', [g.creatures.roster.active.map((c) => c.species), g.creatures.roster.box.map((c) => c.species)], [['emberling', 'leafling'], ['leafling']]);
+  await run(['creature active leafling']);
+  ok('active brings a party one to the front (the box is untouched)', g.creatures.roster.active[0].species === 'leafling' && g.creatures.roster.box.length === 1);
+  g.creatures.roster.active[0].hp = 1;
+  await run(['creature heal']);
+  ok('heal: the roster is restored', g.creatures.roster.all.every((c) => c.hp === c.maxHp), g.creatures.roster.all.map((c) => c.hp));
+  // refused: an unknown species, none of that species in the roster, an active/box without a name
+  const before = g.creatures.roster.count;
+  await run(['creature give ghost', 'creature active rippling', 'creature box rippling', 'creature active']);
+  ok('unknown / absent species and a missing name: warnings, nothing changes', g.creatures.roster.count === before
+    && hasWarn('"ghost" could not be given') && hasWarn('the roster holds no "rippling"') && hasWarn('"rippling" is not in the party')
+    && hasWarn('name the species to bring to the front'), warned.slice(-4));
+  // menu: opens the roster panel and waits until it closes
+  const menu = r._exec({ kind: 'test', key: 'test:creature-menu', nodes: parseScript(['creature menu', 'set after-menu']).nodes }, { ownBusy: true });
+  await settle();
+  ok('menu: the panel opens (on the roster), the held line waits', g.creatures.rosterOpen && g.creatures.calls.at(-1)?.[0] === 'openRoster' && r.state.get('after-menu') === 0, g.creatures.calls.at(-1));
+  g.creatures._open = false;
+  r.update(0.016);
+  await menu;
+  ok('… and the run goes on when it closes', r.state.get('after-menu') === 1);
+  // a skipped cutscene: the panel is not opened, the run goes on
+  const skipped = r._exec({ kind: 'test', key: 'test:creature-skip', nodes: parseScript(['cutscene', 'wait 30', 'creature give voltling', 'creature menu', 'set after-skip']).nodes }, { ownBusy: true });
+  await settle();
+  r.skip();
+  await skipped;
+  ok('a skipped cutscene: give still happens, the panel does not open', r.state.get('after-skip') === 1 && r.test('creature:voltling'), r.state.get('after-skip'));
+  // background: give may run there, menu is an error that ends the run
+  const errs = r.errors;
+  r._enqueueBg({ kind: 'event', key: 'event:here.cbg', nodes: parseScript(['creature give slitherling', 'creature menu', 'set never']).nodes, onceKey: '' });
+  for (let k = 0; k < 3; k++) { r.update(0.016); await settle(); }
+  ok('a background run: creature give works beside play, creature menu is an error that ends it', r.test('creature:slitherling') && r.errors === errs + 1 && r.state.get('never') === 0
+    && warned.some((w) => w.includes('event:here.cbg') && w.includes('roster panel')), warned.slice(-2));
+}
+
+begin('creature: an empty roster and a game with no system');
+{
+  const { g, r, run } = creatureRunner();
+  g.creatures = stubCreatures(r.state);
+  await run(['creature menu']);
+  ok('menu on an empty roster: a warning, no panel', hasWarn('the roster is empty — no roster panel') && !g.creatures.rosterOpen, warned.slice(-1));
+  const bare = creatureRunner({ ensure: false });
+  await bare.run(['creature give leafling']);
+  ok('no creature system: give warns and changes nothing', hasWarn('this game has no creature system') && !bare.g.creatures, warned.slice(-1));
+}
+
 begin('runner: translations (I18N.md §4)');
 {
   const { g, r, state } = runnerWith([]);

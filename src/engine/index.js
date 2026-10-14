@@ -50,6 +50,8 @@ export { createPropSprite, PROP_SPRITE_KINDS } from './pixel/PropSprites.js';
 // into a page's chunks unless the page uses them — combat code imports them from their files.)
 export { createEnemySheet, ENEMY_SHEET_KINDS } from './pixel/MonsterSprites.js';
 export { createFxAtlas, FX_FRAMES } from './pixel/FxSprites.js';
+// creature layer only ("Critters Collection" plan §5): species sheets (front / overworld poses).
+export { createSpeciesSheet, CREATURE_SPECIES_IDS, CREATURE_POSES } from './pixel/CreatureSprites.js';
 
 // Sprites ---------------------------------------------------------------------------------------
 export { Sprite3D, spriteSheetFromProp, patchSpriteLighting, cloneSharedTexture, GLSL_BAYER4 } from './sprite/Sprite3D.js';
@@ -84,6 +86,8 @@ export { BossBar } from './ui/BossBar.js';
 export { WorldLabels } from './ui/WorldLabels.js';
 export { Announcer } from './ui/Announcer.js';
 export { DeathScreen } from './ui/DeathScreen.js';
+// creature layer only (CREATURE_PURE, vite.config.js; created by `ui.enableCreature()`)
+export { CreatureBattleHUD } from './ui/CreatureBattleHUD.js';
 
 // Advanced building blocks ------------------------------------------------------------------------
 // Custom props: the same geometry builder, wind sway and flame shaders PropFactory uses internally.

@@ -767,8 +767,10 @@ npm run check -- --page=game.html --query="level=brightwater-crossing&autostart=
 npm run check -- --page=game.html --query="level=starfall-vale&autostart=1" --out=reg_sv --wait=9000 --fps=0 --script=<file>
 ```
 
-Expected today (Emberfall): `drawCalls` ≈ 229–231, `triangles` ≈ 336 600, `lights` 12,
-`programs` 57, `stats.lightDescriptors` 12, `lightsPooled` false, `batching` false. Draw calls can
+Expected today (Emberfall): `drawCalls` ≈ 237, `triangles` ≈ 336 500, `lights` 12,
+`programs` 57, `stats.lightDescriptors` 12, `lightsPooled` false, `batching` false (re-measured
+2026-10-12 before and after the "Critters Collection" FASE 5 — identical either way; the earlier
+≈ 229–231 figure was stale). Draw calls can
 wobble by a few with villager positions; everything else should match exactly. The other levels
 (measured the same way): Willowmere ≈ 165 calls, 6 lights, 54 programs; Brightwater ≈ 210 calls,
 10 lights, 57 programs; Starfall ≈ 176 calls at the spawn, 12 pooled lights for 95 descriptors,

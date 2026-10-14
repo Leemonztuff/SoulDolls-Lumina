@@ -40,6 +40,9 @@ import { TouchControls } from './TouchControls.js';
 /** The combat UI classes registered by `UI.useCombatUI()` (null: none yet). */
 let combatClasses = null;
 
+/** The creature battle UI classes registered by `UI.useCreatureUI()` (null: none yet). */
+let creatureClasses = null;
+
 /**
  * The text edge filters (docs/specs/PIXEL_UI.md §1.4; layout/base.css applies them to text only):
  * the pixel fonts alpha-thresholded, CJK text from 20 CSS px a one-pixel alpha ramp, small CJK text
@@ -237,6 +240,14 @@ export class UI {
      * @type {{ panel: import('../../game/party/types.js').PartyPanelLike, frames: import('../../game/party/types.js').PartyFramesLike }|null}
      */
     this.party = null;
+  /**
+   * The creature battle overlay (`enableCreature()`, the "Critters Collection" phase 4b; null
+   * without a creature battle): `{ hud, roster }`. The classes come from the caller (the creature
+   * chunk hands them to `useCreatureUI`), so a game with no creature battle holds neither them nor
+   * `creature.css`.
+   * @type {{ hud: import('../../game/creatures/types.js').CreatureBattleHUDLike, roster?: import('../../game/creatures/types.js').CreatureRosterUILike }|null}
+   */
+  this.creature = null;
     /**
      * The cutscene's letterbox and skip hint (`useStoryUI()`; null without the story UI): the bars,
      * their gilt hairlines, the skip hint's group (laid out per scale) and its ring.
@@ -367,6 +378,51 @@ export class UI {
    */
   static useCombatUI(classes) {
     combatClasses = classes ?? null;
+  }
+
+  /**
+   * Register the creature battle UI classes once (`src/engine/ui/CreatureBattleHUD.js`) for
+   * `enableCreature()` (additive; the creature system does it before enabling). Kept out of this
+   * module's imports so a game with no creature battle does not hold it (CREATURE_PURE).
+   * @param {import('../../game/creatures/types.js').CreatureUIClasses|null} classes
+   */
+  static useCreatureUI(classes) {
+    creatureClasses = classes ?? null;
+  }
+
+  /**
+   * Create the creature battle overlay (the "Critters Collection" phase 4b): the full-screen battle
+   * screen as `this.creature.hud` and optional roster panel as `this.creature.roster`. The classes
+   * come from the caller — registered once with `UI.useCreatureUI(classes)` (the creature chunk
+   * imports them from its own file) or passed as `enableCreature(classes)` — so this module never
+   * imports them and a game with no creature battle holds neither them nor `creature.css`.
+   * Idempotent; returns the existing one. Throws when neither holds the class.
+   * @param {import('../../game/creatures/types.js').CreatureUIClasses} [classes] default: the registered ones
+   * @returns {{ hud: import('../../game/creatures/types.js').CreatureBattleHUDLike, roster?: import('../../game/creatures/types.js').CreatureRosterUILike }}
+   */
+  enableCreature(classes = creatureClasses) {
+    if (this.creature) return this.creature;
+    const { CreatureBattleHUD, CreatureRosterUI } = classes ?? {};
+    if (!CreatureBattleHUD) {
+      throw new Error('UI.enableCreature: register the creature UI classes first (UI.useCreatureUI({ CreatureBattleHUD })) or pass them');
+    }
+    this.creature = { hud: new CreatureBattleHUD(this.root) };
+    if (CreatureRosterUI) {
+      this.creature.roster = new CreatureRosterUI(this.root);
+    }
+    return this.creature;
+  }
+
+  /**
+   * Remove the creature battle overlay again (a battle that ended, a campaign leaving the creature
+   * system): the overlay is disposed. No-op without one.
+   */
+  disableCreature() {
+    const c = this.creature;
+    if (!c) return;
+    this.creature = null;
+    try { c.hud.dispose(); } catch (err) { /* ignore */ }
+    try { if (c.roster) c.roster.dispose(); } catch (err) { /* ignore */ }
   }
 
   /**
@@ -713,6 +769,10 @@ export class UI {
       panel.update(dt, dialogInput);
       dialogInput = undefined;
     }
+    if (this.creature?.roster && this.creature.roster.isOpen) {
+      this.creature.roster.update(dt, dialogInput);
+      dialogInput = undefined;
+    }
     this.dialog.update(dt, dialogInput);
     // state classes: dialog tucks the controls legend & prompt away, title hides HUD & prompt
     const talking = this.dialog.isOpen;
@@ -746,6 +806,11 @@ export class UI {
       c.labels.dispose();
       c.boss.dispose();
       c.hud.dispose();
+    }
+    if (this.creature) {
+      try { this.creature.hud.dispose(); } catch (err) { /* ignore */ }
+      try { if (this.creature.roster) this.creature.roster.dispose(); } catch (err) { /* ignore */ }
+      this.creature = null;
     }
     this.touch.dispose();
     this.debug.dispose();

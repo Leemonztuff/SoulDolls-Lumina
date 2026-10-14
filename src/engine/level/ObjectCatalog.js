@@ -122,6 +122,40 @@ export const ENEMY_INFO = Object.freeze({
   golem:  { label: 'Cinderheart (boss)', flier: false, boss: true, passive: false, humanoid: false },
 });
 
+/**
+ * Species a `creature` object can spawn ("Critters Collection"): ids of
+ * `src/game/creatures/defs.js` `CREATURE_IDS` — keep both in sync (the engine must not import a
+ * game module).
+ * @type {readonly string[]}
+ */
+export const CREATURE_KINDS = Object.freeze([
+  'leafling', 'emberling', 'rippling', 'mossling', 'sparrowling', 'stoneling',
+  'voltling', 'slitherling', 'buzzling', 'shadeling', 'frostling', 'aurorling',
+]);
+
+/** Editor labels of every creature species (mirror `CREATURE_DEFS[].name` in src/game/creatures/defs.js). */
+export const CREATURE_INFO = Object.freeze({
+  leafling:    { label: 'Leafling' },
+  emberling:   { label: 'Emberling' },
+  rippling:    { label: 'Rippling' },
+  mossling:    { label: 'Mossling' },
+  sparrowling: { label: 'Sparrowling' },
+  stoneling:   { label: 'Stoneling' },
+  voltling:    { label: 'Voltling' },
+  slitherling: { label: 'Slitherling' },
+  buzzling:    { label: 'Buzzling' },
+  shadeling:   { label: 'Shadeling' },
+  frostling:   { label: 'Frostling' },
+  aurorling:   { label: 'Aurorling' },
+});
+
+/**
+ * Encounter tables a `creature_zone` can use: keys of `public/data/creatures/encounters.json`
+ * (the engine, the editor and the Node tools read this list; the game fetches the JSON at runtime).
+ * @type {readonly string[]}
+ */
+export const CREATURE_TABLES = Object.freeze(['meadow', 'forest', 'mountains', 'shore']);
+
 /** What a `chest` can hold besides gold and draughts (COMBAT.md §6.1: +20 max HP, +10 max MP, +3 attack). */
 export const CHEST_UPGRADES = ['none', 'maxHp', 'maxMp', 'attack'];
 /** Inspector labels of the chest upgrades (the stored values stay `CHEST_UPGRADES`; amounts from the game's rules). */
@@ -473,6 +507,19 @@ export const OBJECT_TYPES = {
       { key: 'radius', label: 'Roam radius', type: 'number', min: 0.5, max: 8, step: 0.1 },
     ],
   },
+  creature: {
+    label: 'Wild creature', category: 'Characters', placement: 'point', kind: 'actor', creature: true,
+    glyph: '✧', color: '#9be89f', radius: 0.4,
+    help: 'A free-roaming wild creature ("Critters Collection"). Walking close starts a creature battle; a level needs one only when a party member is out (creature.ui.noParty). One creature object is the level\'s "face" in the overworld.',
+    defaults: { species: 'leafling', level: 3, radius: 2.5 },
+    fields: [
+      { key: 'species', label: 'Species', type: 'select', options: CREATURE_KINDS.map((k) => ({ value: k, label: CREATURE_INFO[k].label })) },
+      { key: 'level', label: 'Level', type: 'int', min: 1, max: 30 },
+      { key: 'radius', label: 'Roam radius', type: 'number', min: 0.5, max: 12, step: 0.1 },
+      // no default (absent = true): the game reads `wander !== false`, the file never writes it
+      { key: 'wander', label: 'Wanders', type: 'bool', help: 'Off: stands still (walking close still starts a battle). On (blank): picks a new spot inside the roam radius every so often.' },
+    ],
+  },
 
   // ------------------------------------------------------------------ Markers
   emitter: {
@@ -497,6 +544,17 @@ export const OBJECT_TYPES = {
       { key: 'sub', label: 'Subtitle', type: 'text', i18n: true },
       { key: 'minY', label: 'Only above height, world units (blank = any)', type: 'number', min: -5, max: 20, step: 0.1, nullable: true, help: 'World height = height level × 0.5 (3 = level 6).' },
       { key: 'banner', label: 'Arrival banner subtitle (blank = none)', type: 'text', i18n: true, help: 'Shown with the region name the first time the player enters.' },
+    ],
+  },
+  creature_zone: {
+    label: 'Creature zone', category: 'Markers', placement: 'rect', kind: 'marker', creature: true,
+    glyph: '✧', color: '#9be89f', radius: 0,
+    help: 'Drag a rectangle: wild creatures appear while the player walks inside ("Critters Collection"). The table picks the encounter table; an optional steps override sets how far the player must walk before one appears.',
+    defaults: { table: 'meadow' },
+    fields: [
+      { key: 'table', label: 'Encounter table', type: 'select', options: CREATURE_TABLES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) })) },
+      // no default (absent = 0): the game reads `steps ?? 0` — 0 = the table's stepsPerEncounter
+      { key: 'steps', label: 'Steps override', type: 'int', min: 1, max: 200, help: 'How far (world units) the player must walk inside the rectangle before a creature appears. Blank = the table\'s stepsPerEncounter.' },
     ],
   },
   // campaigns (docs/specs/CAMPAIGN_FORMAT.md): a level played on its own ignores both
@@ -810,6 +868,7 @@ export function objectBounds(obj) {
   else if (obj.type === 'waterfall') { hw = (obj.width ?? 2) / 2; hd = 0.3; }
   else if (obj.type === 'emitter') { hw = (obj.size?.[0] ?? 8) / 2; hd = (obj.size?.[2] ?? 8) / 2; }
   else if (obj.type === 'critters') { hw = hd = obj.radius ?? 2.5; }
+  else if (obj.type === 'creature') { hw = hd = obj.radius ?? 2.5; }
   else if (obj.type === 'enemy') { hw = hd = obj.radius ?? 3; }
   const rot = obj.type === 'waterfall' ? (obj.facing === 'E' || obj.facing === 'W' ? Math.PI / 2 : 0) : (obj.rotation ?? 0);
   const c = Math.abs(Math.cos(rot));
@@ -1153,6 +1212,16 @@ export function isInteriorType(type) {
 }
 
 /**
+ * Is `type` one of the creature types (`creature: true`: creature, creature_zone — the
+ * "Critters Collection")? A level with one of them plays with wild creatures.
+ * @param {string} type any string (unknown types are not creature types)
+ * @returns {boolean}
+ */
+export function isCreatureType(type) {
+  return isOwnKey(OBJECT_TYPES, type) && !!(/** @type {ObjectTypeDef} */ (OBJECT_TYPES[type]).creature);
+}
+
+/**
  * A number option from level data (anything else: the default), clamped — as the furniture
  * builders read it (the editor's 2D sketches read them the same way).
  * @param {unknown} v @param {number} d @param {number} lo @param {number} hi
@@ -1271,4 +1340,18 @@ export function levelHasCombat(level) {
   if (env.combat === true) return true;
   if (env.combat === false) return false;
   return Array.isArray(level?.objects) && level.objects.some((o) => o?.type === 'enemy');
+}
+
+/**
+ * Does the level play with wild creatures? `environment.creatures === true` forces it on,
+ * `false` forces it off; absent (auto) = on iff the level has a `creature` or `creature_zone`
+ * object (the "Critters Collection").
+ * @param {Level} level
+ * @returns {boolean}
+ */
+export function levelHasCreatures(level) {
+  const env = /** @type {Partial<LevelEnvironment>} */ (level?.environment ?? {});
+  if (env.creatures === true) return true;
+  if (env.creatures === false) return false;
+  return Array.isArray(level?.objects) && level.objects.some((o) => isCreatureType(o?.type));
 }

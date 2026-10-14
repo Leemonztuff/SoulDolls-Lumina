@@ -73,6 +73,7 @@ export const UI_FEATURE_ROOT = 'src/game';
 export const UI_FEATURE_FILES = Object.freeze([
   'src/engine/i18n/strings/worldfx.js', 'src/engine/i18n/strings/story-ui.js', 'src/game/combat/strings.js',
   'src/game/party/strings.js', 'src/game/story/strings.js', 'src/game/campaign/strings.js',
+  'src/game/creatures/strings.js',
 ]);
 /** The reader of `common` that is no table: the code (its `loc('<code key>', …)` units, the common terms). */
 export const CODE_READER = '(code)';

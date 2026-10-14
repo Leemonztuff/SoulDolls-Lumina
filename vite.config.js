@@ -34,6 +34,16 @@ const STORY_PURE = /[\\/]src[\\/]engine[\\/](?:ui[\\/](?:Journal|Emotes|EndCard)
 const PARTY_PURE = /[\\/]src[\\/]engine[\\/]ui[\\/](?:PartyPanel|PartyFrames|art[\\/](?:party|icons[\\/]party))\.js$/;
 
 /**
+ * Creature-battle-only UI modules (the "Critters Collection" plan, phase 4b): the full-screen battle
+ * overlay (CreatureBattleHUD.js: it imports creature.css) and the pixel UI's creature art
+ * (ui/art/icons/creature.js: the capture orb and the type emblems). Neither the engine barrel nor
+ * UI.js imports them (the creature chunk hands the overlay to `ui.useCreatureUI`); marked pure like
+ * the story and party UI, so a re-export can never pull them or their CSS into a game with no
+ * creature battle.
+ */
+const CREATURE_PURE = /[\\/]src[\\/]engine[\\/]ui[\\/](?:CreatureBattleHUD|CreatureRosterUI|art[\\/]icons[\\/]creature)\.js$/;
+
+/**
  * The @fontsource stylesheets list a woff2 and a woff file per face; every browser that runs
  * three.js r186 reads woff2, so the woff fallbacks are cut from the CSS before Vite resolves its
  * url()s: the build emits woff2 files only (about half the files and bytes). The fonts are loaded by
@@ -97,7 +107,7 @@ export default defineConfig({
         game: resolve(import.meta.dirname, 'game.html'),
         editor: resolve(import.meta.dirname, 'editor.html'),
       },
-      treeshake: { moduleSideEffects: (id) => !COMBAT_PURE.test(id) && !STORY_PURE.test(id) && !PARTY_PURE.test(id) },
+      treeshake: { moduleSideEffects: (id) => !COMBAT_PURE.test(id) && !STORY_PURE.test(id) && !PARTY_PURE.test(id) && !CREATURE_PURE.test(id) },
     },
   },
 });

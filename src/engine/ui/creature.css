@@ -1,0 +1,63 @@
+/*
+ * Luminati UI  the creature battle overlay (docs/specs/PIXEL_UI.md 5, CreatureBattleHUD.js): the
+ * full-screen battle screen a creature encounter opens  the dim backdrop, the two framed stat
+ * panels, the two sprites, the log window and the action menu. Creature battles only: imported by
+ * CreatureBattleHUD, which only the creature chunk loads (CREATURE_PURE, vite.config.js), so a
+ * peaceful level's stylesheet does not carry these rules.
+ *
+ * The art is canvases and the text DOM in the type roles, placed in art px by the component
+ * (layout/layout.js, layout/type.js; the layers of layout/base.css); these rules only show and hide
+ * the states and give the menu items their hover / selected / disabled looks.
+ */
+
+.lu-root .lu-creature {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.lu-root .lu-creature.is-on { visibility: visible; }
+
+/* the backdrop: today's navy, darkest at the edges */
+.lu-root .lu-creature__backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 30%, var(--g-ink2), var(--g-ink0) 78%);
+}
+
+/* a fainted creature dims its sprite and its panel */
+.lu-root .lu-creature__sprite.is-fainted { opacity: 0.4; }
+.lu-root .lu-creature__panel.is-fainted { opacity: 0.7; }
+
+/* the action menu: clickable, the cursor a card-sel band, a disabled row pale */
+.lu-root .lu-creature__menu { pointer-events: auto; }
+.lu-root .lu-creature__item { pointer-events: auto; cursor: pointer; }
+.lu-root .lu-creature__item.is-sel { background: var(--g-card-sel0); }
+.lu-root .lu-creature__item.is-disabled { opacity: 0.45; cursor: default; }
+
+/*
+ * The roster panel (CreatureRosterUI.js): the same full-screen overlay and navy backdrop as the
+ * battle, holding a framed window with the party and box columns (drawn as canvases) and, over it,
+ * the Swap / Release and confirmation modals. Clicks that miss a control fall on the backdrop and
+ * close the panel.
+ */
+.lu-root .lu-creature-roster {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.lu-root .lu-creature-roster.is-on { visibility: visible; pointer-events: auto; }
+.lu-root .lu-creature-roster__backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 30%, var(--g-ink2), var(--g-ink0) 78%);
+}
+
+/* a fainted row dims; the selected row takes the card's band wash (the band itself is a canvas) */
+.lu-root .lu-creature-roster__row.is-fainted { opacity: 0.6; }
+.lu-root .lu-creature-roster__row.is-sel { background: var(--g-card-sel0); }

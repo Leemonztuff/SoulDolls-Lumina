@@ -76,7 +76,7 @@ import {
 } from '../src/engine/level/LevelFormat.js';
 import {
   OBJECT_TYPES, createObject, NPC_ACTIONS, NPC_BEHAVIOURS, CRITTER_KINDS, EMITTER_PRESETS, CHARACTER_PRESET_NAMES,
-  critterStartPoints, isCombatType, isCampaignType, isStoryType, isInteriorType,
+  critterStartPoints, isCombatType, isCampaignType, isStoryType, isInteriorType, isCreatureType,
 } from '../src/engine/level/ObjectCatalog.js';
 import { RNG, fbm2, hash2, clamp, lerp } from '../src/engine/utils/math.js';
 // (only the content-text keys come from the shared helpers: the level itself stays this file's own)
@@ -2318,9 +2318,10 @@ const AREA_PRESETS = EMITTER_PRESETS.filter((p) => p !== 'rain' && p !== 'snow')
 
 /**
  * The object types Starfall Vale must place: all but the combat (Cinderwatch Pass), campaign, story
- * (the demo campaign) and interior ones (the furniture of rooms: the interiors demo).
+ * (the demo campaign), interior (the furniture of rooms: the interiors demo) and creature ones (the
+ * "Critters Collection" demo).
  */
-const PEACEFUL_TYPES = Object.keys(OBJECT_TYPES).filter((t) => !isCombatType(t) && !isCampaignType(t) && !isStoryType(t) && !isInteriorType(t));
+const PEACEFUL_TYPES = Object.keys(OBJECT_TYPES).filter((t) => !isCombatType(t) && !isCampaignType(t) && !isStoryType(t) && !isInteriorType(t) && !isCreatureType(t));
 
 /** Feature coverage checklist. */
 function coverage(level) {
@@ -2334,7 +2335,7 @@ function coverage(level) {
   const stairChars = ['^', 'v', '>', '<'].filter((c) => used.has(c));
   const checks = [
     ['every TILE_TYPES char', TILE_TYPES.every((t) => used.has(t.char)), TILE_TYPES.filter((t) => !used.has(t.char)).map((t) => JSON.stringify(t.char)).join(' ') || 'all'],
-    ['every OBJECT_TYPES type but the combat, campaign, story and interior ones', PEACEFUL_TYPES.every((t) => byType[t]), PEACEFUL_TYPES.filter((t) => !byType[t]).join(' ') || `${PEACEFUL_TYPES.length} types`],
+    ['every OBJECT_TYPES type but the combat, campaign, story, interior and creature ones', PEACEFUL_TYPES.every((t) => byType[t]), PEACEFUL_TYPES.filter((t) => !byType[t]).join(' ') || `${PEACEFUL_TYPES.length} types`],
     ['NPC actions none/rest/shop/music', NPC_ACTIONS.every((a) => npcs.some((n) => n.action === a.value)), NPC_ACTIONS.map((a) => `${a.value}×${npcs.filter((n) => n.action === a.value).length}`).join(' ')],
     ['NPC behaviours wander/post/perform/chase', NPC_BEHAVIOURS.every((b) => npcs.some((n) => n.behaviour === b)), NPC_BEHAVIOURS.map((b) => `${b}×${npcs.filter((n) => n.behaviour === b).length}`).join(' ')],
     ['critter kinds', CRITTER_KINDS.every((k) => critterKinds.has(k)), [...critterKinds].join(' ')],

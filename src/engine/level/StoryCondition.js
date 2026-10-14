@@ -31,23 +31,25 @@
  * (`item:plank`, `quest:find-ilse`, `party:sela`) or a value of the game (`hour`, `gold`, `party`
  * …: `kind` 'game').
  * @typedef {{ kind: RefKind, name: string }} Ref
- * @typedef {'' | 'item' | 'quest' | 'stage' | 'visits' | 'visited' | 'done' | 'party' | 'game'} RefKind
+ * @typedef {'' | 'item' | 'quest' | 'stage' | 'visits' | 'visited' | 'done' | 'party' | 'creature' | 'game'} RefKind
  * @typedef {'=' | '!=' | '<' | '<=' | '>' | '>='} Cmp
  */
 
 /**
  * Prefixes of `kind:name` references. `party:<who>` is 1 while that villager (its id, actor or
- * name, in any case) is a member of the player's party, else 0 (docs/specs/PARTY.md §7.2).
+ * name, in any case) is a member of the player's party, else 0 (docs/specs/PARTY.md §7.2);
+ * `creature:<species>` is 1 while the player's roster holds that species, else 0 (plan §13).
  */
-export const REF_KINDS = /** @type {const} */ (['item', 'quest', 'stage', 'visits', 'visited', 'done', 'party']);
+export const REF_KINDS = /** @type {const} */ (['item', 'quest', 'stage', 'visits', 'visited', 'done', 'party', 'creature']);
 
 /**
  * Values of the game a condition reads by a bare word: the hour of day, the day (1 on a new game,
  * +1 at every midnight), the player's gold, the chapter in force, the level (base id), the weather,
- * — in a villager's talk — how many times the player talked to them before, and how many members
- * the player's party has (`party >= 2`; docs/specs/PARTY.md §7.2).
+ * — in a villager's talk — how many times the player talked to them before, how many members
+ * the player's party has (`party >= 2`; docs/specs/PARTY.md §7.2), and how many creatures the
+ * player's roster holds (`creature >= 1`; plan §13).
  */
-export const GAME_REFS = /** @type {const} */ (['hour', 'day', 'gold', 'chapter', 'level', 'weather', 'visits', 'party']);
+export const GAME_REFS = /** @type {const} */ (['hour', 'day', 'gold', 'chapter', 'level', 'weather', 'visits', 'party', 'creature']);
 
 /**
  * Words no flag or variable may be called: the game values, the condition words and words kept for

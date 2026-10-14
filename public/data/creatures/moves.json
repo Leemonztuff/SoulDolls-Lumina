@@ -1,0 +1,94 @@
+{
+  "format": "luminati-creatures-moves",
+  "version": 1,
+  "moves": [
+    {
+      "id": "nudge",
+      "name": "Nudge",
+      "type": "neutral",
+      "category": "physical",
+      "power": 35,
+      "accuracy": 100,
+      "pp": 35,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "peck",
+      "name": "Peck",
+      "type": "neutral",
+      "category": "physical",
+      "power": 35,
+      "accuracy": 100,
+      "pp": 35,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "spark",
+      "name": "Spark",
+      "type": "neutral",
+      "category": "special",
+      "power": 40,
+      "accuracy": 100,
+      "pp": 30,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "leafcut",
+      "name": "Leafcut",
+      "type": "grass",
+      "category": "physical",
+      "power": 45,
+      "accuracy": 100,
+      "pp": 25,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "emberpuff",
+      "name": "Emberpuff",
+      "type": "fire",
+      "category": "special",
+      "power": 45,
+      "accuracy": 100,
+      "pp": 25,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "splashjet",
+      "name": "Splashjet",
+      "type": "water",
+      "category": "special",
+      "power": 45,
+      "accuracy": 100,
+      "pp": 25,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "gust",
+      "name": "Gust",
+      "type": "neutral",
+      "category": "special",
+      "power": 40,
+      "accuracy": 100,
+      "pp": 35,
+      "priority": 0,
+      "effect": null
+    },
+    {
+      "id": "cinderroll",
+      "name": "Cinderroll",
+      "type": "fire",
+      "category": "physical",
+      "power": 50,
+      "accuracy": 95,
+      "pp": 20,
+      "priority": 0,
+      "effect": null
+    }
+  ]
+}

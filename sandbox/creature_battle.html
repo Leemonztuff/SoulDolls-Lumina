@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Luminati · Creature Battle UI sandbox</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    #app { position: fixed; inset: 0; background: radial-gradient(120% 90% at 50% 30%, #20242e, #0b0a10 78%); }
+    #help {
+      position: fixed; left: 10px; bottom: 8px; z-index: 20;
+      font: 12px/1.5 ui-monospace, Consolas, monospace; color: #8d8270; pointer-events: none;
+      background: rgba(11, 10, 16, 0.7); padding: 6px 9px; border: 1px solid rgba(201, 164, 92, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="help" aria-hidden="true"></div>
+  <script type="module" src="./creature_battle.js"></script>
+</body>
+</html>

@@ -166,6 +166,7 @@ is disposed. Typed by `GameHooks` (`state()` by `GameState`), the full member li
 | `level` | the normalised level object being played |
 | `levelSource` | where it came from: `levels/<slug>.json` or `local:<slot>` |
 | `combat` | **combat levels only** (a level with `enemy` objects or `environment.combat: true`): the combat test hooks of [§3.4](#34-window__gamecombat-combat-levels-only); absent on peaceful levels |
+| `creatures` | **levels with wild creatures** (a `creature` or `creature_zone` object, or `environment.creatures: true`): the wild-creature hooks of [§3.9](#39-window__gamecreatures-levels-with-wild-creatures); absent on peaceful levels |
 | `party` | every level: the party hooks of [§3.8](#38-window__gameparty-every-level) (the party itself is made on the first `join`) |
 
 ### 3.2 Methods
@@ -250,6 +251,7 @@ Captured on Emberfall at night in the rain:
 | `campaign` | **campaigns only**: where the campaign stands ([§3.6](#36-window__gamecampaign-campaigns-only)) |
 | `story` | **a story only**: the story's values, runs and events ([§3.7](#37-window__gamestory-a-story-only)); with a story, the generic shop's items are the story's (`story.items`), not `inventory` |
 | `party` | **once a party exists** (the first join, or a save that holds members; the key is absent otherwise): the members and the tactics panel ([§3.8](#38-window__gameparty-every-level)) |
+| `creatures` | **levels with wild creatures** (the key is absent otherwise): the wild-creature snapshot of [§3.9](#39-window__gamecreatures-levels-with-wild-creatures) |
 
 ### 3.4 `window.__game.combat` (combat levels only)
 
@@ -531,6 +533,39 @@ for —, `villagerOf(id)`, `memberOf(id)`, `infoOf(id)` (its `state().party` ent
 `memberTalk(id)`, `partWays(id)`, the recorded `toasts` and `barks`, and the script's steps
 `s01_before` … `s27b_calderaDone`).
 
+### 3.9 `window.__game.creatures` (levels with wild creatures)
+
+The wild-creature test hooks (a level with a `creature` or `creature_zone` object, or
+`environment.creatures: true` — [`levelHasCreatures`](../../src/engine/level/ObjectCatalog.js);
+objects: [OBJECT_CATALOG.md "creature"](OBJECT_CATALOG.md#creature)): the overworld system, the
+roster, and the running battle ([`src/game/creatures/CreatureSystem.js`](../../src/game/creatures/CreatureSystem.js),
+types: [`src/game/creatures/types.d.ts`](../../src/game/creatures/types.d.ts)). Absent on a peaceful
+level — though a story that gives a creature there makes the system (and this hook) later
+(`Game.ensureCreatures`; `tests.starter()` below).
+
+| Hook | Returns / effect |
+| --- | --- |
+| `state()` | the snapshot of [§3.3](#33-state-shape) (`Game.state().creatures`): `{ enabled, roster, orbs, creatures, zones, battle }` — the roster as saved, the orbs left, the wild actors' live feet `{ id, species, level, x, z }`, each zone's `{ id, steps, need }`, and `battle` `{ phase, outcome }` or `null` in the overworld. |
+| `roster` | the live [`CreatureRoster`](../../src/game/creatures/CreatureRoster.js): the active party and the box (`active()`, `box()`, `ids()`, `add(creature)`, `save()`…). Saved by the system; the test key stays away from the real roster. |
+| `orbs()` | `number` — the orbs left to throw. |
+| `setOrbs(n)` | sets the orbs (floor 0): a script may stage a capture. |
+| `startBattle(species, level = 3, seed = 'play-test')` | starts a wild battle against `species` at the player (battle RNG = `RNG(hashString(seed))`). Without a standing party member: the *no companion* toast, nothing else. |
+| `demo()` | seeds the play-test roster: an Emberling level 5 in the party, three orbs — nothing else (a script may then capture without touching a real save). |
+| `battle()` | the running battle's hooks, or `null` in the overworld: `begin` / `advance` / `chooseAction` / `chooseMove` / `chooseSwitch` (the shape of the [combat battle hooks](#35-statecombat-combat-levels-only)); the battle phases that need a menu wait for a choice, the others run on the battle's timer. |
+
+The overworld sandbox ([`sandbox/creature_overworld.js`](../../sandbox/creature_overworld.js),
+script `sandbox/creature.encounter.json`, the play-test seed `catch-me`): `makePeacefulFixture()` /
+`makeCreatureFixture()` / `makeStarterFixture()` build small test levels in-page (saved to the
+browser slots `creature-peaceful` / `creature-demo` / `creature-starter`), `saveFixtures()` /
+`savePeacefulFixture()` / `saveCreatureFixture()` write them, and `tests.peaceful()`,
+`tests.overworld()`, `tests.noParty()`, `tests.openContact()`, `tests.finishContact()`,
+`tests.capture()`, `tests.openZone()`, `tests.finishBattle()`, `tests.mirror()`, `tests.roster()`,
+`tests.rosterClose()`, `tests.starter()` hold the scripted checks. `tests.starter()` proves the
+lazy path: a level with a starter NPC but no creature object has no system at build, and the NPC's
+`talk` script (`creature starter`) makes one (`Game.ensureCreatures`), which then exposes
+`window.__game.creatures` — so the hook may be **absent at first** and appear after the story gives
+a creature. `STARTER` names the fixture's points; `STARTER_SLOT` its slot.
+
 ## 4. `window.__luminati`
 
 Set by [`src/main.js`](../../src/main.js) (`exposeHook`, typed by `LuminatiHooks`), merged in three
@@ -682,9 +717,12 @@ handle's full member list is the typedef next to its assignment in the sandbox f
 | `i18n_tour.js` (a module, imported by an `eval` step on the game page) | `window.IT` (`ready()`, `enter()`, `start()`, `wait(ms)`, `finish()`, `last()`, `tour()`, `talkThrough(npc, answers)`, `drain(answer, ms)`, `show(what)`, `close()`, `misses()`, `counts()`, `log` …): the content-text tour of one level, `sandbox/i18n.tour.json` ([I18N.md §4.8](I18N.md#48-call-sites)) |
 | `i18n_campaign.js` (a module, imported by an `eval` step on the game page) | `window.CT` (`go(name)` — a part: `ferryTitle` … `titleAgain`, `rooms`, `party`, and Cinderwatch's companions `camp`, `campTalks`, `ruins`, `caldera`, `selaJoins`, `fullIlse`, `fullOthers` —, `wait()`, `check(label)`, `dismissEnding()`, `talk(id, answer)`, `peek(id, picks, nth)` — a talk held open at its choice or at the `nth` page after the picks, for the script's `shot` —, `resume(answer)` — pages on through the window `peek` left —, `enterBark(id, x, z)` — the player put into a background `enter` event's box, its bark left up —, `settle(id)` — until that event ran to its end —, `member(id)`, `members()`, `rule(id)`, `barkUp()`, `results`, `trail` …) and `window.IT`: the content-text check of the campaigns, the story and the party, `sandbox/i18n.campaign.json` ([I18N.md §4.8](I18N.md#48-call-sites)) |
 | `combat_fixture.js` (a module, no page) | `makeCombatFixture()`, `saveCombatFixture()`, `FIXTURE`, `ready()`, `use(points)`, `cinderwatch()`, `tests.*` — see [§3.5](#35-statecombat-combat-levels-only) |
+| `creature_battle.html` | `window.__ui`, `window.__creature` (`state`, `info()`, `checks()` — the creature CSS / DOM only after `enableCreature`, the panels, the sprites, a scripted win, an orb thrown —, `battle`, `hud` …): the creature battle screen over a real `CreatureBattle`, [§3.9](#39-window__gamecreatures-levels-with-wild-creatures) |
+| `creature_overworld.js` (a module, no page) | `makePeacefulFixture()`, `makeCreatureFixture()`, `DEMO`, `saveFixtures()`, `savePeacefulFixture()`, `saveCreatureFixture()`, `ready()`, `tests.*` — see [§3.9](#39-window__gamecreatures-levels-with-wild-creatures) |
 
 The ready-made scripts next to them (`sandbox/*.actions.json`, `sandbox/editor_shell.*.json`,
-`sandbox/editor3d.*.actions.json`, `sandbox/editor_perf*.json`, `sandbox/combat.*.json`) are the
+`sandbox/editor3d.*.actions.json`, `sandbox/editor_perf*.json`, `sandbox/combat.*.json`,
+`sandbox/creature_battle.json`, `sandbox/creature.encounter.json`) are the
 best examples of what each hook can do. The combat scripts on the fixture start from any dev-server
 page (`--page=sandbox/index.html --query=`), save the fixture and `goto` the game:
 
@@ -700,6 +738,15 @@ npm run check -- --page=game.html --query="level=cinderwatch-pass&autostart=1" -
 npm run check -- --page=game.html --query=autostart=1 --out=peaceful --wait=2000 --fps=0 --script=sandbox/combat.peaceful.json
 npm run check -- --page=sandbox/index.html --query= --out=play --wait=0 --fps=0 --script=sandbox/combat.play.json      # the fixed-step bot (§10.6)
 npm run check -- --page=sandbox/combat_audio.html --query= --out=caudio --wait=1000 --fps=0 --script=sandbox/combat_audio.actions.json
+```
+
+The creature scripts (§3.9): `creature_battle.json` runs on the battle page directly;
+`creature.encounter.json` writes its own fixture to the dev-server level API, so it runs on the
+game page as-is:
+
+```bash
+npm run check -- --page=sandbox/creature_battle.html --query= --out=cbattle --fps=0 --script=sandbox/creature_battle.json
+npm run check -- --page=game.html --query="autostart=1" --out=coverworld --fps=0 --script=sandbox/creature.encounter.json
 ```
 
 `combat.programs.json` and `combat.perf.json` judge frame gaps and GPU timings: run them alone on

@@ -47,8 +47,8 @@
 8. Types — Props: [bench](#bench) · [barrel](#barrel) · [crate](#crate) · [crateStack](#cratestack) · [flowerbox](#flowerbox) · [signpost](#signpost) · [Interior](#interior): [bed](#bed) · [table](#table) · [chair](#chair) · [shelf](#shelf) · [hearth](#hearth) · [counter](#counter) · [rug](#rug) · [staircase](#staircase) · [wardrobe](#wardrobe) · [wallWindow](#wallwindow) · [sacks](#sacks)
 9. Types — Structures: [fence](#fence) · [bridge](#bridge)
 10. Types — Water: [waterfall](#waterfall)
-11. Types — Characters: [npc](#npc) · [critters](#critters)
-12. Types — Markers: [emitter](#emitter) · [region](#region) · [exit](#exit) · [entrance](#entrance) · [event](#event) · [marker](#marker) · Combat: [enemy](#enemy) · [chest](#chest) · [waystone](#waystone)
+11. Types — Characters: [npc](#npc) · [critters](#critters) · [creature](#creature)
+12. Types — Markers: [emitter](#emitter) · [region](#region) · [exit](#exit) · [entrance](#entrance) · [event](#event) · [marker](#marker) · [creature_zone](#creature_zone) · Combat: [enemy](#enemy) · [chest](#chest) · [waystone](#waystone)
 13. [Text fields and dialogue syntax](#13-text-fields-and-dialogue-syntax)
 14. [NPC actions, behaviours and scripts](#14-npc-actions-behaviours-and-scripts)
 15. [Extending the catalog](#15-extending-the-catalog)
@@ -71,6 +71,11 @@ campaign's generator covers them, Starfall Vale's coverage skips them.
 `counter`, `rug`, `staircase`, `wardrobe`, `wallWindow`, `sacks` — [Interior](#interior)), category
 **Interior**: ordinary props anywhere, made for the room levels (`environment.interior`); the
 interiors demo's generator covers them, Starfall Vale's coverage skips them (`isInteriorType`).
+`creature: true` marks the two wild-creature types (`creature`, `creature_zone` — the "Critters
+Collection"): a level with one of them hosts free-roaming wild creatures and encounter zones
+(`levelHasCreatures` decides; `environment.creatures: true` / `false` forces it on / off —
+[LEVEL_FORMAT.md §9.2](LEVEL_FORMAT.md#92-optional-fields)). No shipped level uses them yet;
+Starfall Vale's coverage check skips them.
 Every type's inspector ends with the story conditions `when` / `unless` (`STORY_FIELDS`: optional,
 no default, absent from files that do not use them; [STORY_SCRIPT.md §3](STORY_SCRIPT.md#3-conditions)).
 `kind` decides who builds the object: **prop** objects are built by `LevelObjectBuilder` (3D
@@ -117,12 +122,14 @@ toggle in the tool options places freely (`snapStep` in
 | `waterfall` | Waterfall | Water | point | prop | no (`facing`) | none | — | — |
 | `npc` | Villager (NPC) | Characters | point | actor | no (`facing`) | moving circle | — | Talk |
 | `critters` | Critters | Characters | point | actor | no | none | — | — |
+| `creature` | Wild creature | Characters | point | actor | no | none | — | contact (walking close): a creature battle |
 | `emitter` | Particle area | Markers | point | marker | no | none | — | — |
 | `region` | Region name | Markers | rect | marker | — | none | — | HUD name, arrival banner |
 | `exit` | Exit (to another level) | Markers | rect | marker | — | none | — | campaigns: travel (walk in, or Space) |
 | `entrance` | Entrance (arrival point) | Markers | point | marker | no (`facing`) | none | — | campaigns: where an exit arrives |
 | `event` | Story event | Markers | rect | marker | — | none | — | its script runs on its trigger (Space, walking in / out, arriving, a condition, the clock, a group defeated) |
 | `marker` | Story marker (named spot) | Markers | point | marker | no (`facing`) | none | — | a place story scripts name |
+| `creature_zone` | Creature zone | Markers | rect | marker | — | none | — | random encounters while the player walks inside |
 | `enemy` | Enemy group | Combat | point | actor | no | none (the combat system separates actors itself) | — | — (the creatures fight) |
 | `chest` | Treasure chest | Combat | point | prop | yes | circle r 0.45 | — | Examine; on a combat level Open |
 | `waystone` | Waystone (checkpoint) | Combat | point | prop | no | circle r 0.5 | — (it glows by bloom) | Examine; on a combat level attune by walking close, Rest |
@@ -144,6 +151,9 @@ Enumerations exported by the catalog:
 | `CARDINALS` | `N`, `S`, `E`, `W` |
 | `CHARACTER_PRESET_NAMES` | `traveler`, `swordsman`, `merchant`, `cleric`, `scholar`, `dancer`, `hunter`, `villager`, `farmer`, `elder`, `child`, `guard`, `innkeeper`, `bard` |
 | `CRITTER_KINDS` | `chicken`, `cat`, `bird`, `dog` |
+| `CREATURE_KINDS` | `leafling`, `emberling`, `rippling`, `mossling`, `sparrowling`, `stoneling`, `voltling`, `slitherling`, `buzzling`, `shadeling`, `frostling`, `aurorling` |
+| `CREATURE_INFO` | frozen `{ label }` per species (the editor labels; mirrors `CREATURE_DEFS[].name` in `src/game/creatures/defs.js`) |
+| `CREATURE_TABLES` | `meadow`, `forest`, `mountains`, `shore` (keys of `public/data/creatures/encounters.json`) |
 | `EMITTER_PRESETS` | `fireflies`, `leaves`, `petals`, `dust`, `embers`, `smoke`, `mist`, `sparkle`, `snow`, `rain` |
 | `NPC_ACTIONS` | `none` (Just talk), `rest` (Innkeeper), `shop` (Merchant), `music` (Bard) |
 | `NPC_BEHAVIOURS` | `wander`, `post`, `perform`, `chase` |
@@ -907,6 +917,32 @@ without spots starts at `(x, z)`.
 
 **In the game:** sprites only, no colliders. Big levels update far critters every 4th frame.
 
+### creature
+
+A free-roaming wild creature (the "Critters Collection"): the game spawns its overworld sprite at
+`(x, z)` — the point object's world centre — and walks it about while the player is on foot.
+Walking close **contacts** it and starts a creature battle ([`CreatureBattle`](../../src/game/creatures/CreatureBattle.js))
+against your standing party creature; with orbs in hand, the battle's *Creatures* action can
+instead throw a capture orb. A level needs one only when a party member is out (`creature.ui`
+toasts *You have no companion to fight with.* without one); the demo's contact battle is the
+level's "face" in the overworld.
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `species` | select | `leafling` | `CREATURE_KINDS` (labels `CREATURE_INFO`) | Unknown → `leafling` with a warning (like the enemy kinds). Stats per species: `public/data/creatures/species.json`, the mirror of `CREATURE_DEFS` in `src/game/creatures/defs.js`. |
+| `level` | int | `3` | 1–30 | The creature's level. |
+| `radius` | number | `2.5` | 0.5–12, step 0.1 | Roam radius: how far the creature wanders from its home spot (the game's floor is 0.3). |
+| `wander` | bool | *absent (on)* | | Off: the creature stands still (walking close still starts a battle). On (blank): it walks to a new spot inside the roam radius, pauses 1–3 s, and picks again every ~3 s. Never written by default: the game reads `wander !== false`, so files that do not use it do not change. |
+
+**In the game:** the contact distance is fixed at **1.0** (centre to centre) — `radius` is a
+wander amplitude, not a trigger range. The creature drifts within its roam radius while the player
+is on foot, stands frozen while the player talks, maps or photographs, and re-seeds to its start
+spot when the level is built again. Everything — its walks and its battles — is seeded from the
+object's id (`RNG` + `hashString`, no `Math.random()`), so the same level plays the same
+encounters. After a battle ends, 2 s pass before another can start. The roster and the orbs live
+across levels ([CAMPAIGN_FORMAT.md](CAMPAIGN_FORMAT.md), the creature roster mirror). On a peaceful
+level a `creature` object spawns nothing.
+
 ## Markers
 
 ### emitter
@@ -1032,6 +1068,24 @@ A named spot for the story's staging commands (`walk ilse well-side`, `camera we
 | --- | --- | --- | --- | --- |
 | `name` | text | `""` | | What scripts call it; blank = its id. |
 | `facing` | select | `down` | `FACINGS` | How an actor put here faces (`teleport`). |
+
+### creature_zone
+
+A rectangle of wild encounters (the "Critters Collection"): while the player walks inside, the
+zone counts the distance they cover and rolls a species from its encounter table; at the needed
+steps a wild battle starts (toast *You have no companion to fight with.* without a party member).
+Marker: the game reads it, nothing is built; the editor draws it (✧, green).
+
+| Field | Type | Default | Editor range / options | Notes |
+| --- | --- | --- | --- | --- |
+| `table` | select | `meadow` | `CREATURE_TABLES` | The encounter table: keys of `public/data/creatures/encounters.json` — `meadow` 90, `forest` 80, `mountains` 100, `shore` 85 steps per encounter, and the species / levels each table rolls. Unknown, or a file that fails to load: the zones stay empty (a warning). |
+| `steps` | int | (absent = the table's `stepsPerEncounter`) | 1–200 | How far (world units) the player must walk inside before a creature appears. Absent or 0 = the table's default, so files that do not use it do not change. |
+
+**In the game:** entering the rect starts the counter; **leaving resets it** (a teleport counts:
+its jump appears as a step). At `steps >= need` the zone rolls a battle and resets its counter.
+Several zones may overlap; each counts its own steps and rolls its own table. Deterministic: each
+battle is seeded from the zone's id and how many encounters it already rolled. On a peaceful level
+a `creature_zone` object counts nothing.
 
 ## Combat
 

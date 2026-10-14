@@ -135,6 +135,10 @@ export class LevelObjectBuilder {
         // an enemy group has no geometry: the combat system spawns its sprites (and the editor
         // previews them in its ActorPreview) — nothing to build, nothing to merge
         return null;
+      case 'creature':
+        // a wild creature has no geometry: the creature system spawns its sprite (and the editor
+        // previews it in its ActorPreview) — nothing to build, nothing to merge
+        return null;
       case 'tree': {
         res = f.tree(obj.x, h(obj.x, obj.z), obj.z, opts);
         if (obj.collider === false) res.colliders = [];

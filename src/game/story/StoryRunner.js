@@ -1422,7 +1422,7 @@ export class StoryRunner {
     const a = n.args;
     const s = this.state;
     // (the main run's window: a background run never closes it; `party menu` opens a panel over it)
-    const closes = CLOSES_DIALOG.has(n.op) || (n.op === 'party' && a.verb === 'menu');
+    const closes = CLOSES_DIALOG.has(n.op) || (n.op === 'party' && a.verb === 'menu') || (n.op === 'creature' && a.verb === 'menu');
     if (!run.background && closes && (g.ui.dialog.isHeld || g.ui.dialog.isOpen) && !(n.op === 'wait' && a.seconds === 0)) g.ui.dialog.close();
     switch (n.op) {
       case 'stop': return 'stop';
@@ -1483,6 +1483,7 @@ export class StoryRunner {
         this._healMembers();
         return '';
       case 'party': return this._party(n, run);
+      case 'creature': return this._creature(n, run);
       case 'shop': {
         const npc = run.self;
         if (!npc) throw new Error(`line ${n.line}: "shop" belongs in a villager's talk script`);
@@ -1779,6 +1780,73 @@ export class StoryRunner {
       case 'rule': party.setRule(member.id, a.preset, { source: 'story', quiet: run.fast }); break;
       case 'set': party.setField(member.id, a.field, a.value, { source: 'story', quiet: run.fast }); break;
       default: break;
+    }
+    return '';
+  }
+
+  /**
+   * The story's `creature` (plan §13): the player's roster. `give` / `starter` add a creature
+   * (`Game.ensureCreatures` makes the system on a level that plays none — a starter NPC in a
+   * peaceful town); `active` / `box` move one; `heal` restores the roster; `menu` opens the roster
+   * panel and waits until it closes (not in a skipped cutscene, nor in tests that answer for the
+   * player). The `creature` and `creature:<species>` conditions read the roster snapshot the system
+   * keeps in `this.state.creatures`.
+   * @param {Extract<ScriptNode, { t: 'cmd' }>} n
+   * @param {Run} run
+   * @returns {Promise<''>}
+   */
+  async _creature(n, run) {
+    const g = this.game;
+    const a = n.args;
+    const at = `line ${n.line}: creature ${a.verb}`;
+    if (a.verb === 'menu') {
+      const sys = g.creatures;
+      if (!sys) {
+        this._warn(run, `${at}: this level plays no creatures — no roster panel`);
+        return '';
+      }
+      if (!sys.roster.count) {
+        this._warn(run, `${at}: the roster is empty — no roster panel`);
+        return '';
+      }
+      if (a.species && !sys.roster.all.some((c) => c.species.toLowerCase() === String(a.species).toLowerCase())) {
+        this._warn(run, `${at}: "${a.species}" is not in the roster — the panel opens on the first row`);
+      }
+      if (run.fast || this._auto) {
+        this._trace.push('  [creature: roster (not opened)]');
+        return '';
+      }
+      if (!sys.openRoster()) {
+        this._warn(run, `${at}: the roster panel did not open`);
+        return '';
+      }
+      await this._until(() => !sys.rosterOpen, run);
+      return '';
+    }
+    const sys = typeof g.ensureCreatures === 'function' ? await g.ensureCreatures() : g.creatures;
+    if (!sys) {
+      this._warn(run, `${at}: this game has no creature system`);
+      return '';
+    }
+    switch (a.verb) {
+      case 'give': case 'starter': {
+        const species = a.species || 'leafling';
+        const level = a.verb === 'starter' ? 5 : a.level ?? 5;
+        const c = sys.give(species, level);
+        if (c) this._trace.push(`  [creature: ${species} joins]`);
+        else this._warn(run, `${at}: "${species}" could not be given`);
+        break;
+      }
+      case 'heal': sys.heal(); break;
+      case 'active':
+        if (!a.species) this._warn(run, `${at}: name the species to bring to the front`);
+        else if (!sys.makeActive(a.species)) this._warn(run, `${at}: the roster holds no "${a.species}"`);
+        break;
+      case 'box':
+        if (!a.species) this._warn(run, `${at}: name the species to move to the box`);
+        else if (!sys.moveToBox(a.species)) this._warn(run, `${at}: "${a.species}" is not in the party (or the box is full)`);
+        break;
+      default: this._warn(run, `${at}: unknown creature command`);
     }
     return '';
   }
