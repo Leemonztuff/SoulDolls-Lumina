@@ -28,20 +28,7 @@ import { currentFonts } from './FontLoader.js';
  * so the caller keeps its canvas.
  */
 
-/** The framed stat panels (art px of the 360 × 640 vertical smartphone frame). */
-const PANEL = Object.freeze({
-  foe: Object.freeze({ x: 16, y: 20, w: 328, h: 54 }),
-  player: Object.freeze({ x: 16, y: 310, w: 328, h: 54 }),
-});
-/** The log window along the foot. */
-const LOG = Object.freeze({ x: 16, y: 380, w: 328, h: 72 });
-/** The action menu's box (a 2 × 2 grid or vertical list below log). */
-const MENU = Object.freeze({ w: 328, right: 344, bottom: 624, pad: 8, itemH: 26 });
-/** Where the two sprites stand (art px) in vertical smartphone layout. */
-const SPRITE = Object.freeze({
-  foe: Object.freeze({ x: 180, y: 84, k: 3 }),
-  player: Object.freeze({ x: 40, y: 196, k: 3 }),
-});
+import { currentScale } from './UiScale.js';
 
 /** The type icons as an indexable record (the ids are checked against TYPE_ICONS at use). */
 const TYPE_ICON = /** @type {Record<string, string>} */ (TYPE_ICONS);
@@ -204,7 +191,12 @@ export class CreatureBattleHUD {
   /** The change key: a rebuild happens only when it differs (`_render(true)` forces one). @param {boolean} [force] */
   _render(force = false) {
     if (this._disposed) return;
-    const sig = this._signature();
+
+    const sc = currentScale(this.element);
+    const artW = Math.max(280, sc?.artW || Math.floor((this.element.clientWidth || window.innerWidth) / (sc?.cssPx || 2)) || 360);
+    const artH = Math.max(400, sc?.artH || Math.floor((this.element.clientHeight || window.innerHeight) / (sc?.cssPx || 2)) || 640);
+
+    const sig = this._signature(artW, artH);
     if (!force && sig === this._sig) return;
     this._sig = sig;
 
@@ -213,135 +205,190 @@ export class CreatureBattleHUD {
     const back = document.createElement('div');
     back.className = 'lu-creature__backdrop';
     this.element.append(back);
-    const stage = group(this.element, 'mc', 0, 0, 360, 640, 'lu-creature__stage');
+
+    // Full-screen responsive stage (100% artW x artH)
+    const stage = box(this.element, 0, 0, artW, artH, 'lu-creature__stage');
+
+    const pad = Math.max(8, Math.min(16, Math.floor(artW * 0.03)));
+
+    // Foe panel: top left
+    const foeW = Math.min(328, artW - pad * 2);
+    const foeH = 54;
+    const foeBox = { x: pad, y: pad, w: foeW, h: foeH };
+
+    // Action Menu: bottom center
+    const menuW = Math.min(328, artW - pad * 2);
+    const cols = (this._menu?.cols === 1) ? 1 : 2;
+    const menuItems = this._menu?.items?.length || 0;
+    const menuRows = menuItems > 0 ? Math.ceil(menuItems / cols) : 0;
+    const menuPad = 8;
+    const menuItemH = 26;
+    const menuH = menuItems > 0 ? 2 * menuPad + menuRows * menuItemH : 0;
+    const menuX = Math.round((artW - menuW) / 2);
+    const menuY = artH - menuH - pad;
+    const menuBox = { x: menuX, y: menuY, w: menuW, h: menuH, pad: menuPad, itemH: menuItemH };
+
+    // Combat Log: above action menu
+    const logW = Math.min(328, artW - pad * 2);
+    const logH = 64;
+    const logX = Math.round((artW - logW) / 2);
+    const logY = menuH > 0 ? menuY - logH - 6 : artH - logH - pad;
+    const logBox = { x: logX, y: logY, w: logW, h: logH };
+
+    // Player panel: above combat log
+    const playerW = Math.min(328, artW - pad * 2);
+    const playerH = 54;
+    const playerX = artW - playerW - pad;
+    const playerY = logY - playerH - 8;
+    const playerBox = { x: playerX, y: playerY, w: playerW, h: playerH };
+
+    // Pedestals / Sprites dynamic positioning
+    const foeCx = Math.round(artW * 0.70);
+    const foeCy = Math.round(foeBox.y + foeBox.h + (playerBox.y - (foeBox.y + foeBox.h)) * 0.28);
+
+    const playerCx = Math.round(artW * 0.30);
+    const playerCy = Math.round(foeBox.y + foeBox.h + (playerBox.y - (foeBox.y + foeBox.h)) * 0.72);
+
+    const foeSpritePos = { x: foeCx - 48, y: foeCy - 84, k: 3 };
+    const playerSpritePos = { x: playerCx - 48, y: playerCy - 84, k: 3 };
 
     const st = this._state;
     if (st) {
-      this._renderBackground(stage, st, k);
-      this._renderPanels(stage, st, k);
-      this._renderSprites(stage, st);
-      this._renderLog(stage, k);
-      this._renderMenu(stage, k);
+      this._renderBackground(stage, st, k, artW, artH, foeCx, foeCy, playerCx, playerCy);
+      this._renderPanels(stage, st, k, foeBox, playerBox);
+      this._renderSprites(stage, st, foeSpritePos, playerSpritePos);
+      this._renderLog(stage, k, logBox);
+      if (menuH > 0) {
+        this._renderMenu(stage, k, menuBox);
+      }
     }
   }
 
   /**
-   * Render dynamic 2D battle scene background and ground platforms.
+   * Render dynamic 2D battle scene background and ground platforms across full viewport.
    * @param {Element} stage
    * @param {BattleView} st
    * @param {ReturnType<typeof pal>} k
+   * @param {number} artW
+   * @param {number} artH
+   * @param {number} foeCx
+   * @param {number} foeCy
+   * @param {number} playerCx
+   * @param {number} playerCy
    */
-  _renderBackground(stage, st, k) {
+  _renderBackground(stage, st, k, artW, artH, foeCx, foeCy, playerCx, playerCy) {
     const terrain = (st.terrain || st.foe?.type || 'heath').toLowerCase();
-    const bgCanvas = art(360, 640, (p) => {
+    const horizonY = Math.round(foeCy + (playerCy - foeCy) * 0.4);
+
+    const bgCanvas = art(artW, artH, (p) => {
       if (terrain.includes('fen') || terrain.includes('water') || terrain.includes('shore')) {
         // --- Fen / Swamp / Water Environment ---
-        for (let y = 0; y < 320; y++) {
-          const ratio = y / 320;
+        for (let y = 0; y < horizonY; y++) {
+          const ratio = y / horizonY;
           const r = Math.round(10 + ratio * 15);
           const g = Math.round(25 + ratio * 35);
           const b = Math.round(40 + ratio * 35);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
-        for (let x = 0; x < 360; x++) {
-          const h = Math.sin(x * 0.01) * 15 + Math.cos(x * 0.025) * 8 + 200;
-          p.vline(x, Math.floor(h), 320 - Math.floor(h), '#133a3a');
+        for (let x = 0; x < artW; x++) {
+          const h = Math.sin(x * 0.01) * 15 + Math.cos(x * 0.025) * 8 + (horizonY - 20);
+          p.vline(x, Math.floor(h), horizonY - Math.floor(h), '#133a3a');
         }
-        for (let y = 320; y < 640; y++) {
-          const ratio = (y - 320) / 320;
+        for (let y = horizonY; y < artH; y++) {
+          const ratio = (y - horizonY) / (artH - horizonY);
           const r = Math.round(12 + ratio * 8);
           const g = Math.round(38 + ratio * 20);
           const b = Math.round(48 + ratio * 25);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(230, 160, 52, '#0f2928');
-        p.circle(230, 158, 48, '#18423f');
-        p.circle(230, 156, 44, '#235955');
+        p.circle(foeCx, foeCy, 52, '#0f2928');
+        p.circle(foeCx, foeCy - 2, 48, '#18423f');
+        p.circle(foeCx, foeCy - 4, 44, '#235955');
 
         // Player Platform
-        p.circle(110, 275, 60, '#0f2928');
-        p.circle(110, 272, 56, '#18423f');
-        p.circle(110, 269, 52, '#235955');
+        p.circle(playerCx, playerCy, 60, '#0f2928');
+        p.circle(playerCx, playerCy - 3, 56, '#18423f');
+        p.circle(playerCx, playerCy - 6, 52, '#235955');
 
       } else if (terrain.includes('cavern') || terrain.includes('earth') || terrain.includes('iron') || terrain.includes('mountains')) {
         // --- Cavern / Subterranean Environment ---
-        for (let y = 0; y < 640; y++) {
-          const ratio = y / 640;
+        for (let y = 0; y < artH; y++) {
+          const ratio = y / artH;
           const r = Math.round(15 + ratio * 15);
           const g = Math.round(18 + ratio * 18);
           const b = Math.round(28 + ratio * 28);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(230, 160, 52, '#0f172a');
-        p.circle(230, 158, 48, '#1e293b');
-        p.circle(230, 156, 44, '#334155');
+        p.circle(foeCx, foeCy, 52, '#0f172a');
+        p.circle(foeCx, foeCy - 2, 48, '#1e293b');
+        p.circle(foeCx, foeCy - 4, 44, '#334155');
 
         // Player Platform
-        p.circle(110, 275, 60, '#0f172a');
-        p.circle(110, 272, 56, '#1e293b');
-        p.circle(110, 269, 52, '#334155');
+        p.circle(playerCx, playerCy, 60, '#0f172a');
+        p.circle(playerCx, playerCy - 3, 56, '#1e293b');
+        p.circle(playerCx, playerCy - 6, 52, '#334155');
 
       } else if (terrain.includes('tide') || terrain.includes('sand')) {
         // --- Tide / Coastal Sands Environment ---
-        for (let y = 0; y < 300; y++) {
-          const ratio = y / 300;
+        for (let y = 0; y < horizonY; y++) {
+          const ratio = y / horizonY;
           const r = Math.round(30 + ratio * 50);
           const g = Math.round(30 + ratio * 30);
           const b = Math.round(70 + ratio * 40);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
-        for (let y = 300; y < 640; y++) {
-          const ratio = (y - 300) / 340;
+        for (let y = horizonY; y < artH; y++) {
+          const ratio = (y - horizonY) / (artH - horizonY);
           const r = Math.round(15 + ratio * 20);
           const g = Math.round(60 + ratio * 40);
           const b = Math.round(90 + ratio * 40);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(230, 160, 52, '#1e3a8a');
-        p.circle(230, 158, 48, '#854d0e');
-        p.circle(230, 156, 44, '#eab308');
+        p.circle(foeCx, foeCy, 52, '#1e3a8a');
+        p.circle(foeCx, foeCy - 2, 48, '#854d0e');
+        p.circle(foeCx, foeCy - 4, 44, '#eab308');
 
         // Player Platform
-        p.circle(110, 275, 60, '#1e3a8a');
-        p.circle(110, 272, 56, '#854d0e');
-        p.circle(110, 269, 52, '#eab308');
+        p.circle(playerCx, playerCy, 60, '#1e3a8a');
+        p.circle(playerCx, playerCy - 3, 56, '#854d0e');
+        p.circle(playerCx, playerCy - 6, 52, '#eab308');
 
       } else {
         // --- Heath / Grassland / Forest Environment (Default) ---
-        for (let y = 0; y < 310; y++) {
-          const ratio = y / 310;
+        for (let y = 0; y < horizonY; y++) {
+          const ratio = y / horizonY;
           const r = Math.round(20 + ratio * 20);
           const g = Math.round(20 + ratio * 30);
           const b = Math.round(45 + ratio * 35);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
-        for (let x = 0; x < 360; x++) {
-          const h1 = Math.sin(x * 0.008) * 20 + Math.cos(x * 0.015) * 12 + 220;
-          p.vline(x, Math.floor(h1), 310 - Math.floor(h1), '#14382c');
+        for (let x = 0; x < artW; x++) {
+          const h1 = Math.sin(x * 0.008) * 20 + Math.cos(x * 0.015) * 12 + (horizonY - 20);
+          p.vline(x, Math.floor(h1), horizonY - Math.floor(h1), '#14382c');
         }
-        for (let y = 310; y < 640; y++) {
-          const ratio = (y - 310) / 330;
+        for (let y = horizonY; y < artH; y++) {
+          const ratio = (y - horizonY) / (artH - horizonY);
           const r = Math.round(15 + ratio * 15);
           const g = Math.round(45 + ratio * 30);
           const b = Math.round(30 + ratio * 20);
-          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
+          p.hline(0, y, artW, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(230, 160, 52, '#092d1f');
-        p.circle(230, 158, 48, '#115e3b');
-        p.circle(230, 156, 44, '#16a34a');
+        p.circle(foeCx, foeCy, 52, '#092d1f');
+        p.circle(foeCx, foeCy - 2, 48, '#115e3b');
+        p.circle(foeCx, foeCy - 4, 44, '#16a34a');
 
         // Player Platform
-        p.circle(110, 275, 60, '#092d1f');
-        p.circle(110, 272, 56, '#115e3b');
-        p.circle(110, 269, 52, '#16a34a');
+        p.circle(playerCx, playerCy, 60, '#092d1f');
+        p.circle(playerCx, playerCy - 3, 56, '#115e3b');
+        p.circle(playerCx, playerCy - 6, 52, '#16a34a');
       }
     });
 
@@ -349,11 +396,12 @@ export class CreatureBattleHUD {
   }
 
   /** @returns {string} */
-  _signature() {
+  _signature(artW = 360, artH = 640) {
     const st = this._state;
     const m = this._menu;
     const side = (s) => (s ? `${s.uid}|${s.name}|${s.level}|${s.hp}|${s.maxHp}|${s.hpRatio ?? ''}|${s.fainted ? 1 : 0}|${JSON.stringify(s.parts || s.paperdoll || '')}` : '');
     return [
+      `${artW}x${artH}`,
       st ? `${st.phase ?? ''}|${st.terrain ?? ''}|${side(st.player)}|${side(st.foe)}` : '',
       this._display.player ?? '',
       this._display.foe ?? '',
@@ -437,11 +485,13 @@ export class CreatureBattleHUD {
    * @param {Element} stage
    * @param {BattleView} st
    * @param {ReturnType<typeof pal>} k
+   * @param {{ x: number, y: number, w: number, h: number }} foeBox
+   * @param {{ x: number, y: number, w: number, h: number }} playerBox
    */
-  _renderPanels(stage, st, k) {
+  _renderPanels(stage, st, k, foeBox, playerBox) {
     for (const side of /** @type {('foe'|'player')[]} */ (['foe', 'player'])) {
       const info = side === 'foe' ? st.foe : st.player;
-      const p = PANEL[side];
+      const p = side === 'foe' ? foeBox : playerBox;
       const el = box(stage, p.x, p.y, p.w, p.h, `lu-creature__panel lu-creature__panel--${side}`);
       win(el, { size: 'M', beads: true }, p.x, p.y, p.w, p.h);
       if (info.fainted) el.classList.add('is-fainted');
@@ -461,15 +511,17 @@ export class CreatureBattleHUD {
   }
 
   /**
-   * The two sprites (already-cropped canvases, shown at 2 art px a canvas px).
+   * The two sprites (already-cropped canvases).
    * @param {Element} stage
    * @param {BattleView} st
+   * @param {{ x: number, y: number, k: number }} foeSpritePos
+   * @param {{ x: number, y: number, k: number }} playerSpritePos
    */
-  _renderSprites(stage, st) {
+  _renderSprites(stage, st, foeSpritePos, playerSpritePos) {
     for (const side of /** @type {('foe'|'player')[]} */ (['foe', 'player'])) {
       const c = this._sprites[side];
       if (!c) continue;
-      const s = SPRITE[side];
+      const s = side === 'foe' ? foeSpritePos : playerSpritePos;
       const fainted = !!(side === 'foe' ? st.foe.fainted : st.player.fainted);
       put(stage, c, s.x, s.y, s.k, `lu-creature__sprite lu-creature__sprite--${side}${fainted ? ' is-fainted' : ''}`);
     }
@@ -479,42 +531,45 @@ export class CreatureBattleHUD {
    * The log window: the last two wrapped rows of the log's lines.
    * @param {Element} stage
    * @param {ReturnType<typeof pal>} k
+   * @param {{ x: number, y: number, w: number, h: number }} logBox
    */
-  _renderLog(stage, k) {
-    const el = box(stage, LOG.x, LOG.y, LOG.w, LOG.h, 'lu-creature__log');
-    win(el, { size: 'M', beads: true }, LOG.x, LOG.y, LOG.w, LOG.h);
+  _renderLog(stage, k, logBox) {
+    const el = box(stage, logBox.x, logBox.y, logBox.w, logBox.h, 'lu-creature__log');
+    win(el, { size: 'M', beads: true }, logBox.x, logBox.y, logBox.w, logBox.h);
     /** @type {string[]} */
     const rows = [];
-    for (const ln of this._log) for (const w of lines(String(ln ?? ''), 'line', LOG.w - 20)) rows.push(w);
+    for (const ln of this._log) for (const w of lines(String(ln ?? ''), 'line', logBox.w - 20)) rows.push(w);
     const pitch = cjk() ? FONT.line.L : 16 * FONT.line.unit;
     rows.slice(-2).forEach((r, i) => {
-      txt(el, r, LOG.x + 10, LOG.y + 9 + i * pitch, { font: 'line', color: k.tx1, ol: true });
+      txt(el, r, logBox.x + 10, logBox.y + 9 + i * pitch, { font: 'line', color: k.tx1, ol: true });
     });
   }
 
   /**
-   * The action menu (a 2 × 2 grid, or a vertical list), anchored to the foot's right.
+   * The action menu (a 2 × 2 grid, or a vertical list), anchored to the foot.
    * @param {Element} stage
    * @param {ReturnType<typeof pal>} k
+   * @param {{ x: number, y: number, w: number, h: number, pad: number, itemH: number }} menuBox
    */
-  _renderMenu(stage, k) {
+  _renderMenu(stage, k, menuBox) {
     const m = this._menu;
     if (!m || !m.items.length) return;
     const cols = m.cols === 1 ? 1 : 2;
-    const rows = Math.ceil(m.items.length / cols);
-    const w = MENU.w;
-    const itemW = Math.floor((w - 2 * MENU.pad) / cols);
-    const mh = 2 * MENU.pad + rows * MENU.itemH;
-    const mx = MENU.right - w;
-    const my = MENU.bottom - mh;
+    const w = menuBox.w;
+    const pad = menuBox.pad;
+    const itemH = menuBox.itemH;
+    const itemW = Math.floor((w - 2 * pad) / cols);
+    const mh = menuBox.h;
+    const mx = menuBox.x;
+    const my = menuBox.y;
     const el = box(stage, mx, my, w, mh, 'lu-creature__menu');
     win(el, { size: 'M', beads: true }, mx, my, w, mh);
     const cursor = Number.isInteger(m.cursor) ? /** @type {number} */ (m.cursor) : 0;
     m.items.forEach((it, i) => {
       const r = Math.floor(i / cols), c = i % cols;
-      const ix = mx + MENU.pad + c * itemW;
-      const iy = my + MENU.pad + r * MENU.itemH;
-      const row = box(el, ix, iy, itemW, MENU.itemH, 'lu-creature__item');
+      const ix = mx + pad + c * itemW;
+      const iy = my + pad + r * itemH;
+      const row = box(el, ix, iy, itemW, itemH, 'lu-creature__item');
       row.dataset.index = String(i);
       if (i === cursor) row.classList.add('is-sel');
       if (it.disabled) row.classList.add('is-disabled');
