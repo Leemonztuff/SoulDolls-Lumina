@@ -13,12 +13,21 @@
 .lu-root .lu-creature {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 7;
   overflow: hidden;
   visibility: hidden;
   pointer-events: none;
 }
 .lu-root .lu-creature.is-on { visibility: visible; }
+
+.lu-root .lu-creature__stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
 
 /* the backdrop: today's navy, darkest at the edges */
 .lu-root .lu-creature__backdrop {
