@@ -147,7 +147,7 @@ function emblem(p, art, cx, y, back) {
  * @param {{key: string, bob: number, br: number, walk: number}} pose
  * @param {boolean} big
  */
-function drawSpecies(p, art, view, pose, big) {
+function drawSpecies(p, art, view, pose, big, id) {
   const cx = Math.round(p.w / 2);
   const G = p.h - 3;
   const bob = pose.key === 'walk1' || pose.key === 'walk3' ? -1 : 0;
@@ -192,7 +192,36 @@ function drawSpecies(p, art, view, pose, big) {
 
   // head emblem
   emblem(p, art, cx, cy - ry - (big ? 1 : 0), view === 'up');
+
+  // Ethereal soul/spirit aura & wisp particles (ALMA spirit aesthetic)
+  const isSpirit = SOULDOLL_SPECIES.has(id) || art.type === 'fire' || art.body === 'purple' || art.body === 'water';
+  if (isSpirit) {
+    // Wispy spirit tail underneath / trailing
+    const tailY = cy + ry + 1;
+    p.set(cx, tailY, M.GLOW, 3);
+    p.set(cx - 1, tailY + 1, M.FUR2, 2);
+    p.set(cx + 1, tailY + 1, M.GLOW, 4);
+    if (big) {
+      p.set(cx, tailY + 2, M.GLOW, 2);
+      p.set(cx - 2, tailY + 2, M.GLOW, 1);
+      p.set(cx + 2, tailY + 3, M.GLOW, 3);
+    }
+
+    // Floating energy particles around the spirit aura
+    const offsets = big
+      ? [[-cx + 3, -4], [cx - 4, -5], [-cx + 2, 2], [cx - 3, 3], [-2, -ry - 3], [2, -ry - 2]]
+      : [[-3, -3], [3, -4], [-4, 1], [4, 2]];
+    for (const [ox, oy] of offsets) {
+      p.set(cx + ox, cy + oy, M.GLOW, 4);
+    }
+  }
 }
+
+/** Set of species belonging to Souldolls campaign */
+const SOULDOLL_SPECIES = new Set([
+  'peatling', 'mossmote', 'boggart', 'lanternfly', 'gloamwing', 'cinderbound',
+  'cavernmite', 'murkfin', 'shellskimmer', 'saltling', 'hollowwisp', 'tidewisp',
+]);
 
 /**
  * Create a species sprite sheet (callers cache it: one sheet per (id, pose) is shared). An unknown
@@ -221,7 +250,7 @@ export function createSpeciesSheet(id, { pose = 'front' } = {}) {
     const view = dir === 'down' ? 'down' : dir === 'up' ? 'up' : 'side';
     POSES.forEach((poseSpec, col) => {
       p.clear();
-      drawSpecies(p, art, view, poseSpec, big);
+      drawSpecies(p, art, view, poseSpec, big, id);
       resolvePainter(p, ramps, sheet, col * FW, row * FH, dir === 'right');
     });
   });

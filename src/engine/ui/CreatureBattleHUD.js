@@ -57,12 +57,15 @@ const TYPE_ICON = /** @type {Record<string, string>} */ (TYPE_ICONS);
  * @property {number} maxHp
  * @property {number} [hpRatio] HP as a 0..1 fraction (computed from hp / maxHp when absent)
  * @property {boolean} [fainted]
+ * @property {Record<string, string|number>} [parts]
+ * @property {Record<string, string|number>} [paperdoll]
  */
 
 /**
  * A battle snapshot as the HUD reads it (a subset of BattleState, no `src/game` import).
  * @typedef {object} BattleView
  * @property {string} [phase]
+ * @property {string} [terrain]
  * @property {BattleSideView} player
  * @property {BattleSideView} foe
  */
@@ -214,6 +217,7 @@ export class CreatureBattleHUD {
 
     const st = this._state;
     if (st) {
+      this._renderBackground(stage, st, k);
       this._renderPanels(stage, st, k);
       this._renderSprites(stage, st);
       this._renderLog(stage, k);
@@ -221,13 +225,166 @@ export class CreatureBattleHUD {
     }
   }
 
+  /**
+   * Render dynamic 2D battle scene background and ground platforms.
+   * @param {Element} stage
+   * @param {BattleView} st
+   * @param {ReturnType<typeof pal>} k
+   */
+  _renderBackground(stage, st, k) {
+    const terrain = (st.terrain || st.foe?.type || 'heath').toLowerCase();
+    const bgCanvas = art(640, 360, (p) => {
+      if (terrain.includes('fen') || terrain.includes('water') || terrain.includes('shore')) {
+        // --- Fen / Swamp / Water Environment ---
+        for (let y = 0; y < 180; y++) {
+          const ratio = y / 180;
+          const r = Math.round(10 + ratio * 15);
+          const g = Math.round(25 + ratio * 35);
+          const b = Math.round(40 + ratio * 35);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+        for (let x = 0; x < 640; x++) {
+          const h = Math.sin(x * 0.01) * 15 + Math.cos(x * 0.025) * 8 + 120;
+          p.vline(x, Math.floor(h), 180 - Math.floor(h), '#133a3a');
+        }
+        for (let y = 180; y < 360; y++) {
+          const ratio = (y - 180) / 180;
+          const r = Math.round(12 + ratio * 8);
+          const g = Math.round(38 + ratio * 20);
+          const b = Math.round(48 + ratio * 25);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+        for (let i = 0; i < 20; i++) {
+          const wy = 190 + (i * 8);
+          p.hline((i * 37) % 500, wy, 60 + (i % 5) * 20, 'rgba(120, 220, 210, 0.15)');
+        }
+
+        // Foe Platform
+        p.circle(436, 114, 48, '#0f2928');
+        p.circle(436, 112, 46, '#18423f');
+        p.circle(436, 110, 42, '#235955');
+        p.circle(420, 108, 12, '#2e7d62');
+        p.circle(450, 110, 10, '#2e7d62');
+
+        // Player Platform
+        p.circle(128, 244, 68, '#0f2928');
+        p.circle(128, 240, 64, '#18423f');
+        p.circle(128, 236, 60, '#235955');
+        p.circle(100, 234, 18, '#2e7d62');
+        p.circle(150, 236, 16, '#2e7d62');
+
+      } else if (terrain.includes('cavern') || terrain.includes('earth') || terrain.includes('iron') || terrain.includes('mountains')) {
+        // --- Cavern / Subterranean Environment ---
+        for (let y = 0; y < 360; y++) {
+          const ratio = y / 360;
+          const r = Math.round(15 + ratio * 15);
+          const g = Math.round(18 + ratio * 18);
+          const b = Math.round(28 + ratio * 28);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+        for (let i = 0; i < 16; i++) {
+          const sx = i * 42 + 10;
+          const sh = 20 + ((i * 17) % 35);
+          for (let sy = 0; sy < sh; sy++) {
+            const w = Math.max(1, Math.floor((1 - sy / sh) * 8));
+            p.hline(sx - Math.floor(w / 2), sy, w, '#1e293b');
+          }
+        }
+        p.circle(180, 140, 8, 'rgba(56, 189, 248, 0.25)');
+        p.px(180, 140, '#38bdf8');
+        p.circle(520, 110, 10, 'rgba(168, 85, 247, 0.25)');
+        p.px(520, 110, '#a855f7');
+
+        // Foe Platform
+        p.circle(436, 114, 48, '#0f172a');
+        p.circle(436, 112, 46, '#1e293b');
+        p.circle(436, 110, 42, '#334155');
+        p.rect(400, 110, 72, 4, '#475569');
+
+        // Player Platform
+        p.circle(128, 244, 68, '#0f172a');
+        p.circle(128, 240, 64, '#1e293b');
+        p.circle(128, 236, 60, '#334155');
+        p.rect(80, 236, 96, 5, '#475569');
+
+      } else if (terrain.includes('tide') || terrain.includes('sand')) {
+        // --- Tide / Coastal Sands Environment ---
+        for (let y = 0; y < 170; y++) {
+          const ratio = y / 170;
+          const r = Math.round(30 + ratio * 50);
+          const g = Math.round(30 + ratio * 30);
+          const b = Math.round(70 + ratio * 40);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+        for (let y = 170; y < 360; y++) {
+          const ratio = (y - 170) / 190;
+          const r = Math.round(15 + ratio * 20);
+          const g = Math.round(60 + ratio * 40);
+          const b = Math.round(90 + ratio * 40);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+        for (let i = 0; i < 15; i++) {
+          const wy = 175 + i * 10;
+          p.hline((i * 45) % 550, wy, 80 + (i % 4) * 25, 'rgba(186, 230, 253, 0.2)');
+        }
+
+        // Foe Platform
+        p.circle(436, 114, 48, '#1e3a8a');
+        p.circle(436, 112, 46, '#854d0e');
+        p.circle(436, 110, 42, '#ca8a04');
+        p.circle(436, 108, 38, '#eab308');
+
+        // Player Platform
+        p.circle(128, 244, 68, '#1e3a8a');
+        p.circle(128, 240, 64, '#854d0e');
+        p.circle(128, 236, 60, '#ca8a04');
+        p.circle(128, 232, 54, '#eab308');
+
+      } else {
+        // --- Heath / Grassland / Forest Environment (Default) ---
+        for (let y = 0; y < 180; y++) {
+          const ratio = y / 180;
+          const r = Math.round(20 + ratio * 20);
+          const g = Math.round(20 + ratio * 30);
+          const b = Math.round(45 + ratio * 35);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+        for (let x = 0; x < 640; x++) {
+          const h1 = Math.sin(x * 0.008) * 20 + Math.cos(x * 0.015) * 12 + 130;
+          p.vline(x, Math.floor(h1), 180 - Math.floor(h1), '#14382c');
+        }
+        for (let y = 180; y < 360; y++) {
+          const ratio = (y - 180) / 180;
+          const r = Math.round(15 + ratio * 15);
+          const g = Math.round(45 + ratio * 30);
+          const b = Math.round(30 + ratio * 20);
+          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+        }
+
+        // Foe Platform
+        p.circle(436, 114, 48, '#092d1f');
+        p.circle(436, 112, 46, '#115e3b');
+        p.circle(436, 110, 42, '#16a34a');
+        p.circle(420, 108, 10, '#22c55e');
+
+        // Player Platform
+        p.circle(128, 244, 68, '#092d1f');
+        p.circle(128, 240, 64, '#115e3b');
+        p.circle(128, 236, 60, '#16a34a');
+        p.circle(110, 232, 16, '#22c55e');
+      }
+    });
+
+    put(stage, bgCanvas, 0, 0, 1, 'lu-creature__bg');
+  }
+
   /** @returns {string} */
   _signature() {
     const st = this._state;
     const m = this._menu;
-    const side = (s) => (s ? `${s.uid}|${s.name}|${s.level}|${s.hp}|${s.maxHp}|${s.hpRatio ?? ''}|${s.fainted ? 1 : 0}` : '');
+    const side = (s) => (s ? `${s.uid}|${s.name}|${s.level}|${s.hp}|${s.maxHp}|${s.hpRatio ?? ''}|${s.fainted ? 1 : 0}|${JSON.stringify(s.parts || s.paperdoll || '')}` : '');
     return [
-      st ? `${st.phase ?? ''}|${side(st.player)}|${side(st.foe)}` : '',
+      st ? `${st.phase ?? ''}|${st.terrain ?? ''}|${side(st.player)}|${side(st.foe)}` : '',
       this._display.player ?? '',
       this._display.foe ?? '',
       m ? `${m.cursor ?? 0}|${m.cols ?? 2}|${m.items.map((it) => `${it.label ?? ''}~${it.sub ?? ''}~${it.disabled ? 1 : 0}`).join('\u001f')}` : '',
@@ -244,6 +401,64 @@ export class CreatureBattleHUD {
   _name(side, info) {
     const v = side === 'foe' ? this._display.foe : this._display.player;
     return typeof v === 'string' && v ? v : info.name;
+  }
+
+  /**
+   * Render paperdoll body part status icon (head, torso, arms, legs) for a creature.
+   * Status colors: green = healthy, yellow = damaged, red = broken.
+   * @param {BattleSideView} info
+   * @returns {HTMLCanvasElement}
+   */
+  _drawPaperdoll(info) {
+    const ratio = typeof info.hpRatio === 'number' ? info.hpRatio : (info.maxHp > 0 ? info.hp / info.maxHp : 0);
+    const partsInput = info.parts || info.paperdoll || {};
+
+    /**
+     * @param {string|number|undefined} val
+     * @param {() => string} fallbackHpCheck
+     */
+    const getColor = (val, fallbackHpCheck) => {
+      if (val === 'red' || val === 'broken' || val === 2) return '#ef4444';
+      if (val === 'yellow' || val === 'damaged' || val === 1) return '#eab308';
+      if (val === 'green' || val === 'healthy' || val === 0) return '#22c55e';
+      return fallbackHpCheck();
+    };
+
+    const headCol = getColor(partsInput.head, () => (ratio > 0.35 ? '#22c55e' : ratio > 0 ? '#eab308' : '#ef4444'));
+    const torsoCol = getColor(partsInput.torso, () => (ratio > 0.5 ? '#22c55e' : ratio > 0.2 ? '#eab308' : '#ef4444'));
+    const armsCol = getColor(partsInput.arms, () => (ratio > 0.65 ? '#22c55e' : ratio > 0.35 ? '#eab308' : '#ef4444'));
+    const legsCol = getColor(partsInput.legs, () => (ratio > 0.75 ? '#22c55e' : ratio > 0.4 ? '#eab308' : '#ef4444'));
+
+    return art(38, 26, (p) => {
+      p.rect(0, 0, 38, 26, '#0f172a');
+      p.box(0, 0, 38, 26, '#334155');
+
+      // Head
+      p.rect(17, 2, 5, 5, headCol);
+      p.box(17, 2, 5, 5, '#020617');
+
+      // Torso
+      p.rect(16, 8, 7, 8, torsoCol);
+      p.box(16, 8, 7, 8, '#020617');
+
+      // Arms
+      p.rect(12, 8, 3, 7, armsCol);
+      p.box(12, 8, 3, 7, '#020617');
+      p.rect(24, 8, 3, 7, armsCol);
+      p.box(24, 8, 3, 7, '#020617');
+
+      // Legs
+      p.rect(16, 17, 3, 7, legsCol);
+      p.box(16, 17, 3, 7, '#020617');
+      p.rect(20, 17, 3, 7, legsCol);
+      p.box(20, 17, 3, 7, '#020617');
+
+      // Mini status indicator dots at left side
+      p.rect(2, 3, 3, 3, headCol);
+      p.rect(2, 8, 3, 3, torsoCol);
+      p.rect(2, 13, 3, 3, armsCol);
+      p.rect(2, 18, 3, 3, legsCol);
+    });
   }
 
   /**
@@ -264,11 +479,14 @@ export class CreatureBattleHUD {
       const t = info.type ? TYPE_ICON[info.type] : null;
       if (t) put(el, creatureIcon(t), p.x + p.w - 25, p.y + 4, 1, 'lu-creature__type');
       txt(el, `Lv${info.level}`, p.x + 9, p.y + 25, { font: 'num', color: k.g5, drop: true });
-      const bx = p.x + 34, bw = p.w - 34 - 9, by = p.y + 26, bh = 7;
+      const bx = p.x + 34, bw = p.w - 34 - 52, by = p.y + 26, bh = 7;
       const ratio = typeof info.hpRatio === 'number' ? info.hpRatio : info.maxHp > 0 ? info.hp / info.maxHp : 0;
       const track = box(el, bx, by, bw, bh, 'lu-creature__track');
       put(track, art(bw, bh, (pp) => bar(pp, bw, bh, ratio, [k.hp0, k.hp1, k.hp2, k.hp3], { ring: k.dm1 })), bx, by);
-      if (side === 'player') txt(el, `${info.hp}/${info.maxHp}`, p.x + p.w - 9, p.y + 36, { font: 'num', color: k.tx1, align: 'right', drop: true });
+      if (side === 'player') txt(el, `${info.hp}/${info.maxHp}`, p.x + p.w - 56, p.y + 36, { font: 'num', color: k.tx1, align: 'right', drop: true });
+
+      const pdCanvas = this._drawPaperdoll(info);
+      put(el, pdCanvas, p.x + p.w - 44, p.y + 18, 1, 'lu-creature__paperdoll');
     }
   }
 
