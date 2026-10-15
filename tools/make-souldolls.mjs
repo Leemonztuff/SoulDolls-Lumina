@@ -130,12 +130,13 @@ function towerStair(L, id, x, z, { dir, to, entrance, here, label, facing }) {
 }
 
 /** The way out of the ground floor: the low south wall's door out to hushmoor-hollow. */
+/** @returns {{ x: number, z: number, facing: 'up' }} */
 function towerFrontDoor(L) {
   put(L, 'en_tower_door', 'entrance', 9, 11.7, { name: 'tower-door', facing: 'up' });
   put(L, 'ex_tower_door', 'exit', 0, 0, {
     minX: 7.8, maxX: 10.2, minZ: 12.2, maxZ: TOWER_D, to: 'hushmoor-hollow', entrance: 'tower-door', mode: 'use', label: 'Go out',
   });
-  return { x: 9, z: 11.7 };
+  return { x: 9, z: 11.7, facing: 'up' };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -802,6 +803,10 @@ const campaignRaw = {
   start: { level: 'hushmoor-hollow', entrance: 'hollow-start' },
   levels: [
     { id: 'hushmoor-hollow', at: [0, 0] },
+    { id: 'tower-floor-1' },
+    { id: 'tower-floor-2' },
+    { id: 'tower-floor-3' },
+    { id: 'tower-floor-4' },
     { id: 'lantern-road', at: [40, 6] },
     { id: 'gloamford', at: [96, 0] },
     { id: 'bellbindery' },
@@ -839,6 +844,10 @@ const campaignRaw = {
 /** @type {[string, Level][]} */
 const built = [
   ['hushmoor-hollow', buildHushmoorHollow()],
+  ['tower-floor-1', buildTowerFloor1()],
+  ['tower-floor-2', buildTowerFloor2()],
+  ['tower-floor-3', buildTowerFloor3()],
+  ['tower-floor-4', buildTowerFloor4()],
   ['lantern-road', buildLanternRoad()],
   ['gloamford', buildGloamford()],
   ['bellbindery', buildBellbindery()],
