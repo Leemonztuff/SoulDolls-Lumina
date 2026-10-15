@@ -28,19 +28,19 @@ import { currentFonts } from './FontLoader.js';
  * so the caller keeps its canvas.
  */
 
-/** The framed stat panels (art px of the 640 × 360 frame). */
+/** The framed stat panels (art px of the 360 × 640 vertical smartphone frame). */
 const PANEL = Object.freeze({
-  foe: Object.freeze({ x: 24, y: 24, w: 250, h: 48 }),
-  player: Object.freeze({ x: 366, y: 166, w: 250, h: 48 }),
+  foe: Object.freeze({ x: 16, y: 20, w: 328, h: 54 }),
+  player: Object.freeze({ x: 16, y: 310, w: 328, h: 54 }),
 });
 /** The log window along the foot. */
-const LOG = Object.freeze({ x: 16, y: 302, w: 388, h: 46 });
-/** The action menu's box (a 2 × 2 grid, or a vertical list that grows upward from the foot). */
-const MENU = Object.freeze({ w: 208, right: 624, bottom: 348, pad: 6, itemH: 18 });
-/** Where the two sprites stand (art px) and how many art px each of their canvas px takes. */
+const LOG = Object.freeze({ x: 16, y: 380, w: 328, h: 72 });
+/** The action menu's box (a 2 × 2 grid or vertical list below log). */
+const MENU = Object.freeze({ w: 328, right: 344, bottom: 624, pad: 8, itemH: 26 });
+/** Where the two sprites stand (art px) in vertical smartphone layout. */
 const SPRITE = Object.freeze({
-  foe: Object.freeze({ x: 404, y: 56, k: 2 }),
-  player: Object.freeze({ x: 96, y: 184, k: 2 }),
+  foe: Object.freeze({ x: 180, y: 84, k: 3 }),
+  player: Object.freeze({ x: 40, y: 196, k: 3 }),
 });
 
 /** The type icons as an indexable record (the ids are checked against TYPE_ICONS at use). */
@@ -213,7 +213,7 @@ export class CreatureBattleHUD {
     const back = document.createElement('div');
     back.className = 'lu-creature__backdrop';
     this.element.append(back);
-    const stage = group(this.element, 'mc', 0, 0, 640, 360, 'lu-creature__stage');
+    const stage = group(this.element, 'mc', 0, 0, 360, 640, 'lu-creature__stage');
 
     const st = this._state;
     if (st) {
@@ -233,145 +233,115 @@ export class CreatureBattleHUD {
    */
   _renderBackground(stage, st, k) {
     const terrain = (st.terrain || st.foe?.type || 'heath').toLowerCase();
-    const bgCanvas = art(640, 360, (p) => {
+    const bgCanvas = art(360, 640, (p) => {
       if (terrain.includes('fen') || terrain.includes('water') || terrain.includes('shore')) {
         // --- Fen / Swamp / Water Environment ---
-        for (let y = 0; y < 180; y++) {
-          const ratio = y / 180;
+        for (let y = 0; y < 320; y++) {
+          const ratio = y / 320;
           const r = Math.round(10 + ratio * 15);
           const g = Math.round(25 + ratio * 35);
           const b = Math.round(40 + ratio * 35);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
-        for (let x = 0; x < 640; x++) {
-          const h = Math.sin(x * 0.01) * 15 + Math.cos(x * 0.025) * 8 + 120;
-          p.vline(x, Math.floor(h), 180 - Math.floor(h), '#133a3a');
+        for (let x = 0; x < 360; x++) {
+          const h = Math.sin(x * 0.01) * 15 + Math.cos(x * 0.025) * 8 + 200;
+          p.vline(x, Math.floor(h), 320 - Math.floor(h), '#133a3a');
         }
-        for (let y = 180; y < 360; y++) {
-          const ratio = (y - 180) / 180;
+        for (let y = 320; y < 640; y++) {
+          const ratio = (y - 320) / 320;
           const r = Math.round(12 + ratio * 8);
           const g = Math.round(38 + ratio * 20);
           const b = Math.round(48 + ratio * 25);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
-        }
-        for (let i = 0; i < 20; i++) {
-          const wy = 190 + (i * 8);
-          p.hline((i * 37) % 500, wy, 60 + (i % 5) * 20, 'rgba(120, 220, 210, 0.15)');
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(436, 114, 48, '#0f2928');
-        p.circle(436, 112, 46, '#18423f');
-        p.circle(436, 110, 42, '#235955');
-        p.circle(420, 108, 12, '#2e7d62');
-        p.circle(450, 110, 10, '#2e7d62');
+        p.circle(230, 160, 52, '#0f2928');
+        p.circle(230, 158, 48, '#18423f');
+        p.circle(230, 156, 44, '#235955');
 
         // Player Platform
-        p.circle(128, 244, 68, '#0f2928');
-        p.circle(128, 240, 64, '#18423f');
-        p.circle(128, 236, 60, '#235955');
-        p.circle(100, 234, 18, '#2e7d62');
-        p.circle(150, 236, 16, '#2e7d62');
+        p.circle(110, 275, 60, '#0f2928');
+        p.circle(110, 272, 56, '#18423f');
+        p.circle(110, 269, 52, '#235955');
 
       } else if (terrain.includes('cavern') || terrain.includes('earth') || terrain.includes('iron') || terrain.includes('mountains')) {
         // --- Cavern / Subterranean Environment ---
-        for (let y = 0; y < 360; y++) {
-          const ratio = y / 360;
+        for (let y = 0; y < 640; y++) {
+          const ratio = y / 640;
           const r = Math.round(15 + ratio * 15);
           const g = Math.round(18 + ratio * 18);
           const b = Math.round(28 + ratio * 28);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
-        for (let i = 0; i < 16; i++) {
-          const sx = i * 42 + 10;
-          const sh = 20 + ((i * 17) % 35);
-          for (let sy = 0; sy < sh; sy++) {
-            const w = Math.max(1, Math.floor((1 - sy / sh) * 8));
-            p.hline(sx - Math.floor(w / 2), sy, w, '#1e293b');
-          }
-        }
-        p.circle(180, 140, 8, 'rgba(56, 189, 248, 0.25)');
-        p.px(180, 140, '#38bdf8');
-        p.circle(520, 110, 10, 'rgba(168, 85, 247, 0.25)');
-        p.px(520, 110, '#a855f7');
 
         // Foe Platform
-        p.circle(436, 114, 48, '#0f172a');
-        p.circle(436, 112, 46, '#1e293b');
-        p.circle(436, 110, 42, '#334155');
-        p.rect(400, 110, 72, 4, '#475569');
+        p.circle(230, 160, 52, '#0f172a');
+        p.circle(230, 158, 48, '#1e293b');
+        p.circle(230, 156, 44, '#334155');
 
         // Player Platform
-        p.circle(128, 244, 68, '#0f172a');
-        p.circle(128, 240, 64, '#1e293b');
-        p.circle(128, 236, 60, '#334155');
-        p.rect(80, 236, 96, 5, '#475569');
+        p.circle(110, 275, 60, '#0f172a');
+        p.circle(110, 272, 56, '#1e293b');
+        p.circle(110, 269, 52, '#334155');
 
       } else if (terrain.includes('tide') || terrain.includes('sand')) {
         // --- Tide / Coastal Sands Environment ---
-        for (let y = 0; y < 170; y++) {
-          const ratio = y / 170;
+        for (let y = 0; y < 300; y++) {
+          const ratio = y / 300;
           const r = Math.round(30 + ratio * 50);
           const g = Math.round(30 + ratio * 30);
           const b = Math.round(70 + ratio * 40);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
-        for (let y = 170; y < 360; y++) {
-          const ratio = (y - 170) / 190;
+        for (let y = 300; y < 640; y++) {
+          const ratio = (y - 300) / 340;
           const r = Math.round(15 + ratio * 20);
           const g = Math.round(60 + ratio * 40);
           const b = Math.round(90 + ratio * 40);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
-        }
-        for (let i = 0; i < 15; i++) {
-          const wy = 175 + i * 10;
-          p.hline((i * 45) % 550, wy, 80 + (i % 4) * 25, 'rgba(186, 230, 253, 0.2)');
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(436, 114, 48, '#1e3a8a');
-        p.circle(436, 112, 46, '#854d0e');
-        p.circle(436, 110, 42, '#ca8a04');
-        p.circle(436, 108, 38, '#eab308');
+        p.circle(230, 160, 52, '#1e3a8a');
+        p.circle(230, 158, 48, '#854d0e');
+        p.circle(230, 156, 44, '#eab308');
 
         // Player Platform
-        p.circle(128, 244, 68, '#1e3a8a');
-        p.circle(128, 240, 64, '#854d0e');
-        p.circle(128, 236, 60, '#ca8a04');
-        p.circle(128, 232, 54, '#eab308');
+        p.circle(110, 275, 60, '#1e3a8a');
+        p.circle(110, 272, 56, '#854d0e');
+        p.circle(110, 269, 52, '#eab308');
 
       } else {
         // --- Heath / Grassland / Forest Environment (Default) ---
-        for (let y = 0; y < 180; y++) {
-          const ratio = y / 180;
+        for (let y = 0; y < 310; y++) {
+          const ratio = y / 310;
           const r = Math.round(20 + ratio * 20);
           const g = Math.round(20 + ratio * 30);
           const b = Math.round(45 + ratio * 35);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
-        for (let x = 0; x < 640; x++) {
-          const h1 = Math.sin(x * 0.008) * 20 + Math.cos(x * 0.015) * 12 + 130;
-          p.vline(x, Math.floor(h1), 180 - Math.floor(h1), '#14382c');
+        for (let x = 0; x < 360; x++) {
+          const h1 = Math.sin(x * 0.008) * 20 + Math.cos(x * 0.015) * 12 + 220;
+          p.vline(x, Math.floor(h1), 310 - Math.floor(h1), '#14382c');
         }
-        for (let y = 180; y < 360; y++) {
-          const ratio = (y - 180) / 180;
+        for (let y = 310; y < 640; y++) {
+          const ratio = (y - 310) / 330;
           const r = Math.round(15 + ratio * 15);
           const g = Math.round(45 + ratio * 30);
           const b = Math.round(30 + ratio * 20);
-          p.hline(0, y, 640, `rgb(${r},${g},${b})`);
+          p.hline(0, y, 360, `rgb(${r},${g},${b})`);
         }
 
         // Foe Platform
-        p.circle(436, 114, 48, '#092d1f');
-        p.circle(436, 112, 46, '#115e3b');
-        p.circle(436, 110, 42, '#16a34a');
-        p.circle(420, 108, 10, '#22c55e');
+        p.circle(230, 160, 52, '#092d1f');
+        p.circle(230, 158, 48, '#115e3b');
+        p.circle(230, 156, 44, '#16a34a');
 
         // Player Platform
-        p.circle(128, 244, 68, '#092d1f');
-        p.circle(128, 240, 64, '#115e3b');
-        p.circle(128, 236, 60, '#16a34a');
-        p.circle(110, 232, 16, '#22c55e');
+        p.circle(110, 275, 60, '#092d1f');
+        p.circle(110, 272, 56, '#115e3b');
+        p.circle(110, 269, 52, '#16a34a');
       }
     });
 
