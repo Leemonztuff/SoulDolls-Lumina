@@ -11,7 +11,7 @@ import { runSteps } from '../utils/steps.js';
 import { buildHouse } from './props/House.js';
 import { buildTree } from './props/Trees.js';
 import { buildLamppost, buildWallTorch, buildCampfire } from './props/LightProps.js';
-import { buildWell, buildMarketStall, buildBridge, buildWindmill } from './props/Structures.js';
+import { buildWell, buildMarketStall, buildBridge, buildWindmill, buildWizardTower } from './props/Structures.js';
 import {
   buildFence, buildBarrel, buildCrate, buildCrateStack, buildSignpost, buildRock, rockGeom, buildBench,
   buildHaystack, buildFlowerbox,
@@ -240,6 +240,17 @@ export class PropFactory {
 
   /** Windmill with rotating sails (call result.update(dt)). opts: { rotation, height, roof, speed } */
   windmill(x, y, z, opts = {}) { return buildWindmill(this, x, y, z, opts); }
+
+  /**
+   * Tall tapered stone wizard tower: `stories` glowing-window storeys, a slate cap, a smoking
+   * chimney, a floating crystal (call result.update(dt); `result.crystal`) and one door light.
+   * @param {number} x @param {number} y @param {number} z
+   * @param {{ rotation?: number, stories?: number, wall?: string, roof?: string, chimney?: boolean,
+   *   crystal?: boolean, seed?: number, id?: string }} [opts] stories (4), wall ('stone_brick'),
+   *   roof ('roof_slate'), chimney (true), crystal (true)
+   * @returns {PropResult}
+   */
+  wizardTower(x, y, z, opts = {}) { return buildWizardTower(this, x, y, z, opts); }
 
   /** Haystack. opts: { size } */
   haystack(x, y, z, opts = {}) { return buildHaystack(this, x, y, z, opts); }

@@ -629,7 +629,8 @@ vary with position and seed), so it shows exactly what a click places.
   tile name, height level, world position, tool help, messages, object count).
 - Dark, professional game-editor look with Luminati's navy/gold accents; system-ui font for dense UI,
   Cinzel only for the logo. Crisp icons (inline SVG). Everything responsive from 1280×720 up.
-- Dialogs: New level (name, size, base tile, base height, border width), Open (project / browser /
+- Dialogs: New level (name, size, base tile, base height, border width; a room adds floor tile, floor
+  level, wall height and footprint — Rectangle / Octagon, `createRoomLevel`'s `shape`), Open (project / browser /
   file, with sizes & dates), Save As (name + destination: project folder (when the dev API is up),
   browser, download), Level settings (name, subtitle, author, description, environment, water;
   *added 2026-10-07, following the code (KNOWN_ISSUES DOC-13): its tabs are General, Environment,

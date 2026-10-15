@@ -60,6 +60,8 @@ export const ROOM_DEFAULTS = Object.freeze({
   fill: 'k', level: 1,
   /** wall height in levels above the floor (5 = 2.5 units) */
   wall: 5,
+  /** footprint: 'rect' or 'octagon', or a floor test (see `roomShapeTest`) */
+  shape: 'rect',
   /** start hour (the clock is stopped) */
   timeOfDay: 11,
 });
@@ -68,6 +70,39 @@ export const ROOM_DEFAULTS = Object.freeze({
 export const ROOM_WALL = 2;
 /** Width of the door in the low south wall (tiles). */
 export const ROOM_DOOR = 2;
+
+/**
+ * The room footprints File › New › Room offers (`createRoomLevel`'s `shape`): the wall ring follows
+ * the shape (the interior is what is inside it), so an octagon's corners are chamfered on the
+ * outside too, not just cut out of a rectangular room.
+ */
+export const ROOM_SHAPES = Object.freeze([
+  { value: 'rect', label: 'Rectangle' },
+  { value: 'octagon', label: 'Octagon' },
+]);
+
+/**
+ * The floor test of a room's shape: tile (i, j) of the W × D grid → is it walkable floor? 'rect' is
+ * the rectangle inside the walls; 'octagon' is that rectangle with a triangular chamfer at each
+ * corner; a function is used as-is (`true` = floor). Everything else is wall.
+ * @param {'rect'|'octagon'|((i: number, j: number, w: number, d: number) => boolean)} shape
+ * @param {number} W
+ * @param {number} D
+ * @returns {(i: number, j: number) => boolean}
+ */
+function roomShapeTest(shape, W, D) {
+  if (typeof shape === 'function') return (i, j) => shape(i, j, W, D) === true;
+  const m = ROOM_WALL;
+  const i0 = m;
+  const i1 = W - m - 1;
+  const j0 = m;
+  const j1 = D - 2;
+  if (shape !== 'octagon') return (i, j) => i >= i0 && i <= i1 && j >= j0 && j <= j1;
+  const cut = Math.max(2, Math.round(Math.min(W - 2 * m, D - 1 - m) * 0.3));
+  return (i, j) => i >= i0 && i <= i1 && j >= j0 && j <= j1
+    && (i - i0) + (j - j0) >= cut && (i1 - i) + (j - j0) >= cut
+    && (i - i0) + (j1 - j) >= cut && (i1 - i) + (j1 - j) >= cut;
+}
 
 /**
  * The room-look changes a level's environment still needs, worded for the dialog: `[key, label]`
@@ -96,11 +131,16 @@ export function roomLookChanges(env, { cameraAuto = false } = {}) {
  * row: the camera looks north over it) with a door of the floor tile in its middle, the player
  * start just inside the door facing north, `environment.interior` and the room look (ROOM_LOOK,
  * ROOM_CAMERA, the start hour). No objects: a room's way out is an `exit` over its door.
- * @param {{ name?: string, width?: number, depth?: number, fill?: string, level?: number, wall?: number, timeOfDay?: number }} [opts]
+ *
+ * `opts.shape` picks the footprint (`ROOM_SHAPES`): 'rect' (the default rectangle above), 'octagon'
+ * (that rectangle with a triangular chamfer at each corner), or a function `(i, j, w, d) => boolean`
+ * (a floor test over the W × D grid — `false` = wall). The wall ring follows the shape; the south
+ * rim stays the low wall the camera looks over.
+ * @param {{ name?: string, width?: number, depth?: number, fill?: string, level?: number, wall?: number, shape?: 'rect'|'octagon'|((i: number, j: number, w: number, d: number) => boolean), timeOfDay?: number }} [opts]
  * @returns {Level}
  */
 export function createRoomLevel(opts = {}) {
-  /** @type {{ name?: string, width: number, depth: number, fill: string, level: number, wall: number, timeOfDay: number }} */
+  /** @type {{ name?: string, width: number, depth: number, fill: string, level: number, wall: number, shape: 'rect'|'octagon'|((i: number, j: number, w: number, d: number) => boolean), timeOfDay: number }} */
   const o = { ...ROOM_DEFAULTS, ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
   const L = createEmptyLevel({ name: o.name ?? 'Untitled', width: o.width, depth: o.depth, fill: o.fill, level: o.level, border: 0 });
   const { width: W, depth: D } = L;
@@ -113,18 +153,51 @@ export function createRoomLevel(opts = {}) {
   const t = ROOM_WALL;
   const tiles = [];
   const heights = [];
-  for (let j = 0; j < D; j++) {
-    let tr = '';
-    let hr = '';
-    for (let i = 0; i < W; i++) {
-      const south = j === D - 1;
-      const door = south && i >= door0 && i < door0 + ROOM_DOOR;
-      const wall = !door && (j < t || i < t || i >= W - t || south);
-      tr += wall ? 'x' : L.tiles[j][i];
-      hr += levelToChar(!wall ? floor : south ? low : top);
+  if (o.shape === 'rect') {
+    for (let j = 0; j < D; j++) {
+      let tr = '';
+      let hr = '';
+      for (let i = 0; i < W; i++) {
+        const south = j === D - 1;
+        const door = south && i >= door0 && i < door0 + ROOM_DOOR;
+        const wall = !door && (j < t || i < t || i >= W - t || south);
+        tr += wall ? 'x' : L.tiles[j][i];
+        hr += levelToChar(!wall ? floor : south ? low : top);
+      }
+      tiles.push(tr);
+      heights.push(hr);
     }
-    tiles.push(tr);
-    heights.push(hr);
+  } else {
+    // (a shaped room: the wall ring follows the shape's floor mask; the south rim — the walls south
+    // of a column's floor — is the low wall the camera looks over, the rest is full height)
+    const inside = roomShapeTest(o.shape, W, D);
+    const isFloor = [];
+    const frontJ = new Array(W).fill(-1);
+    for (let j = 0; j < D; j++) {
+      const row = [];
+      for (let i = 0; i < W; i++) {
+        const south = j === D - 1;
+        const f = (south && i >= door0 && i < door0 + ROOM_DOOR) || (!south && inside(i, j));
+        row.push(f);
+        if (f) frontJ[i] = j;
+      }
+      isFloor.push(row);
+    }
+    for (let j = 0; j < D; j++) {
+      let tr = '';
+      let hr = '';
+      for (let i = 0; i < W; i++) {
+        if (isFloor[j][i]) {
+          tr += L.tiles[j][i];
+          hr += levelToChar(floor);
+        } else {
+          tr += 'x';
+          hr += levelToChar(frontJ[i] >= 0 && j > frontJ[i] ? low : top);
+        }
+      }
+      tiles.push(tr);
+      heights.push(hr);
+    }
   }
   L.tiles = tiles;
   L.heights = heights;

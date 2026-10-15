@@ -225,8 +225,12 @@ export class EditorApp {
         if (ok) await this._offerRestore({ kind: 'local', name: local });
         return;
       }
-      // (`?new=room`: a new room, as File › New › Room makes it)
-      if (q.has('new')) { this._startBlank(q.get('new') === 'room' ? 'room' : 'level'); return; }
+      // (`?new=room`: a new room, as File › New › Room makes it; `?shape=octagon` picks the footprint)
+      if (q.has('new')) {
+        const sq = q.get('shape');
+        this._startBlank(q.get('new') === 'room' ? 'room' : 'level', sq === 'octagon' ? 'octagon' : sq === 'rect' ? 'rect' : undefined);
+        return;
+      }
       if (await this._offerRestore(null)) return;
       this._startBlank();
     } catch (e) {
@@ -236,9 +240,14 @@ export class EditorApp {
     }
   }
 
-  /** @param {'level'|'room'} [kind] */
-  _startBlank(kind = 'level') {
-    this.state.replaceLevel(kind === 'room' ? createRoomLevel({ name: DEFAULT_NAME }) : createEmptyLevel({ name: DEFAULT_NAME }), { kind: 'new', name: '' });
+  /**
+   * Start a blank level. `kind` 'room' uses `createRoomLevel`; `shape` ('rect' | 'octagon') picks
+   * the room footprint (ignored for a level).
+   * @param {'level'|'room'} [kind]
+   * @param {'rect'|'octagon'} [shape]
+   */
+  _startBlank(kind = 'level', shape = undefined) {
+    this.state.replaceLevel(kind === 'room' ? createRoomLevel({ name: DEFAULT_NAME, shape }) : createEmptyLevel({ name: DEFAULT_NAME }), { kind: 'new', name: '' });
     this._updateDoc();
   }
 

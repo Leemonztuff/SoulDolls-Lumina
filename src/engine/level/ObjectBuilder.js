@@ -101,6 +101,7 @@ export class LevelObjectBuilder {
     switch (obj.type) {
       case 'house':
       case 'windmill':
+      case 'wizardTower':
       case 'well':
       case 'marketStall':
       case 'lamppost':

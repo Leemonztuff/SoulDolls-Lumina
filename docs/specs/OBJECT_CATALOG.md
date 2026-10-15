@@ -41,7 +41,7 @@
 2. [Object shapes and normalisation](#2-object-shapes-and-normalisation)
 3. [How the game builds objects](#3-how-the-game-builds-objects)
 4. [Point lights: budget and priority](#4-point-lights-budget-and-priority)
-5. Types — Buildings: [house](#house) · [windmill](#windmill) · [well](#well) · [marketStall](#marketstall)
+5. Types — Buildings: [house](#house) · [windmill](#windmill) · [well](#well) · [marketStall](#marketstall) · [wizardTower](#wizardtower)
 6. Types — Nature: [tree](#tree) · [rock](#rock) · [haystack](#haystack)
 7. Types — Lights: [lamppost](#lamppost) · [wallTorch](#walltorch) · [campfire](#campfire) · [light](#light)
 8. Types — Props: [bench](#bench) · [barrel](#barrel) · [crate](#crate) · [crateStack](#cratestack) · [flowerbox](#flowerbox) · [signpost](#signpost) · [Interior](#interior): [bed](#bed) · [table](#table) · [chair](#chair) · [shelf](#shelf) · [hearth](#hearth) · [counter](#counter) · [rug](#rug) · [staircase](#staircase) · [wardrobe](#wardrobe) · [wallWindow](#wallwindow) · [sacks](#sacks)
@@ -93,6 +93,7 @@ toggle in the tool options places freely (`snapStep` in
 | `windmill` | Windmill | Buildings | point | prop | yes | circle | — | — |
 | `well` | Well | Buildings | point | prop | yes | circle | — | Look (only with `text`) |
 | `marketStall` | Market stall | Buildings | point | prop | yes | box | — | — |
+| `wizardTower` | Wizard tower | Buildings | point | prop | yes | circle | one door lantern, night only | — |
 | `tree` | Tree | Nature | point | prop | no (random yaw) | trunk circle (optional) | — | — |
 | `rock` | Rock | Nature | point | prop | no (random yaw) | circles | — | — |
 | `haystack` | Haystack | Nature | point | prop | no (random yaw) | circle | — | — |
@@ -311,6 +312,7 @@ sources; the game hands every descriptor to a
 | `light` | 1 | `color` (`#ffb46b`) | `intensity` (8) | `distance` (8) | `flicker` (0.2) | `nightOnly` (true) |
 | `lamppost` | 2 | `#ffb46b` | 12 | 9 | 0.2 | night |
 | `house` | 3 | `#ffb46b` | 6 | 7 | 0.25 | night (door lantern, only with `light: true`) |
+| `wizardTower` | 3 (default) | `#ffb46b` | 8 | 8 | 0.15 | night only (the door lantern) |
 
 "Night" lights fade with the night factor; under an overcast sky (rain, snow) lanterns and
 windows glow a little by day too. Before the lights are created the game sanitises the numbers:
@@ -406,6 +408,27 @@ Builder extras: `depth` (1.6), `display` (produce display in front, default on).
 crates beside it. The stall itself has no
 interaction; put a merchant `npc` behind it and give it a `talkOffset` in front of the counter
 (Emberfall's `merchant` does this).
+
+### wizardTower
+
+| Field | Type | Default | Editor range | Notes |
+| --- | --- | --- | --- | --- |
+| `rotation` | angle | `0` | step 15° | The door faces +Z at 0. |
+| `opts.stories` | int | `4` | 2–6 | Storeys above the footing; each is one glowing window. |
+| `opts.wall` | select | `stone_brick` | `WALL_TEXTURES` | Shaft and chimney. `plaster` also tints the shaft. |
+| `opts.roof` | select | `roof_slate` | `ROOF_TEXTURES` | The conical cap. |
+| `opts.chimney` | bool | `true` | | The chimney and its column of smoke. |
+| `opts.crystal` | bool | `true` | | The floating crystal and its glow. |
+| `opts.seed` | int | (none) | 0–9999 | |
+
+**In the game:** a tall tapered eight-facet stone tower: a flared footing, `stories` storeys ringed
+by cornices between eight corner buttresses, a glowing window per storey (emissive, night 1.7), a
+slate cone cap with a finial, and a door on the front facet. The chimney puffs a `smoke` emitter
+(the softer look, from the cap), and a floating crystal bobs and turns every frame (`update`) under
+a violet emissive glow — its own per-instance material (colour `#8f7bd6`, emissive `#7a5cff`, glow
+card day 0.7 / night 1.6) disposed with the prop. One point light at the door (night only). Circle
+collider radius 1.62. The result carries `crystal` (the animated group, or `null` when
+`opts.crystal` is false).
 
 ## Nature
 

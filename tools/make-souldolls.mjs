@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Builds the campaign **Souldolls** — `public/campaigns/souldolls/`:
- * `campaign.json`, its 8 level files and its story files `story/main.json` and `story/dialogue.story`.
+ * `campaign.json`, its 12 level files and its story files `story/main.json` and `story/dialogue.story`.
  *
  *   hushmoor-hollow     (40 × 32, start) The Dollwright's hollow. Starters, Elder Corvin, wild Peatling.
  *   lantern-road        (56 × 20) The lantern-lit road east. Bram at the campfire, waystone.
@@ -11,6 +11,10 @@
  *   hollow-tide-cavern  (40 × 28) Cavern with waystone, treasure chest, enemy group, and wild creatures.
  *   saltreach-quay      (48 × 36) The coastal quay. Dockmaster Gull and wild Tidewisp.
  *   tidewatch-light     (32 × 24) The lighthouse beacon. Keeper Vane and the ending bell.
+ *   tower-floor-1       (18 × 14) Interior octagon. The wizard tower's ground floor.
+ *   tower-floor-2       (18 × 14) Interior octagon. The wizard tower's second floor.
+ *   tower-floor-3       (18 × 14) Interior octagon. The wizard tower's third floor.
+ *   tower-floor-4       (18 × 14) Interior octagon. The wizard tower's top floor.
  *
  *   node tools/make-souldolls.mjs [--out=<folder>] [--check] [--force] [--quiet]
  */
@@ -18,14 +22,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createEmptyLevel, setTile, setHeightLevel, addObject, normalizeLevel, parseLevel, validateLevel, serializeLevel,
+  createEmptyLevel, setTile, setHeightLevel, addObject, normalizeLevel, parseLevel, validateLevel, serializeLevel, levelToChar,
 } from '../src/engine/level/LevelFormat.js';
-import { OBJECT_TYPES, EVENT_TRIGGERS, isCampaignType, isStoryType } from '../src/engine/level/ObjectCatalog.js';
+import { OBJECT_TYPES, EVENT_TRIGGERS, isCampaignType, isStoryType, staircaseFoot } from '../src/engine/level/ObjectCatalog.js';
 import { CAMPAIGN_FORMAT, normalizeCampaign, serializeCampaign, levelFile } from '../src/game/campaign/CampaignFormat.js';
 import { buildStory, serializeStory, serializeStoryText, storyFile } from '../src/game/campaign/StoryFormat.js';
 import { parseScript } from '../src/engine/level/StoryScript.js';
 import { carryCampaignText, carryStoryFile, retagStoryText, seededMint, fileKeyIssues } from '../src/engine/i18n/TextKeys.js';
-import { parseArgs, canonicalObject, keyLevel, keyIssueLines, splitSharedKeys, previousOutput, copyKeys } from './lib/levelgen.mjs';
+import { createRoomLevel } from '../src/editor/rooms.js';
+import { parseArgs, canonicalObject, keyLevel, keyIssueLines, splitSharedKeys, previousOutput, copyKeys, r3, E_, W_ } from './lib/levelgen.mjs';
+import { gridFromLevel, placerFromLevel } from './lib/levelcheck.mjs';
 import { checkCampaign } from './lib/campaigncheck.mjs';
 
 /** @import { Level, LevelObject } from '../src/engine/level/types.js' */
@@ -61,6 +67,75 @@ function tree(L, kind, x, z, height = 4.4, extra = {}) {
 
 function event(L, id, [x0, z0, x1, z1], fields) {
   return put(L, id, 'event', 0, 0, { minX: x0, maxX: x1, minZ: z0, maxZ: z1, ...fields });
+}
+
+// ---------------------------------------------------------------------------------------------
+// The wizard tower: four interior floors, a prop in hushmoor-hollow that the door leads into
+// ---------------------------------------------------------------------------------------------
+/** A tower room: 18 × 14, the editor's octagon (3-tile chamfers), a rock wall 5 levels high. */
+const TOWER_W = 18;
+const TOWER_D = 14;
+/** The stair rises the wall's 5 levels (2.5 world units) from the floor. */
+const TOWER_STAIR_H = 2.5;
+/** The two stair shafts on the north wall (west `Q`, east `P`; a stairwell's open end faces north). */
+const TOWER_Q = 7.6;
+const TOWER_P = 11.0;
+/** The tower's wall tile: `createRoomLevel`'s rock remapped, stone-brick faces under a plaster cap. */
+const TOWER_WALL_TILE = { top: 'plaster', side: 'stone_brick', lip: 'plaster', walkable: false, overhang: false, fringe: false, uvVariation: false };
+
+/**
+ * A floor of the tower: the editor's octagonal room (`createRoomLevel`, shape `octagon`: the wall
+ * ring follows the chamfered floor mask, a low south rim the camera looks over) with the rock walls
+ * remapped to stone brick and the camera held over the room (as the interiors' rooms are).
+ * @param {string} subtitle
+ * @param {string} description
+ * @param {number} timeOfDay
+ * @returns {Level}
+ */
+function towerFloor(subtitle, description, timeOfDay) {
+  const L = createRoomLevel({ name: "The Wizard's Tower", width: TOWER_W, depth: TOWER_D, shape: 'octagon', timeOfDay });
+  L.subtitle = subtitle;
+  L.description = description;
+  L.tiles = L.tiles.map((row) => row.replaceAll('x', 'W'));
+  L.legend.W = TOWER_WALL_TILE;
+  const cz = (TOWER_D + 1) / 2;
+  L.environment.camera = { ...L.environment.camera, bounds: { minX: TOWER_W / 2 - 0.5, maxX: TOWER_W / 2 + 0.5, minZ: cz - 0.4, maxZ: cz + 0.4 } };
+  put(L, 'reg_tower', 'region', 0, 0, { minX: 0, maxX: TOWER_W, minZ: 0, maxZ: TOWER_D, name: "The Wizard's Tower", sub: subtitle });
+  return L;
+}
+
+/**
+ * A staircase between two floors: the Space exit at its foot (`staircaseFoot`) to the other floor's
+ * entrance, and this floor's entrance for the way back — 0.7 from the foot, away from the stair.
+ * Facing: `from-below` is the way onto a floor from the stair below (its step over the stairwell's
+ * south end), `from-above` the way onto a floor from the stair above.
+ * @param {Level} L
+ * @param {string} id
+ * @param {number} x @param {number} z the stair
+ * @param {{ dir: 'up'|'down', to: string, entrance: string, here: string, label: string, facing: 'up'|'down'|'left'|'right', dy?: number }} s
+ * @returns {{ x: number, z: number }} where a player arriving on this floor stands
+ */
+function towerStair(L, id, x, z, { dir, to, entrance, here, label, facing }) {
+  const stair = put(L, id, 'staircase', x, z, {
+    opts: { dir, width: 1.2, steps: dir === 'down' ? 5 : 6, height: TOWER_STAIR_H, seed: dir === 'down' ? 1 : 2 },
+  });
+  const f = staircaseFoot(stair);
+  if (!f) throw new Error(`${id}: staircase has no foot`);
+  put(L, `ex_${id}`, 'exit', 0, 0, {
+    minX: r3(f.x - 0.6), maxX: r3(f.x + 0.6), minZ: r3(f.z - 0.6), maxZ: r3(f.z + 0.6), to, entrance, mode: 'use', label,
+  });
+  const arrive = { x: r3(f.x - f.dx * 0.7), z: r3(f.z - f.dz * 0.7) };
+  put(L, `en_${id}`, 'entrance', arrive.x, arrive.z, { name: here, facing });
+  return arrive;
+}
+
+/** The way out of the ground floor: the low south wall's door out to hushmoor-hollow. */
+function towerFrontDoor(L) {
+  put(L, 'en_tower_door', 'entrance', 9, 11.7, { name: 'tower-door', facing: 'up' });
+  put(L, 'ex_tower_door', 'exit', 0, 0, {
+    minX: 7.8, maxX: 10.2, minZ: 12.2, maxZ: TOWER_D, to: 'hushmoor-hollow', entrance: 'tower-door', mode: 'use', label: 'Go out',
+  });
+  return { x: 9, z: 11.7 };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -145,6 +220,17 @@ function buildHushmoorHollow() {
     ],
   });
 
+  // The wizard's tower on the north ridge: its door faces south, the four floors inside
+  put(L, 'wizard_tower', 'wizardTower', 9.5, 28, {
+    rotation: Math.PI,
+    opts: { stories: 4, wall: 'stone_brick', roof: 'roof_slate', chimney: true, crystal: true, seed: 3 },
+  });
+  put(L, 'en_tower', 'entrance', 9.5, 25.09, { name: 'tower-door', facing: 'up' });
+  put(L, 'ex_tower', 'exit', 0, 0, {
+    minX: 8.6, maxX: 10.4, minZ: 25.19, maxZ: 26.39,
+    to: 'tower-floor-1', entrance: 'tower-door', mode: 'use', label: 'Enter',
+  });
+
   // Seam exit to Lantern Road
   put(L, 'ex_hushmoor_to_road', 'exit', 0, 0, {
     minX: 37.5, maxX: 39.9, minZ: 14, maxZ: 18,
@@ -155,6 +241,110 @@ function buildHushmoorHollow() {
   tree(L, 'oak', 16, 6);
   tree(L, 'pine', 32, 22);
   put(L, 'well_hollow', 'well', 24, 20);
+
+  return L;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tower floors 1–4 (18 x 14): the wizard's tower interior, entered from hushmoor-hollow
+// ---------------------------------------------------------------------------------------------
+/** Ground floor: the hall — the cold hearth, a round table, and the stair up to the study. */
+function buildTowerFloor1() {
+  const L = towerFloor('The Hall', "The tower's ground floor: a cold hearth, a round table, and the stair up.", 17.2);
+
+  towerStair(L, 'stairs_up', TOWER_P, 2.6, {
+    dir: 'up', to: 'tower-floor-2', entrance: 'from-below', here: 'from-above', label: 'Go upstairs', facing: 'down',
+  });
+  L.spawn = towerFrontDoor(L);
+
+  put(L, 'rug_hall', 'rug', 9.5, 8.2, { opts: { color: 'red', width: 3.4, length: 4.2, seed: 3 } });
+  put(L, 'table_hall', 'table', 9.5, 8.2, { opts: { shape: 'round', width: 1.3 } });
+  put(L, 'chair_hall_w', 'chair', 8.3, 8.2, { rotation: E_ });
+  put(L, 'chair_hall_e', 'chair', 10.7, 8.2, { rotation: W_ });
+  put(L, 'hearth_hall', 'hearth', 2.5, 7.0, { rotation: E_, opts: { width: 2.2, lit: true, embers: true } });
+  put(L, 'shelf_hall', 'shelf', 6.6, 2.25, { opts: { kind: 'pantry', width: 2, height: 1.9, seed: 2 } });
+  put(L, 'barrel_hall_w', 'barrel', 4.4, 5.6);
+  put(L, 'barrel_hall_e', 'barrel', 11.7, 10.4);
+  put(L, 'crates_hall', 'crateStack', 13.4, 9.0, { opts: { count: 3, barrel: false, seed: 5 } });
+  put(L, 'torch_hall_w', 'wallTorch', 2, 5.4, { rotation: E_, dy: 2.1 });
+  put(L, 'torch_hall_e', 'wallTorch', 16, 9.4, { rotation: W_, dy: 2.1 });
+
+  return L;
+}
+
+/** Second floor: the study — shelves, a desk under a window, a narrow bed along the east wall. */
+function buildTowerFloor2() {
+  const L = towerFloor('The Study', 'Ink, dust and stacked ledgers; a narrow bed along the east wall.', 15.5);
+
+  const down = towerStair(L, 'stairs_down', TOWER_P, 3.2, {
+    dir: 'down', to: 'tower-floor-1', entrance: 'from-above', here: 'from-below', label: 'Go downstairs', facing: 'down',
+  });
+  towerStair(L, 'stairs_up', TOWER_Q, 2.6, {
+    dir: 'up', to: 'tower-floor-3', entrance: 'from-below', here: 'from-above', label: 'Go upstairs', facing: 'down',
+  });
+  L.spawn = { x: down.x, z: down.z, facing: 'down' };
+
+  put(L, 'shelf_study_1', 'shelf', 2.25, 6.4, { rotation: E_, opts: { kind: 'books', width: 2.4, height: 2.2, seed: 1 } });
+  put(L, 'shelf_study_2', 'shelf', 2.25, 8.8, { rotation: E_, opts: { kind: 'books', width: 1.8, height: 2.2, seed: 4 } });
+  put(L, 'table_study', 'table', 10.4, 7.6, { opts: { shape: 'rect', width: 1.8, depth: 0.9 } });
+  put(L, 'chair_study', 'chair', 10.4, 6.6);
+  put(L, 'rug_study', 'rug', 10.4, 8.4, { opts: { color: 'blue', width: 2.6, length: 2.6, seed: 2 } });
+  put(L, 'bed_study', 'bed', 14.9, 9.1, { rotation: W_, opts: { width: 1.2, length: 2.2, blanket: 'blue', seed: 3 } });
+  put(L, 'wardrobe_study', 'wardrobe', 15.7, 5.5, { rotation: W_, opts: { kind: 'wardrobe', width: 1.4, seed: 6 } });
+  put(L, 'torch_study_w', 'wallTorch', 2, 3.4, { rotation: E_, dy: 2.1 });
+  put(L, 'torch_study_e', 'wallTorch', 16, 7.4, { rotation: W_, dy: 2.1 });
+  put(L, 'light_study', 'light', 9.6, 7.4, { dy: 2.4, color: '#ffd9a0', intensity: 4, distance: 7, flicker: 0.06, nightOnly: false });
+
+  return L;
+}
+
+/** Third floor: the workshop — a workbench of alembics, jars, crates and a window west. */
+function buildTowerFloor3() {
+  const L = towerFloor('The Workshop', 'A workbench of alembics and half-finished charms; pitch and copper.', 14.5);
+
+  const down = towerStair(L, 'stairs_down', TOWER_Q, 3.2, {
+    dir: 'down', to: 'tower-floor-2', entrance: 'from-above', here: 'from-below', label: 'Go downstairs', facing: 'down',
+  });
+  towerStair(L, 'stairs_up', TOWER_P, 2.6, {
+    dir: 'up', to: 'tower-floor-4', entrance: 'from-below', here: 'from-above', label: 'Go upstairs', facing: 'down',
+  });
+  L.spawn = { x: down.x, z: down.z, facing: 'down' };
+
+  put(L, 'counter_shop', 'counter', 9.6, 6.4, { opts: { style: 'shop', width: 2.6, items: true, seed: 2 } });
+  put(L, 'table_shop', 'table', 11.9, 8.9, { opts: { shape: 'rect', width: 1.6, depth: 0.9 } });
+  put(L, 'chair_shop', 'chair', 11.9, 7.9);
+  put(L, 'barrel_shop_n', 'barrel', 13.8, 5.6);
+  put(L, 'barrel_shop_w', 'barrel', 4.6, 8.9);
+  put(L, 'crates_shop', 'crateStack', 13.2, 7.4, { opts: { count: 2, barrel: false, seed: 7 } });
+  put(L, 'sacks_shop', 'sacks', 12.6, 5.4, { opts: { count: 2, seed: 3 } });
+  put(L, 'window_shop', 'wallWindow', 2, 7.4, { rotation: E_, opts: { panes: 1, sill: 1.0, glow: 'daylight', curtains: 'none' } });
+  put(L, 'torch_shop_w', 'wallTorch', 2, 9.6, { rotation: E_, dy: 2.1 });
+  put(L, 'torch_shop_e', 'wallTorch', 16, 6.0, { rotation: W_, dy: 2.1 });
+  put(L, 'light_shop', 'light', 9.6, 7.4, { dy: 2.3, color: '#ffca7a', intensity: 5, distance: 7, flicker: 0.12, nightOnly: false });
+
+  return L;
+}
+
+/** Top floor: the observatory — windows all round, a table of charts, cold starlight. */
+function buildTowerFloor4() {
+  const L = towerFloor('The Observatory', 'The tower top: windows all round, a table of star charts, cold light.', 20.5);
+
+  const down = towerStair(L, 'stairs_down', TOWER_P, 3.2, {
+    dir: 'down', to: 'tower-floor-3', entrance: 'from-above', here: 'from-below', label: 'Go downstairs', facing: 'down',
+  });
+  L.spawn = { x: down.x, z: down.z, facing: 'down' };
+
+  put(L, 'table_top', 'table', 9.5, 8.2, { opts: { shape: 'round', width: 1.4 } });
+  put(L, 'chair_top_w', 'chair', 8.3, 8.2, { rotation: E_ });
+  put(L, 'chair_top_e', 'chair', 10.7, 8.2, { rotation: W_ });
+  put(L, 'rug_top', 'rug', 9.5, 8.4, { opts: { color: 'green', width: 3.2, length: 3.6, seed: 1 } });
+  put(L, 'shelf_top', 'shelf', 2.25, 6.4, { rotation: E_, opts: { kind: 'books', width: 1.8, height: 2.2, seed: 8 } });
+  put(L, 'window_top_n', 'wallWindow', 7.5, 2, { opts: { panes: 2, sill: 1.1, glow: 'daylight', curtains: 'none' } });
+  put(L, 'window_top_e', 'wallWindow', 16, 8.6, { rotation: W_, opts: { panes: 1, sill: 1.1, glow: 'daylight', curtains: 'none' } });
+  put(L, 'window_top_w', 'wallWindow', 2, 9.0, { rotation: E_, opts: { panes: 1, sill: 1.1, glow: 'daylight', curtains: 'none' } });
+  put(L, 'torch_top_e', 'wallTorch', 16, 5.6, { rotation: W_, dy: 2.1 });
+  put(L, 'light_top', 'light', 9.5, 6.2, { dy: 2.6, color: '#a9c8ff', intensity: 3, distance: 8, flicker: 0.05, nightOnly: false });
+  put(L, 'light_top_2', 'light', 12.6, 9.2, { dy: 2.6, color: '#a9c8ff', intensity: 3, distance: 8, flicker: 0.05, nightOnly: false });
 
   return L;
 }

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { smoothstep, clamp, lerp } from '../../utils/math.js';
 import { globalUniforms } from '../../render/GlobalUniforms.js';
+import { RENDER_ORDER } from '../../constants.js';
 import { TRIM, centerOff } from './Details.js';
+import { createGlowMaterial } from './Flame.js';
 
 /** @import { PropFactory } from '../Props.js' */
 
@@ -437,6 +439,165 @@ export function buildWindmill(f, x, y, z, opts = {}) {
     },
   });
   res.sails = sails;
+  return res;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wizard tower
+// ---------------------------------------------------------------------------------------------
+
+/** The wizard tower's floating-crystal glow (a dark-fantasy violet), emissive day and night. */
+const TOWER_GLOW = '#7a5cff';
+
+/**
+ * Tall tapered stone wizard tower, dark-fantasy: a flared footing, `stories` storeys ringed by
+ * cornices with glowing windows between the eight corner buttresses, a slate cone roof with a
+ * chimney that smokes, and a floating crystal that bobs and turns in update(dt). Front = local +Z
+ * (the door). Collider: circle r R0+0.12. One point light at the door (night only).
+ * opts: { rotation = 0, stories = 4, wall = 'stone_brick', roof = 'roof_slate', chimney = true,
+ *   crystal = true, seed, id }
+ * @param {PropFactory} f
+ */
+export function buildWizardTower(f, x, y, z, opts = {}) {
+  const rng = f.rng('wizardTower', x, z, opts.seed);
+  const rot = opts.rotation ?? 0;
+  const stories = clamp(Math.round(opts.stories ?? 4), 2, 6);
+  const wall = opts.wall ?? 'stone_brick';
+  const roof = opts.roof ?? 'roof_slate';
+  const segs = 8;
+  const phase = Math.PI / 8;
+  const R0 = 1.5;
+  const R1 = 0.95;
+  const plinthH = 0.55;
+  const storyH = 2.5;
+  const wallTop = plinthH + stories * storyH;
+  const rAt = (h) => lerp(R0, R1, clamp((h - plinthH) / (wallTop - plinthH), 0, 1));
+  const facet = (h) => rAt(h) * Math.cos(Math.PI / segs);
+  const b = f.builder(groundAO(1.1));
+  // flared footing + stone shaft (flat facets)
+  b.lathe('well_stone', [{ y: -0.06, r: R0 + 0.18 }, { y: 0.32, r: R0 + 0.08 }, { y: plinthH, r: R0 }], { segments: segs, smooth: false, phase, vOff: 0.12, uRepeat: 4 });
+  b.lathe(wall, [{ y: plinthH, r: R0 }, { y: wallTop, r: R1 }], { segments: segs, smooth: false, phase, vOff: 0, uRepeat: 3, color: wall === 'plaster' ? [0.84, 0.8, 0.78] : undefined });
+  // cornice rings between the storeys and under the eaves
+  const ring = (h, extra) => b.lathe(wall, [{ y: h - 0.11, r: rAt(h) + extra }, { y: h + 0.11, r: rAt(h) + extra }], { segments: segs, smooth: false, phase, capTop: wall, capBottom: wall, uRepeat: 4, color: [0.9, 0.9, 0.94] });
+  for (let k = 1; k < stories; k++) ring(plinthH + k * storyH, 0.09);
+  ring(wallTop - 0.08, 0.13);
+  // eight corner buttresses
+  for (let i = 0; i < segs; i++) {
+    const a = phase + (i * Math.PI * 2) / segs;
+    const p0 = [Math.cos(a) * (R0 + 0.03), 0.12, -Math.sin(a) * (R0 + 0.03)];
+    const p1 = [Math.cos(a) * (R1 + 0.03), wallTop - 0.05, -Math.sin(a) * (R1 + 0.03)];
+    b.tube(wall, p0, p1, 0.11, 0.08, { segments: 4, uRepeat: 1, color: [0.9, 0.9, 0.94] });
+  }
+  // door on the front (+Z) facet, framed by the flanking buttresses
+  const doorZ = facet(0.7) + 0.03;
+  b.quad('door', [[-0.52, 0.06, doorZ], [0.52, 0.06, doorZ], [0.52, 2.35, doorZ - 0.12], [-0.52, 2.35, doorZ - 0.12]], [[0, 0], [1, 0], [1, 1], [0, 1]]);
+  b.box(TRIM, [1.36, 0.18, 0.24], { at: [0, 2.44, doorZ - 0.06] });
+  for (const s of [-1, 1]) b.box(TRIM, [0.15, 2.3, 0.22], { at: [s * 0.6, 1.2, doorZ - 0.03], rotUV: true });
+  b.box('stone_brick', [1.6, 0.36, 0.72], { at: [0, 0.18, doorZ + 0.3], faces: { ny: false } });
+  // glowing windows: one on each storey, at a facet that turns with the storey
+  const win = f.windowMaterial();
+  for (let k = 0; k < stories; k++) {
+    const wy = plinthH + k * storyH + storyH * 0.5 - 0.45;
+    const idx = (k * 3 + 2) % segs;
+    const a = phase + (idx + 0.5) * ((Math.PI * 2) / segs);
+    b.push([0, 0, 0], a + Math.PI / 2);
+    const wz = facet(wy + 0.45) + 0.03;
+    b.quad(win, [[-0.34, wy, wz], [0.34, wy, wz - 0.01], [0.34, wy + 0.9, wz - 0.07], [-0.34, wy + 0.9, wz - 0.06]], [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]);
+    b.box(TRIM, [0.9, 0.08, 0.18], { at: [0, wy - 0.05, wz + 0.03] });
+    b.box(TRIM, [0.84, 0.1, 0.14], { at: [0, wy + 0.92, wz - 0.02] });
+    b.tri(TRIM, [-0.34, wy + 0.92, wz - 0.02], [0, wy + 1.2, wz - 0.05], [0.34, wy + 0.92, wz - 0.02], [0, 0], [0.5, 0], [1, 0]);
+    b.pop();
+  }
+  // conical slate cap with a finial
+  const capR = R1 + 0.42;
+  b.lathe(roof, [{ y: wallTop - 0.1, r: capR }, { y: wallTop + 0.95, r: capR * 0.62 }, { y: wallTop + 2.15, r: 0.06 }], { segments: segs, smooth: true, phase, normalUp: 0.3, colorFn: (i) => (i === 0 ? [0.85, 0.85, 0.9] : [1, 1, 1]) });
+  b.lathe(TRIM, [{ y: wallTop - 0.24, r: capR + 0.03 }, { y: wallTop - 0.06, r: capR + 0.03 }], { segments: segs, smooth: false, phase, capBottom: TRIM, uRepeat: 4 });
+  b.box(TRIM, [0.1, 0.5, 0.1], { at: [0, wallTop + 2.35, 0] });
+  b.box('metal', [0.16, 0.16, 0.16], { at: [0, wallTop + 2.48, 0], rot: [0, Math.PI / 4, 0], color: [1.4, 1.2, 0.6] });
+  // chimney rising through the cap, with a dark mouth
+  let chimTop = null;
+  if (opts.chimney !== false) {
+    const ca = phase + 2.5 * ((Math.PI * 2) / segs);
+    const nx = Math.cos(ca);
+    const nz = -Math.sin(ca);
+    const d = facet(wallTop - 0.6) + 0.26;
+    const chx = nx * d;
+    const chz = nz * d;
+    const chY0 = wallTop - 1.6;
+    const chY1 = wallTop + 2.15;
+    b.box(wall, [0.5, chY1 - chY0, 0.5], { at: [chx, (chY0 + chY1) / 2, chz], rot: ca + Math.PI / 2, color: [0.92, 0.92, 0.96] });
+    b.box('well_stone', [0.64, 0.18, 0.64], { at: [chx, chY1 + 0.05, chz], rot: ca + Math.PI / 2 });
+    b.box('metal', [0.34, 0.1, 0.34], { at: [chx, chY1 + 0.16, chz], rot: ca + Math.PI / 2, color: [0.18, 0.16, 0.22] });
+    chimTop = [chx, chY1 + 0.22, chz];
+  }
+  const group = f.finish(b, 'wizardTower', x, y, z, rot);
+
+  // ---- floating crystal (its own per-instance emissive material, like the waystone's) ----
+  /** @type {THREE.Group|null} */
+  let crystal = null;
+  /** @type {THREE.Material[]} */
+  const ownMats = [];
+  const emissives = [{ material: win, day: 0, night: 1.7 }];
+  let update;
+  let crystalY = 0;
+  if (opts.crystal !== false) {
+    const mat = f.textures.material('plaster', { vertexColors: true }).clone();
+    mat.name = 'luminati:wizardTower-crystal';
+    mat.color.set('#8f7bd6');
+    mat.emissive = new THREE.Color(TOWER_GLOW);
+    mat.emissiveIntensity = 1.1;
+    mat.userData.castShadow = false;
+    const cb = f.builder();
+    const cr = 0.3;
+    const ctop = [0, 0.62, 0];
+    const cbot = [0, -0.42, 0];
+    const ceq = [0, 1, 2, 3].map((k) => [Math.cos((k * Math.PI) / 2) * cr, 0, -Math.sin((k * Math.PI) / 2) * cr]);
+    for (let k = 0; k < 4; k++) {
+      const A = ceq[k];
+      const C = ceq[(k + 1) % 4];
+      cb.tri(mat, A, C, ctop, [0, 0], [0.4, 0], [0.2, 0.62], { color: k % 2 ? [1.15, 1.2, 1.25] : [0.95, 1.0, 1.05] });
+      cb.tri(mat, C, A, cbot, [0.4, 0], [0, 0], [0.2, 0.42], { color: k % 2 ? [0.62, 0.72, 0.82] : [0.5, 0.6, 0.72] });
+    }
+    const { group: cg, geometries: cgeos } = cb.build('wizardTower:crystal');
+    f.track(cgeos);
+    crystalY = wallTop + 2.85;
+    cg.position.set(0, crystalY, 0);
+    cg.rotation.y = rng.range(0, TAU);
+    cg.userData.dynamic = true;
+    group.add(cg);
+    // additive glow card behind the crystal (the flame glow shader: no new program)
+    const gsz = 2.0;
+    const glowGeo = new THREE.PlaneGeometry(gsz, gsz);
+    f.track([glowGeo]);
+    const glowMat = createGlowMaterial({ color: TOWER_GLOW, intensity: 0.4, seed: rng.range(0, 100), day: 0.7 });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.name = 'wizardTower:glow';
+    glow.renderOrder = RENDER_ORDER.PARTICLES + 5;
+    glow.castShadow = false;
+    glow.receiveShadow = false;
+    glow.position.y = 0.05;
+    cg.add(glow);
+    crystal = cg;
+    emissives.push({ material: mat, day: 0.7, night: 1.6 });
+    ownMats.push(mat, glowMat);
+    let t = rng.range(0, 10);
+    update = (dt) => {
+      t = (t + dt) % 1000;
+      cg.position.y = crystalY + Math.sin(t * 1.6) * 0.08;
+      cg.rotation.y = (cg.rotation.y + dt * 0.6) % TAU;
+    };
+  }
+  group.updateMatrixWorld(true);
+  const emitters = chimTop ? [{ preset: 'smoke', position: f.world(group, new THREE.Vector3(chimTop[0], chimTop[1], chimTop[2])), rate: 2.5 }] : [];
+  const res = f.result(group, {
+    colliders: [{ type: 'circle', x, z, r: R0 + 0.12 }],
+    lights: [{ position: f.world(group, new THREE.Vector3(0, 1.7, doorZ + 0.5)), color: '#ffb46b', intensity: 8, distance: 8, flicker: 0.15, nightOnly: true }],
+    emissives,
+    emitters,
+    materials: ownMats,
+    update,
+  });
+  res.crystal = crystal;
   return res;
 }
 

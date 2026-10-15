@@ -18,7 +18,7 @@ import { listRecovered, deleteRecovered, recoveredSize } from '../autosave.js';
 import { parseStoryValues, storyHiddenIds, storyConditionCount } from '../story.js';
 import { rootRows } from '../textKeys.js';
 import { fillKeyView, copyText } from './keyView.js';
-import { ROOM_DEFAULTS, ROOM_WALL, ROOM_LOOK, ROOM_CAMERA, ROOM_BACKDROP, roomLookChanges, backdropKind } from '../rooms.js';
+import { ROOM_DEFAULTS, ROOM_WALL, ROOM_SHAPES, ROOM_LOOK, ROOM_CAMERA, ROOM_BACKDROP, roomLookChanges, backdropKind } from '../rooms.js';
 
 /**
  * @import { EditorApp } from '../EditorApp.js'
@@ -47,17 +47,17 @@ const ROOM_SIZE_PRESETS = [
 /** What each kind of new level starts with (a kind switch resets these). */
 const NEW_KIND_DEFAULTS = {
   level: { width: 32, depth: 24, fill: 'g', level: 2 },
-  room: { width: ROOM_DEFAULTS.width, depth: ROOM_DEFAULTS.depth, fill: ROOM_DEFAULTS.fill, level: ROOM_DEFAULTS.level },
+  room: { width: ROOM_DEFAULTS.width, depth: ROOM_DEFAULTS.depth, fill: ROOM_DEFAULTS.fill, level: ROOM_DEFAULTS.level, shape: ROOM_DEFAULTS.shape },
 };
 
 /**
  * File › New: an outdoor level (`createEmptyLevel`) or a room (`rooms.createRoomLevel`: kind 'room',
- * walls `wall` levels above the floor, `environment.interior` and the room look).
- * @returns {Promise<{ kind: 'level'|'room', name: string, width: number, depth: number, fill: string, level: number, border: number, wall: number }|null>}
+ * walls `wall` levels above the floor, footprint `shape`, `environment.interior` and the room look).
+ * @returns {Promise<{ kind: 'level'|'room', name: string, width: number, depth: number, fill: string, level: number, border: number, wall: number, shape: 'rect'|'octagon' }|null>}
  */
 export function newLevelDialog(app) {
-  /** @type {{ kind: 'level'|'room', name: string, width: number, depth: number, fill: string, level: number, border: number, wall: number }} */
-  const v = { kind: 'level', name: 'Untitled', ...NEW_KIND_DEFAULTS.level, border: 2, wall: ROOM_DEFAULTS.wall };
+  /** @type {{ kind: 'level'|'room', name: string, width: number, depth: number, fill: string, level: number, border: number, wall: number, shape: 'rect'|'octagon' }} */
+  const v = { kind: 'level', name: 'Untitled', ...NEW_KIND_DEFAULTS.level, border: 2, wall: ROOM_DEFAULTS.wall, shape: ROOM_DEFAULTS.shape };
   const name = textControl({ value: v.name, onChange: (x) => { v.name = x; }, onInput: (x) => { v.name = x; } });
   name.input.setAttribute('autofocus', '');
   const w = numberControl({ value: v.width, min: MIN_SIZE, max: MAX_SIZE, step: 1, int: true, slider: false, onChange: (x) => { v.width = clampSize(x); upd(); } });
@@ -68,12 +68,14 @@ export function newLevelDialog(app) {
   const lvl = numberControl({ value: v.level, min: 0, max: MAX_LEVEL, step: 1, int: true, onChange: (x) => { v.level = Math.max(0, Math.min(MAX_LEVEL, x ?? 0)); } });
   const border = numberControl({ value: v.border, min: 0, max: 8, step: 1, int: true, onChange: (x) => { v.border = Math.max(0, Math.min(8, x ?? 0)); upd(); } });
   const wall = numberControl({ value: v.wall, min: 1, max: 12, step: 1, int: true, onChange: (x) => { v.wall = Math.max(1, Math.min(12, x ?? ROOM_DEFAULTS.wall)); upd(); } });
+  const shape = selectControl({ value: v.shape ?? ROOM_DEFAULTS.shape, options: ROOM_SHAPES, onChange: (x) => { v.shape = x; upd(); } });
   const summary = h('div', { class: 'le-form-summary' });
   // (rows the kind switch relabels or hides)
   const groundRow = row('Ground', h('div', { class: 'le-inline' }, h('span', { class: 'le-swatch is-static' }, sw), fill.el));
   const levelRow = row('Ground level', lvl.el, '');
   const borderRow = row('Forest border', border.el, 'Blocked forest tiles around the edge; the game scatters trees on them.');
   const wallRow = row('Wall height', wall.el, 'Rock walls on the north, west and east, this many levels above the floor (5 = 2.5 units); a low south wall with a door in its middle — the camera looks north over it.');
+  const shapeRow = row('Shape', shape.el, 'The floor\'s footprint: a rectangle, or an octagon (the corners chamfered, walls included).');
   const relabel = (r, label, hint) => {
     r.querySelector('.le-form-label').textContent = label;
     const hintEl = r.querySelector('.le-form-hint');
@@ -91,11 +93,12 @@ export function newLevelDialog(app) {
     const room = k === 'room';
     // (a room's floor holds the player start: no water, void or blocked ground on offer)
     for (const o of fill.el.querySelectorAll('option')) o.disabled = room && !roomFloorTile(o.value);
-    w.set(v.width); d.set(v.depth); fill.set(v.fill); lvl.set(v.level);
+    w.set(v.width); d.set(v.depth); fill.set(v.fill); lvl.set(v.level); shape.set(v.shape ?? ROOM_DEFAULTS.shape);
     relabel(groundRow, room ? 'Floor' : 'Ground', '');
     relabel(levelRow, room ? 'Floor level' : 'Ground level', room ? 'Height level of the floor (level 1 = 0.5 units).' : 'Leave room below for rivers and ponds (level 2 = 1.0 units).');
     borderRow.hidden = room;
     wallRow.hidden = !room;
+    shapeRow.hidden = !room;
     showPresets();
     upd();
   }
@@ -104,7 +107,11 @@ export function newLevelDialog(app) {
     if (v.kind === 'room') {
       const fw = Math.max(0, v.width - 2 * ROOM_WALL);
       const fd = Math.max(0, v.depth - ROOM_WALL - 1);
-      summary.textContent = `${v.width} × ${v.depth} tiles · a ${fw} × ${fd} floor inside rock walls, a door in the south wall · an interior: no sky, weather, forest border or outer scenery; the clock stopped, no minimap, a closer camera (Level settings › Environment)`;
+      const sh = v.shape ?? ROOM_DEFAULTS.shape;
+      const floorDesc = sh === 'rect'
+        ? `a ${fw} × ${fd} floor inside rock walls`
+        : `an ${(ROOM_SHAPES.find((s) => s.value === sh)?.label ?? 'octagon').toLowerCase()} floor inside rock walls`;
+      summary.textContent = `${v.width} × ${v.depth} tiles · ${floorDesc}, a door in the south wall · an interior: no sky, weather, forest border or outer scenery; the clock stopped, no minimap, a closer camera (Level settings › Environment)`;
       return;
     }
     const inner = Math.max(0, v.width - v.border * 2) * Math.max(0, v.depth - v.border * 2);
@@ -127,6 +134,7 @@ export function newLevelDialog(app) {
       levelRow,
       borderRow,
       wallRow,
+      shapeRow,
       summary,
     ],
     buttons: [{ label: 'Cancel', value: null }, { label: 'Create', primary: true, onClick: () => { v.name = name.input.value.trim() || 'Untitled'; } }],

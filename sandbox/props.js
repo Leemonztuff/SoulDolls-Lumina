@@ -7,7 +7,7 @@
  *
  * window.__props: { renderer, scene, camera, factory, textures, results, setNight(bool),
  *                   frame(name | {x, z, dist, yaw, pitch}), info(), check() }
- * Query: ?night=1  ?view=house|trees|market|bridge|windmill|campfire|overview  ?mode=gallery  ?merge=1
+ * Query: ?night=1  ?view=house|trees|market|bridge|windmill|wizardTower|campfire|overview  ?mode=gallery  ?merge=1
  * ?mode=interior: three furnished rooms (a home, an inn, a mill — props/Furniture.js) and a gallery of
  * every furniture option; views `interior`, `roomHome`, `roomInn`, `roomMill`, `gBeds`, `gRow2`,
  * `gRow2b`, `gRow3`, `gHearth`, `gTables`
@@ -229,6 +229,7 @@ function buildGallery() {
   add('gCamp', factory.campfire(12, 0, 16, { seat: false }));
   add('gSign', factory.signpost(16, 0, 16, { boards: 1, rotation: -0.5 }));
   add('gMill', factory.windmill(22, 0, 17, { roof: 'roof_slate', wall: 'wood_planks', height: 5, rotation: 0.4 }));
+  add('gTower', factory.wizardTower(-16, 0, 17, { stories: 4, wall: 'stone_brick', roof: 'roof_slate', rotation: 0.4 }));
   // combat props (COMBAT.md §14.3): a closed and an opened chest, an idle and an attuned waystone
   add('gChest', factory.chest(-9, 0, 21, { rotation: 0.3 }));
   add('gChestOpen', factory.chest(-6.5, 0, 21, { rotation: -0.2 })).controls.open(true);
@@ -515,6 +516,7 @@ const VIEWS = {
   gTrees: { x: 0, z: 2, y: 2.5, dist: 44, yaw: 0, pitch: 22 },
   gProps: { x: -1, z: 11, y: 0.5, dist: 26, yaw: 0, pitch: 34 },
   gProps2: { x: 14, z: 15, y: 1.5, dist: 24, yaw: 0, pitch: 30 },
+  wizardTower: { x: -16, z: 17, y: 6.5, dist: 26, yaw: -0.3, pitch: 20 },
   gCombat: { x: -3.8, z: 20.6, y: 1.2, dist: 14, yaw: 0, pitch: 30 },
   gChests: { x: -7.8, z: 21, y: 0.3, dist: 6, yaw: 0.35, pitch: 32 },
   small: { x: 3.8, z: -2.0, y: 0.6, dist: 12, yaw: 0.5, pitch: 30 },

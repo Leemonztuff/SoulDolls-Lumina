@@ -237,6 +237,20 @@ export const OBJECT_TYPES = {
       SEED,
     ],
   },
+  wizardTower: {
+    label: 'Wizard tower', category: 'Buildings', placement: 'point', kind: 'prop', glyph: '♜', color: '#8f7bd6', radius: 1.7, rotatable: true,
+    help: 'A tall stone mage\'s tower: glowing windows, a smoking chimney and a floating crystal that glows day and night. The door faces the camera at rotation 0.',
+    defaults: { rotation: 0, opts: { stories: 4, wall: 'stone_brick', roof: 'roof_slate', chimney: true, crystal: true, seed: 1 } },
+    fields: [
+      ROT,
+      { key: 'opts.stories', label: 'Storeys', type: 'int', min: 2, max: 6 },
+      { key: 'opts.wall', label: 'Walls', type: 'select', options: WALL_TEXTURES },
+      { key: 'opts.roof', label: 'Roof', type: 'select', options: ROOF_TEXTURES },
+      { key: 'opts.chimney', label: 'Chimney (smoke)', type: 'bool' },
+      { key: 'opts.crystal', label: 'Floating crystal', type: 'bool' },
+      SEED,
+    ],
+  },
 
   // ------------------------------------------------------------------ Nature
   tree: {

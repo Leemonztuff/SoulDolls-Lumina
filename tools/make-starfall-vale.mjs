@@ -697,6 +697,7 @@ function collidersOf(o) {
     case 'haystack': return [{ c: 'circle', x: o.x, z: o.z, r: 1.05 * (op.size ?? 1) }];
     case 'well': return [{ c: 'circle', x: o.x, z: o.z, r: 0.94 }];
     case 'windmill': return [{ c: 'circle', x: o.x, z: o.z, r: 1.75 }];
+    case 'wizardTower': return [{ c: 'circle', x: o.x, z: o.z, r: 1.62 }];
     case 'marketStall': { const hw = (op.width ?? 3) / 2; return [rotBox(o.x, o.z, a, -hw - 0.05, hw + 0.05, -0.85, 1.3)]; }
     case 'lamppost': return [{ c: 'circle', x: o.x, z: o.z, r: 0.26 }];
     case 'campfire': return [{ c: 'circle', x: o.x, z: o.z, r: 0.95 }];
@@ -811,6 +812,7 @@ const light = (x, z, o = {}) => add('light', { x, z, dy: 1.5, color: '#ffb46b', 
 const fire = (x, z, seat = false, rotation = 0.8) => { keepClear(x, z, 2.2, 'campfire'); return add('campfire', { x, z, rotation, opts: { seat } }); };
 const stall = (x, z, rotation, cloth, width = 3) => add('marketStall', { x, z, rotation: r3(rotation), opts: { cloth, width, seed: nextSeed() } });
 const well = (id, x, z, text, roof = 'wood_planks') => { keepClear(x, z, 2.2, `well ${id}`); return add('well', { id, x, z, rotation: 0, text: [].concat(text), opts: { roof } }); };
+const wizardTower = (id, x, z, opts = {}) => { keepClear(x, z, 2.6, `wizard tower ${id}`); return add('wizardTower', { id, x, z, rotation: 0, opts }); };
 const emit = (preset, x, z, size, count, dy = 1.2, extra = {}) => add('emitter', { x, z, preset, size, count, dy, ...extra });
 const critters = (id, kind, x, z, count, radius, extra = {}) => add('critters', { id, x, z, kind, count, radius, ...extra });
 /** Bridge between two banks (deck height given explicitly: the bank level). */
@@ -1164,6 +1166,8 @@ function emberwood() {
   emit('petals', 15, 111, [13, 3, 11], 30, 2.2);
   emit('fireflies', 15, 111, [13, 2, 11], 30, 1.0);
   sign(25.6, 113.4, ['{The Hidden Glade}. Please knock. There is no door. Knock anyway.'], { boards: 1, rotation: 0.2 });
+  // the mage's tower (dark fantasy): the door faces +Z (the camera), a landmark at the glade's south edge
+  wizardTower('glade_tower', 22.5, 117.5, { stories: 4, wall: 'stone_brick', roof: 'roof_slate', chimney: true, crystal: true });
   // atmosphere
   emit('leaves', 30, 100, [26, 4, 20], 50, 2.8);
   emit('leaves', 14, 92, [18, 4, 14], 32, 2.8);
@@ -2159,7 +2163,7 @@ function validate(level) {
   }
 
   // ---- props stand on proper ground; footprints of buildings are flat and dry
-  const FLAT = new Set(['house', 'marketStall', 'windmill', 'well', 'campfire', 'bench']);
+  const FLAT = new Set(['house', 'marketStall', 'windmill', 'wizardTower', 'well', 'campfire', 'bench']);
   for (const o of objects) {
     const def = OBJECT_TYPES[o.type];
     if (def.kind !== 'prop' || def.placement !== 'point' || o.type === 'wallTorch' || o.type === 'light' || o.type === 'waterfall') continue;
@@ -2227,8 +2231,9 @@ function validate(level) {
   // …and the other tall props: a well's roof (1.85–2.65 above its ground, 2.5 × 1.8) and the
   // windmill tower (market-stall canopies are left out: their merchants stand under them on purpose
   // and are talked to from the front)
-  const tall = objects.filter((o) => o.type === 'well' || o.type === 'windmill').map((o) => {
+  const tall = objects.filter((o) => o.type === 'well' || o.type === 'windmill' || o.type === 'wizardTower').map((o) => {
     const y = groundY(o.x, o.z);
+    if (o.type === 'wizardTower') return { o, minX: o.x - 1.7, maxX: o.x + 1.7, minZ: o.z - 1.7, maxZ: o.z + 1.7, y0: y, y1: y + 0.55 + (o.opts?.stories ?? 4) * 2.5 + 2.7 };
     return o.type === 'well'
       ? { o, minX: o.x - 1.25, maxX: o.x + 1.25, minZ: o.z - 0.9, maxZ: o.z + 0.9, y0: y + 1.85, y1: y + 2.65 }
       : { o, minX: o.x - 1.65, maxX: o.x + 1.65, minZ: o.z - 1.65, maxZ: o.z + 1.65, y0: y, y1: y + (o.opts?.height ?? 6) + 1 };
