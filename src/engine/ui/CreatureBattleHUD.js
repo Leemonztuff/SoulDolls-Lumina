@@ -4,7 +4,7 @@ import { pal } from './art/palette.js';
 import { art, copyCanvas } from './art/painter.js';
 import { bar } from './art/pieces.js';
 import { icon as creatureIcon, TYPE_ICONS } from './art/icons/creature.js';
-import { txt, measure, lines, cjk, FONT } from './layout/type.js';
+import { txt, measure, fit, lines, cjk, FONT } from './layout/type.js';
 import { box, group, put, win } from './layout/layout.js';
 import { onScale } from './UiScale.js';
 import { currentFonts } from './FontLoader.js';
@@ -213,7 +213,7 @@ export class CreatureBattleHUD {
 
     // Foe panel: top left
     const foeW = Math.min(328, artW - pad * 2);
-    const foeH = 54;
+    const foeH = 58;
     const foeBox = { x: pad, y: pad, w: foeW, h: foeH };
 
     // Action Menu: bottom center
@@ -222,7 +222,7 @@ export class CreatureBattleHUD {
     const menuItems = this._menu?.items?.length || 0;
     const menuRows = menuItems > 0 ? Math.ceil(menuItems / cols) : 0;
     const menuPad = 8;
-    const menuItemH = 26;
+    const menuItemH = 28;
     const menuH = menuItems > 0 ? 2 * menuPad + menuRows * menuItemH : 0;
     const menuX = Math.round((artW - menuW) / 2);
     const menuY = artH - menuH - pad;
@@ -237,7 +237,7 @@ export class CreatureBattleHUD {
 
     // Player panel: above combat log
     const playerW = Math.min(328, artW - pad * 2);
-    const playerH = 54;
+    const playerH = 58;
     const playerX = artW - playerW - pad;
     const playerY = logY - playerH - 8;
     const playerBox = { x: playerX, y: playerY, w: playerW, h: playerH };
@@ -495,18 +495,30 @@ export class CreatureBattleHUD {
       const el = box(stage, p.x, p.y, p.w, p.h, `lu-creature__panel lu-creature__panel--${side}`);
       win(el, { size: 'M', beads: true }, p.x, p.y, p.w, p.h);
       if (info.fainted) el.classList.add('is-fainted');
-      txt(el, this._name(side, info), p.x + 9, p.y + 6, { font: 'name', color: k.tx1, ol: true, drop: true });
+
+      // Top row: Name (left, fitted) | Level (right) | Type icon (far right)
+      const maxNameW = p.w - 110;
+      const nameText = fit(this._name(side, info), 'name', maxNameW);
+      txt(el, nameText, p.x + 10, p.y + 6, { font: 'name', color: k.tx1, ol: true, drop: true });
+
+      txt(el, `Lv ${info.level}`, p.x + p.w - 82, p.y + 7, { font: 'num', color: k.g5, drop: true });
+
       const t = info.type ? TYPE_ICON[info.type] : null;
-      if (t) put(el, creatureIcon(t), p.x + p.w - 25, p.y + 4, 1, 'lu-creature__type');
-      txt(el, `Lv${info.level}`, p.x + 9, p.y + 25, { font: 'num', color: k.g5, drop: true });
-      const bx = p.x + 34, bw = p.w - 34 - 52, by = p.y + 26, bh = 7;
+      if (t) put(el, creatureIcon(t), p.x + p.w - 24, p.y + 5, 1, 'lu-creature__type');
+
+      // Middle row: HP label + HP track bar | Paperdoll
+      txt(el, 'HP', p.x + 10, p.y + 26, { font: 'tiny', color: k.g4, drop: true });
+
+      const bx = p.x + 28, bw = p.w - 28 - 56, by = p.y + 26, bh = 8;
       const ratio = typeof info.hpRatio === 'number' ? info.hpRatio : info.maxHp > 0 ? info.hp / info.maxHp : 0;
       const track = box(el, bx, by, bw, bh, 'lu-creature__track');
       put(track, art(bw, bh, (pp) => bar(pp, bw, bh, ratio, [k.hp0, k.hp1, k.hp2, k.hp3], { ring: k.dm1 })), bx, by);
-      if (side === 'player') txt(el, `${info.hp}/${info.maxHp}`, p.x + p.w - 56, p.y + 36, { font: 'num', color: k.tx1, align: 'right', drop: true });
 
       const pdCanvas = this._drawPaperdoll(info);
-      put(el, pdCanvas, p.x + p.w - 44, p.y + 18, 1, 'lu-creature__paperdoll');
+      put(el, pdCanvas, p.x + p.w - 48, p.y + 24, 1, 'lu-creature__paperdoll');
+
+      // Bottom row: HP numbers
+      txt(el, `${info.hp}/${info.maxHp}`, p.x + 28, p.y + 39, { font: 'num', color: side === 'player' ? k.tx1 : k.g4, drop: true });
     }
   }
 
