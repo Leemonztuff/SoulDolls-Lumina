@@ -1,0 +1,116 @@
+{
+  "format": "luminati-story",
+  "version": 1,
+  "items": {
+    "orb": {
+      "name": "Souldoll Orb",
+      "text": "A glass orb used to capture wild souldolls.",
+      "textKeys": {
+        "text": "D82FEAEA3CD13DCEC05A6698DE8D929F"
+      }
+    },
+    "salt-toffee": {
+      "name": "Salt Toffee",
+      "text": "A sweet coastal treat made in Saltreach Quay.",
+      "textKeys": {
+        "text": "A039988C86702D703313F64646022ABF"
+      }
+    },
+    "bell-clapper": {
+      "name": "Silenced Clapper",
+      "text": "The missing clapper of the Bellbindery.",
+      "key": true,
+      "textKeys": {
+        "text": "DD590872F5587BAE69504A4A3E23D14C"
+      }
+    }
+  },
+  "quests": {
+    "souldolls-hush": {
+      "title": "The Hush of Souldolls",
+      "stages": [
+        {
+          "id": "start",
+          "text": "Speak with Elspeth the Dollwright in Hushmoor Hollow."
+        },
+        {
+          "id": "road",
+          "text": "Travel east along Lantern Road."
+        },
+        {
+          "id": "bindery",
+          "text": "Visit the Bellbindery in Gloamford."
+        },
+        {
+          "id": "fen",
+          "text": "Cross the rainy Whisperfen."
+        },
+        {
+          "id": "cavern",
+          "text": "Explore Hollow Tide Cavern."
+        },
+        {
+          "id": "quay",
+          "text": "Reach Saltreach Quay."
+        },
+        {
+          "id": "light",
+          "text": "Light the Tidewatch Beacon."
+        }
+      ],
+      "textKeys": {
+        "stages": {
+          "start": "01E14123360E689C266A9B5A72B76061",
+          "road": "17AE29F5242B4870B4B0E5BC3374CD00",
+          "bindery": "B06EA49F25A7E12722A8B20CE1E071A0",
+          "fen": "2D51296F304533D0F7F69CAD7C7475E1",
+          "cavern": "D652405FE16D6ADF1B64190B42EBE842",
+          "quay": "CD378644DA047FC5415974B7E2C2BC3F",
+          "light": "1690BBAE0CCD69D8F8EAFA429F2CAA32"
+        }
+      }
+    }
+  },
+  "actors": {
+    "dollwright": {
+      "name": "Elspeth",
+      "title": "The Dollwright",
+      "talk": "dollwright"
+    },
+    "corvin": {
+      "name": "Corvin",
+      "title": "Hollow Watcher",
+      "talk": "corvin"
+    },
+    "maren": {
+      "name": "Maren",
+      "title": "Binder Maren",
+      "talk": "maren"
+    },
+    "bram": {
+      "name": "Bram",
+      "title": "Wayfarer",
+      "talk": "bram"
+    },
+    "orla": {
+      "name": "Orla",
+      "title": "Scholar of Gloamford",
+      "talk": "orla"
+    },
+    "rowan": {
+      "name": "Rowan",
+      "title": "Fen Guide",
+      "talk": "rowan"
+    },
+    "gull": {
+      "name": "Gull",
+      "title": "Dockmaster",
+      "talk": "gull"
+    },
+    "vane": {
+      "name": "Vane",
+      "title": "Lighthouse Keeper",
+      "talk": "vane"
+    }
+  }
+}

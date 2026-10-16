@@ -1,0 +1,83 @@
+{
+  "format": "luminati-creatures-encounters",
+  "version": 1,
+  "tables": {
+    "meadow": {
+      "stepsPerEncounter": 90,
+      "entries": [
+        { "species": "leafling", "weight": 20, "level": [2, 4] },
+        { "species": "mossling", "weight": 25, "level": [2, 4] },
+        { "species": "sparrowling", "weight": 25, "level": [3, 5] },
+        { "species": "rippling", "weight": 15, "level": [3, 5] },
+        { "species": "emberling", "weight": 15, "level": [3, 5] }
+      ]
+    },
+    "forest": {
+      "stepsPerEncounter": 80,
+      "entries": [
+        { "species": "mossling", "weight": 25, "level": [3, 6] },
+        { "species": "buzzling", "weight": 25, "level": [3, 6] },
+        { "species": "leafling", "weight": 15, "level": [4, 7] },
+        { "species": "sparrowling", "weight": 15, "level": [4, 7] },
+        { "species": "slitherling", "weight": 10, "level": [5, 8] },
+        { "species": "shadeling", "weight": 10, "level": [5, 8] }
+      ]
+    },
+    "mountains": {
+      "stepsPerEncounter": 100,
+      "entries": [
+        { "species": "stoneling", "weight": 30, "level": [5, 9] },
+        { "species": "voltling", "weight": 25, "level": [5, 9] },
+        { "species": "emberling", "weight": 15, "level": [4, 7] },
+        { "species": "sparrowling", "weight": 15, "level": [4, 7] },
+        { "species": "shadeling", "weight": 15, "level": [6, 10] }
+      ]
+    },
+    "shore": {
+      "stepsPerEncounter": 85,
+      "entries": [
+        { "species": "rippling", "weight": 30, "level": [3, 6] },
+        { "species": "slitherling", "weight": 25, "level": [3, 6] },
+        { "species": "frostling", "weight": 20, "level": [5, 8] },
+        { "species": "aurorling", "weight": 15, "level": [6, 10] },
+        { "species": "leafling", "weight": 10, "level": [4, 7] }
+      ]
+    },
+    "heath": {
+      "stepsPerEncounter": 85,
+      "entries": [
+        { "species": "peatling", "weight": 30, "level": [2, 5] },
+        { "species": "boggart", "weight": 25, "level": [3, 6] },
+        { "species": "lanternfly", "weight": 25, "level": [3, 6] },
+        { "species": "gloamwing", "weight": 20, "level": [4, 7] }
+      ]
+    },
+    "fen": {
+      "stepsPerEncounter": 95,
+      "entries": [
+        { "species": "mossmote", "weight": 30, "level": [3, 6] },
+        { "species": "peatling", "weight": 25, "level": [3, 6] },
+        { "species": "boggart", "weight": 25, "level": [4, 7] },
+        { "species": "murkfin", "weight": 20, "level": [4, 7] }
+      ]
+    },
+    "cavern": {
+      "stepsPerEncounter": 110,
+      "entries": [
+        { "species": "cavernmite", "weight": 35, "level": [5, 9] },
+        { "species": "cinderbound", "weight": 30, "level": [5, 9] },
+        { "species": "hollowwisp", "weight": 20, "level": [6, 10] },
+        { "species": "murkfin", "weight": 15, "level": [6, 10] }
+      ]
+    },
+    "tide": {
+      "stepsPerEncounter": 90,
+      "entries": [
+        { "species": "tidewisp", "weight": 30, "level": [4, 8] },
+        { "species": "shellskimmer", "weight": 25, "level": [4, 8] },
+        { "species": "saltling", "weight": 25, "level": [4, 8] },
+        { "species": "hollowwisp", "weight": 20, "level": [5, 9] }
+      ]
+    }
+  }
+}

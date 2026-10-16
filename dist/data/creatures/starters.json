@@ -1,0 +1,5 @@
+{
+  "format": "luminati-creatures-starters",
+  "version": 1,
+  "starters": ["leafling", "emberling", "rippling"]
+}
