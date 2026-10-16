@@ -24,6 +24,7 @@ import { CreatureRoster } from '../src/game/creatures/CreatureRoster.js';
 import { CreatureBattle } from '../src/game/creatures/CreatureBattle.js';
 import { CreatureInput, CREATURE_BINDINGS } from '../src/game/creatures/CreatureInput.js';
 import { moveDef } from '../src/game/creatures/defs.js';
+import { typeMultiplier } from '../src/game/creatures/rules.js';
 import { ct } from '../src/game/creatures/strings.js';
 import { createSpeciesSheet } from '../src/engine/pixel/CreatureSprites.js';
 import { RNG } from '../src/engine/utils/math.js';
@@ -76,6 +77,9 @@ const ci = new CreatureInput(/** @type {any} */ (input));
 UI.useCreatureUI(creatureUIClasses());
 ui.enableCreature();
 const hud = /** @type {CreatureBattleHUD} */ (ui.creature.hud);
+// the overlay also drives the battle by click: a row picks, a tap on the backdrop cancels
+hud.onSelect = (i) => choose(i);
+hud.onCancel = () => { if (battle.phase !== 'action') battle.cancel(); };
 
 // ---------------------------------------------------------------------------------------------
 // A roster and the demo creatures (the play-test key; nothing is saved)
@@ -168,16 +172,23 @@ function actionMenu(st) {
     { label: ct('battle.party', 'Party'), disabled: st.bench.length === 0 },
     { label: ct('battle.run', 'Run') },
   ];
-  return { items, cursor: 0, cols: 2 };
+  return { items, cursor: 0, cols: 2, back: false };
 }
 /** @returns {BattleMenu} */
 function moveMenu() {
+  const foeType = battle.foe.def.type;
   /** @type {BattleMenuItem[]} */
   const items = battle.player.moves.slice(0, 4).map((id) => {
     const m = moveDef(id);
-    return { label: ct(`move.${id}`, m ? m.name : id), sub: m ? String(m.power) : '' };
+    const mult = m ? typeMultiplier(m.type, foeType) : 1;
+    return {
+      label: ct(`move.${id}`, m ? m.name : id),
+      sub: m ? String(m.power) : '',
+      type: m && m.type !== 'neutral' ? m.type : undefined,
+      eff: mult > 1 ? 1 : mult < 1 ? -1 : 0,
+    };
   });
-  return { items, cursor: 0, cols: 2 };
+  return { items, cursor: 0, cols: 2, back: true };
 }
 /** @param {BattleState} st @returns {BattleMenu} */
 function switchMenu(st) {
@@ -186,7 +197,7 @@ function switchMenu(st) {
     label: ct(`species.${c.species}`, c.name),
     sub: ct('roster.level', 'Lv {n}', { n: c.level }),
   }));
-  return { items, cursor: 0, cols: 1 };
+  return { items, cursor: 0, cols: 1, back: true };
 }
 
 /** The translated log lines, newest at the bottom. @param {BattleEvent[]} events */
@@ -282,7 +293,13 @@ function tick(dt) {
   else if (battle.phase === 'moveSelect') m = moveMenu();
   else if (battle.phase === 'switch') m = switchMenu(st);
   if (m) {
-    ci.navigate(m.items.length);
+    if (battle.phase !== 'action' && ci.take('creatureBattleCancel') && battle.cancel()) {
+      // a cancel only ever steps back to `action`
+      state.phase = battle.phase;
+      ci.index = 0;
+      m = actionMenu(st);
+    }
+    ci.navigate(m.items.length, { cols: m.cols, enabled: (i) => !m?.items[i]?.disabled });
     m = /** @type {BattleMenu} */ ({ ...m, cursor: ci.index });
     if (ci.take('creatureBattleConfirm')) { choose(ci.index); m = null; }
   } else if (battle.phase !== 'end' && state.auto) {
@@ -366,15 +383,47 @@ function info() {
     orbs: state.orbs,
     bench: battle.state().bench.length,
     menuItems: document.querySelectorAll('.lu-creature__item').length,
-    selItems: document.querySelectorAll('.lu-creature__item.is-sel').length,
+    selItems: document.querySelectorAll('.lu-creature__item.is-selected, .lu-creature__item.is-sel').length,
     disabledItems: document.querySelectorAll('.lu-creature__item.is-disabled').length,
+    panes: document.querySelectorAll('.lu-creature__panel').length,
+    spriteCount: document.querySelectorAll('.lu-creature__sprite').length,
+    backdrop: !!document.querySelector('.lu-creature__backdrop'),
+    hints: document.querySelectorAll('.lu-creature__hints .key').length,
     pane: box(r('.lu-creature__panel--player')),
     foePane: box(r('.lu-creature__panel--foe')),
     log: box(r('.lu-creature__log')),
     menu: box(r('.lu-creature__menu')),
-    sprites: [...document.querySelectorAll('.lu-creature__sprite')].map((e) => `${e.getBoundingClientRect().width}x${e.getBoundingClientRect().height}`).join(','),
+    sprites: [...document.querySelectorAll('.lu-creature__sprite')].map((e) => `${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`).join(','),
+    ...fitReport(),
     wins: state.wins, caught: state.caught, fled: state.fled, selections: state.selections,
   };
+}
+
+/**
+ * Whether every battle box stays inside the screen's own art rectangle (the Fase 6 fit check): the
+ * art size in art px (from `--px`) and the boxes that leave it.
+ * @returns {{ artW: number, artH: number, inside: boolean, overflow: string[] }}
+ */
+function fitReport() {
+  const root = document.querySelector('.lu-root');
+  const stage = document.querySelector('.lu-creature__stage')?.getBoundingClientRect();
+  const px = root ? parseFloat(getComputedStyle(root).getPropertyValue('--px')) || 1 : 1;
+  if (!stage) return { artW: 0, artH: 0, inside: false, overflow: ['no stage'] };
+  const artW = Math.round(stage.width / px), artH = Math.round(stage.height / px);
+  const tol = 2;
+  const inside = (/** @type {DOMRect} */ b) => b.left >= stage.left - tol && b.top >= stage.top - tol && b.right <= stage.right + tol && b.bottom <= stage.bottom + tol;
+  /** @type {string[]} */
+  const overflow = [];
+  const named = {
+    foePanel: '.lu-creature__panel--foe', playerPanel: '.lu-creature__panel--player',
+    log: '.lu-creature__log', menu: '.lu-creature__menu',
+  };
+  for (const [name, sel] of Object.entries(named)) {
+    const el = document.querySelector(sel);
+    if (el && !inside(el.getBoundingClientRect())) overflow.push(name);
+  }
+  document.querySelectorAll('.lu-creature__sprite').forEach((el) => { if (!inside(el.getBoundingClientRect())) overflow.push('sprite'); });
+  return { artW, artH, inside: overflow.length === 0, overflow };
 }
 
 /** The self-test: chunking, the drawn screen, and a deterministic scripted win. @returns {string[]} */
@@ -393,6 +442,21 @@ function checks() {
   add(st.phase === 'action' || st.phase === 'end', `a fresh battle waits at the menu (${st.phase})`);
   const fight = scriptedFight();
   add(fight === 'win', `scripted fire vs grass wins (${fight})`);
+  // cancel(): `moveSelect` / `switch` step back to `action`, but `action` itself is not cancellable
+  const cb = new CreatureBattle({
+    player: new Creature('emberling', { level: 5 }),
+    foe: new Creature('leafling', { level: 5 }),
+    rng: new RNG(7),
+  });
+  cb.begin();
+  const atAction = cb.phase;
+  const backOnAction = cb.cancel();
+  cb.chooseAction('fight');
+  const atMoves = cb.phase;
+  const backOnMoves = cb.cancel();
+  const atActionAgain = cb.phase;
+  add(atAction === 'action' && backOnAction === false, 'cancel is a no-op on the action menu');
+  add(atMoves === 'moveSelect' && backOnMoves === true && atActionAgain === 'action', 'cancel steps moveSelect -> action');
   return out;
 }
 

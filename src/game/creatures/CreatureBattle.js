@@ -9,7 +9,7 @@
  * / switch → xp → levelUp → end`. `advance()` runs the work of the current phase and sets the next;
  * the menu phases (`action`, `moveSelect`, `switch`) wait for a choice. `hooks` exposes getters and
  * actions for tests (the shape of src/game/combat/hooks.js), without an engine or a clock:
- * `state()`, `chooseAction()`, `chooseMove()`, `chooseSwitch()`, `forceFoeMove()`.
+ * `state()`, `chooseAction()`, `chooseMove()`, `chooseSwitch()`, `cancel()`, `forceFoeMove()`.
  *
  * A wild battle (`capture: true`) may be fled from and captured; an orb is spent through `onOrb()`
  * and counted by `orbCount()` (0 → the `noOrb` phase). Without a roster, switching is unavailable.
@@ -215,6 +215,25 @@ export class CreatureBattle {
     this._foeOnly = true;
     this.phase = 'turnOrder';
     return true;
+  }
+
+  /**
+   * Step back one menu (`moveSelect` → `action`, `switch` → `action`). A forced switch (the active
+   * creature fainted and another must come in) cannot be cancelled. The battle menus are a stack of
+   * at most two, so a plain return to `action` is the whole of it.
+   * @returns {boolean} false: not a cancellable menu, or a forced switch
+   */
+  cancel() {
+    if (this.phase === 'moveSelect') {
+      this.phase = 'action';
+      return true;
+    }
+    if (this.phase === 'switch') {
+      if (this._forced) return false;
+      this.phase = 'action';
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -500,6 +519,7 @@ export function makeHooks(battle) {
     chooseAction: (action) => battle.chooseAction(action),
     chooseMove: (move) => battle.chooseMove(move),
     chooseSwitch: (uid) => battle.chooseSwitch(uid),
+    cancel: () => battle.cancel(),
     forceFoeMove: (move) => battle.forceFoeMove(move),
     player: () => creatureInfo(battle.player),
     foe: () => creatureInfo(battle.foe),

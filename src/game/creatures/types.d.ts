@@ -255,6 +255,8 @@ export interface BattleHooks {
   chooseMove(move: string): boolean;
   /** Switch the active creature; false when not now / unknown uid. */
   chooseSwitch(uid: string): boolean;
+  /** Step one menu back (`moveSelect`/`switch` → `action`); false when not cancellable / a forced switch. */
+  cancel(): boolean;
   /** Force the foe's move (null clears); false when the foe does not know it. */
   forceFoeMove(move: string | null): boolean;
   /** The player's active creature. */
@@ -282,6 +284,10 @@ export interface BattleMenuItem {
   label: string;
   /** An optional right-aligned note (a move's power). */
   sub?: string;
+  /** An optional `CreatureType` id shown as the move's type icon (grass / fire / water). */
+  type?: string;
+  /** An optional effectiveness against the foe: 1 super effective, -1 not very (a marker is drawn). */
+  eff?: number;
   /** A refused row (greyed, not selectable). */
   disabled?: boolean;
 }
@@ -294,6 +300,8 @@ export interface BattleMenu {
   cursor?: number;
   /** 2 for the 2 × 2 grid (main menu, moves), 1 for the vertical list (the party). */
   cols?: 1 | 2;
+  /** Whether a cancel returns to the previous menu (a Back keycap and a backdrop tap); default true. */
+  back?: boolean;
 }
 
 /**
@@ -308,7 +316,7 @@ export interface CreatureBattleHUDLike {
   readonly visible: boolean;
   /** A menu row was chosen (a click; the caller also reads its own input). */
   onSelect: ((index: number) => void) | null;
-  /** Cancel was pressed (a click outside handled by the caller; kept for the API). */
+  /** Cancel was asked (a Back keycap, or a tap on the backdrop while a cancellable menu is open). */
   onCancel: (() => void) | null;
   /** Show a battle snapshot (`display` carries the translated names). */
   setState(state: BattleState | null, display?: { player?: string; foe?: string }): void;

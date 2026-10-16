@@ -121,21 +121,39 @@ export class CreatureInput {
   }
 
   /**
-   * Move the cursor by the buffered vertical / horizontal edges, wrapped within `count`. Consumes
-   * the edges it uses.
+   * Move the cursor by the buffered vertical / horizontal edges, wrapped within `count` and
+   * skipping any row `o.enabled` refuses. With `o.cols` 2 (a 2 × 2 grid) Up / Down step a whole row
+   * and Left / Right one column; otherwise every edge steps one item. A cursor left on a refused row
+   * snaps to the next allowed one, so a Confirm is never dead. Consumes the edges it uses.
    * @param {number} count the number of items in the menu
+   * @param {{ cols?: 1|2, enabled?: ((i: number) => boolean) | null }} [o]
    * @returns {boolean} whether the cursor moved
    */
-  navigate(count) {
+  navigate(count, o = {}) {
     if (count <= 0) return false;
+    const cols = o.cols === 2 ? 2 : 1;
+    const enabled = o.enabled ?? null;
+    const ok = (/** @type {number} */ i) => !enabled || enabled(i);
+    const start = this.index;
+    /** The nearest allowed index in a direction (wrapping; it settles after `count` steps). */
+    const go = (/** @type {number} */ delta) => {
+      let i = this.index;
+      for (let n = 0; n < count; n++) {
+        i = (i + delta + count) % count;
+        if (ok(i)) { this.index = i; return true; }
+      }
+      return false;
+    };
     let moved = false;
-    if (this.take('creatureBattleUp') || this.take('creatureBattleLeft')) {
-      this.index = (this.index - 1 + count) % count;
-      moved = true;
-    }
-    if (this.take('creatureBattleDown') || this.take('creatureBattleRight')) {
-      this.index = (this.index + 1) % count;
-      moved = true;
+    if (this.take('creatureBattleUp')) moved = go(cols === 2 ? -cols : -1) || moved;
+    if (this.take('creatureBattleDown')) moved = go(cols === 2 ? cols : 1) || moved;
+    if (this.take('creatureBattleLeft')) moved = go(-1) || moved;
+    if (this.take('creatureBattleRight')) moved = go(1) || moved;
+    if (!ok(this.index)) {
+      for (let n = 0; n < count; n++) {
+        const i = (start + n) % count;
+        if (ok(i)) { this.index = i; moved = true; break; }
+      }
     }
     return moved;
   }

@@ -26,6 +26,7 @@ import { CREATURE_KINDS, CREATURE_TABLES, isCreatureType } from '../../engine/le
 import { CHARACTER_SPRITE_OPTS } from '../config.js';
 import { Creature } from './Creature.js';
 import { moveDef } from './defs.js';
+import { typeMultiplier } from './rules.js';
 import { CreatureRoster } from './CreatureRoster.js';
 import { CreatureBattle } from './CreatureBattle.js';
 import { CreatureInput, CREATURE_BINDINGS, CREATURE_HOTKEY_BINDINGS } from './CreatureInput.js';
@@ -503,7 +504,7 @@ export class CreatureSystem {
     const hud = game.ui.creature.hud;
     // (the HUD is created without callbacks; a menu click reaches the same `_choose` as the keys)
     hud.onSelect = (i) => this._choose(i);
-    hud.onCancel = () => { /* a cancel is a no-op: the battle menus have no back step */ };
+    hud.onCancel = () => { this.battle?.cancel(); };
     hud.show();
     this.hud = hud;
     this._phase = '';
@@ -540,16 +541,25 @@ export class CreatureSystem {
     /** @type {BattleMenu|null} */
     let menu = null;
     if (MENU_PHASES.includes(phase)) {
-      if (phase === 'action') menu = this._actionMenu(st);
-      else if (phase === 'moveSelect') menu = this._moveMenu();
-      else if (phase === 'switch') menu = this._switchMenu(st);
-      ci.navigate(menu.items.length);
-      menu = { ...menu, cursor: ci.index };
-      if (ci.take('creatureBattleConfirm')) {
-        this._choose(ci.index);
-        menu = null; // the phase moved on (the new phase's menu is built next frame)
+      // a cancel steps back one menu (moveSelect / switch → action); on `action` it is a no-op
+      if (phase !== 'action' && ci.take('creatureBattleCancel') && b.cancel()) {
+        ci.index = 0;
+        this._phase = b.phase;
+      }
+      const ph = b.phase;
+      if (ph === 'action') menu = this._actionMenu(st);
+      else if (ph === 'moveSelect') menu = this._moveMenu();
+      else if (ph === 'switch') menu = this._switchMenu(st);
+      if (menu) {
+        ci.navigate(menu.items.length, { cols: menu.cols, enabled: (i) => !menu?.items[i]?.disabled });
+        menu = { ...menu, cursor: ci.index };
+        if (ci.take('creatureBattleConfirm')) {
+          this._choose(ci.index);
+          menu = null; // the phase moved on (the new phase's menu is built next frame)
+        }
       }
     } else {
+      ci.take('creatureBattleCancel'); // discard a cancel pressed while the battle runs on its own
       this._stepT += dt;
       if (this._stepT >= STEP) {
         this._stepT = 0;
@@ -583,7 +593,8 @@ export class CreatureSystem {
   }
 
   /**
-   * The 2 × 2 action menu (Orbs and Run off when the battle forbids them, Party off when empty).
+   * The 2 × 2 action menu (Orbs and Run off when the battle forbids them, Party off when empty). No
+   * back step from the top menu.
    * @returns {BattleMenu}
    */
   _actionMenu(st) {
@@ -596,20 +607,29 @@ export class CreatureSystem {
       ],
       cursor: 0,
       cols: 2,
+      back: false,
     };
   }
 
   /**
-   * The 2 × 2 move menu (the leader's moves, their power beside the name).
+   * The 2 × 2 move menu: each move's name, its type icon, its power, and an effectiveness marker
+   * (a super / weak arrow when the move's type is not neutral against the foe).
    * @returns {BattleMenu}
    */
   _moveMenu() {
     const b = this.battle;
+    const foeType = b?.foe.def.type;
     const items = b.player.moves.slice(0, 4).map((id) => {
       const m = moveDef(id);
-      return { label: ct(`move.${id}`, m ? m.name : id), sub: m ? String(m.power) : '' };
+      const mult = m && foeType ? typeMultiplier(m.type, foeType) : 1;
+      return {
+        label: ct(`move.${id}`, m ? m.name : id),
+        sub: m ? String(m.power) : '',
+        type: m && m.type !== 'neutral' ? m.type : undefined,
+        eff: mult > 1 ? 1 : mult < 1 ? -1 : 0,
+      };
     });
-    return { items, cursor: 0, cols: 2 };
+    return { items, cursor: 0, cols: 2, back: true };
   }
 
   /**
@@ -621,7 +641,7 @@ export class CreatureSystem {
       label: ct(`species.${c.species}`, c.name),
       sub: ct('roster.level', 'Lv {n}', { n: c.level }),
     }));
-    return { items, cursor: 0, cols: 1 };
+    return { items, cursor: 0, cols: 1, back: true };
   }
 
   /**

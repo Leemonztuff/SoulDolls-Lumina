@@ -29,12 +29,14 @@
   height: 100%;
 }
 
-/* the backdrop: today's navy, darkest at the edges */
+/* the backdrop: today's navy, darkest at the edges. While the overlay is on it takes pointer
+   events, so a tap that misses every control (the menu's items) cancels the current menu. */
 .lu-root .lu-creature__backdrop {
   position: absolute;
   inset: 0;
   background: radial-gradient(120% 90% at 50% 30%, var(--g-ink2), var(--g-ink0) 78%);
 }
+.lu-root .lu-creature.is-on .lu-creature__backdrop { pointer-events: auto; }
 
 /* a fainted creature dims its sprite and its panel */
 .lu-root .lu-creature__sprite.is-fainted { opacity: 0.4; }
