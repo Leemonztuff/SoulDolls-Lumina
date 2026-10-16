@@ -18,6 +18,18 @@
       "at": [0, 0]
     },
     {
+      "id": "tower-floor-1"
+    },
+    {
+      "id": "tower-floor-2"
+    },
+    {
+      "id": "tower-floor-3"
+    },
+    {
+      "id": "tower-floor-4"
+    },
+    {
       "id": "lantern-road",
       "at": [40, 6]
     },

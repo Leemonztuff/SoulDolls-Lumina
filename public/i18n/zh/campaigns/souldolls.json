@@ -25,6 +25,7 @@
     "Souldolls": "魂偶",
     "The Bellbindery": "钟楼装订所",
     "The Hush of Souldolls": "魂偶之静默",
+    "The Wizard's Tower": "巫师之塔",
     "Tidewatch Light": "观潮灯塔",
     "Vane": "韦恩",
     "Whisperfen": "低语沼泽"
@@ -114,6 +115,10 @@
       "source": "Thank you for returning the Silenced Clapper. The bindery door is open.",
       "target": "谢谢你找回寂静钟舌。装订所的门已经打开了。"
     },
+    "11FD22EACDE6F2648C227D52A9749137": {
+      "source": "The Hall",
+      "target": "大厅"
+    },
     "17A40DB036D3AEE85F7D6DDEDA16D44F": {
       "source": "Greetings, traveller. The Hush is swallowing names across the moor.",
       "target": "你好，旅人。静默正在吞噬荒野上的名字。"
@@ -121,6 +126,10 @@
     "17AE29F5242B4870B4B0E5BC3374CD00": {
       "source": "Travel east along Lantern Road.",
       "target": "沿着灯笼路向东旅行。"
+    },
+    "17EA8A2EB60CB5D4DEE33BEA9F0938B2": {
+      "source": "Go downstairs",
+      "target": "下楼"
     },
     "31A759805782C77C9108DE3E6B0D532A": {
       "source": "Dockmaster",
@@ -141,6 +150,10 @@
     "95B232FE7A5BE1C08B05BA9EEE403610": {
       "source": "\"Rain falls over Whisperfen.\"",
       "target": "“雨水倾泻在低语沼泽。”"
+    },
+    "357D23E9425EDC8A117AA5C4D6480C62": {
+      "source": "Go upstairs",
+      "target": "上楼"
     },
     "414BF2B79E83FA81FD1DFA51CD4040F5": {
       "source": "Exit Cavern",
@@ -186,9 +199,21 @@
       "source": "Gloamwing's flame will warm your way!",
       "target": "微光翼的火焰会温暖你的旅途！"
     },
+    "52953D4E5E5FF492B4B1A55C6869D81D": {
+      "source": "The Workshop",
+      "target": "工坊"
+    },
     "78542A372DC47A95A7064EB8B20FB578": {
       "source": "The bindery door is locked. A clapper motif is etched on the lock.",
       "target": "装订所的门锁着。锁上刻着钟舌图案。"
+    },
+    "84715B67A88A613B0A2DEF40C5B67A8D": {
+      "source": "Go downstairs",
+      "target": "下楼"
+    },
+    "181438C12BD2FAED0276FA451060F275": {
+      "source": "The Observatory",
+      "target": "天文台"
     },
     "293005A8ECDEF94B86E24DA86F004AF5": {
       "source": "\"Welcome to Gloamford!\"",
@@ -210,9 +235,17 @@
       "source": "Which souldoll will you take?",
       "target": "你要选择哪一只魂偶？"
     },
+    "A28216A8D13C8C7A25BD8927DC8265B9": {
+      "source": "Go downstairs",
+      "target": "下楼"
+    },
     "A039988C86702D703313F64646022ABF": {
       "source": "A sweet coastal treat made in Saltreach Quay.",
       "target": "盐达码头制作的沿海甜食。"
+    },
+    "AAD131D8C8833112A2A8340157D45461": {
+      "source": "The Observatory",
+      "target": "天文台"
     },
     "B2ED0AE71E7F5E69BC03E2D813E1994E": {
       "source": "Take these orbs to catch wild critters along the road.",
@@ -221,6 +254,10 @@
     "B06EA49F25A7E12722A8B20CE1E071A0": {
       "source": "Visit the Bellbindery in Gloamford.",
       "target": "拜访幽渡镇的钟楼装订所。"
+    },
+    "B9CC8B7C6EC86DE49CA66FA316754773": {
+      "source": "Go out",
+      "target": "出去"
     },
     "C2C3328E5DB88C94EAD428764E9A2439": {
       "source": "Peatling (Grass)",
@@ -242,9 +279,17 @@
       "source": "Chapter Three",
       "target": "第三章"
     },
+    "D41A956C2CA5A7228889BF88D1A5BB64": {
+      "source": "The Hall",
+      "target": "大厅"
+    },
     "D82FEAEA3CD13DCEC05A6698DE8D929F": {
       "source": "A glass orb used to capture wild souldolls.",
       "target": "用于捕捉野生魂偶的玻璃宝珠。"
+    },
+    "D52307D8583A1252C85E3053D133EA39": {
+      "source": "The Workshop",
+      "target": "工坊"
     },
     "D652405FE16D6ADF1B64190B42EBE842": {
       "source": "Explore Hollow Tide Cavern.",
@@ -274,6 +319,14 @@
       "source": "Tidewisp will guide you through the tides!",
       "target": "潮汐灵会在浪潮中为你指引方向！"
     },
+    "E3A724F791F92DCA23164584A78265F1": {
+      "source": "The Study",
+      "target": "书房"
+    },
+    "E8AD2480B5E25BF2A12F2E02BE941AEA": {
+      "source": "The Study",
+      "target": "书房"
+    },
     "E12A118061057DD84998FFFA96BCAF5D": {
       "source": "Hollow Watcher",
       "target": "山谷守望者"
@@ -290,6 +343,10 @@
       "source": "\"ECHOES IN THE CAVERN\"",
       "target": "“洞穴的回声”"
     },
+    "EC6FD7B0C4B20E1E50803DDBB432E2AE": {
+      "source": "Go upstairs",
+      "target": "上楼"
+    },
     "EE3C35A22A53976436F10ED0D09370A8": {
       "source": "\"Welcome to Hushmoor Hollow.\"",
       "target": "“欢迎来到寂荒山谷。”"
@@ -305,6 +362,10 @@
     "F659AED97E1E03B71A8ADFF2DDAEEFF9": {
       "source": "Wayfarer",
       "target": "旅人"
+    },
+    "F19844CAD89244208409EF8962489970": {
+      "source": "Go upstairs",
+      "target": "上楼"
     },
     "FF875F1725C59981614DB3A2EDDA4454": {
       "source": "The rain in Whisperfen never truly stops, but the path is clear.",

@@ -1,6 +1,6 @@
 # Souldolls — A Campaign of Silent Bells and Forgotten Names
 
-The design document of **Souldolls**, a 3-chapter, 8-level campaign in the Luminati 2.5D Pixel-Art Engine.
+The design document of **Souldolls**, a 3-chapter, 12-level campaign in the Luminati 2.5D Pixel-Art Engine.
 
 | | |
 | --- | --- |
@@ -18,10 +18,14 @@ npm run level:check -- --campaign=souldolls
 
 ## Overview
 
-The **Souldolls** campaign spans 8 levels across 3 chapters:
+The **Souldolls** campaign spans 12 levels across 3 chapters:
 
 1. **Chapter One: The Whispering Hollow**
-   - `hushmoor-hollow` (40×32): The start of the journey in Elspeth's hollow. Starters and wild Peatling.
+   - `hushmoor-hollow` (40×32): The start of the journey in Elspeth's hollow. Starters and wild Peatling, and a mage's tower to the north.
+   - `tower-floor-1` (18×14): The Wizard's Tower, ground floor ("The Hall") — the round table, a cold hearth and the stair up.
+   - `tower-floor-2` (18×14): "The Study" — ledgers, a narrow bed and two flights (down to the hall, up to the workshop).
+   - `tower-floor-3` (18×14): "The Workshop" — a shop counter, alembics, crates and sacks, stairs down and up.
+   - `tower-floor-4` (18×14): "The Observatory" — the tower top, windows all round, star charts and cold light; stairs down only.
    - `lantern-road` (56×20): The road east past Bram at the campfire.
    - `gloamford` (48×40): The town of Gloamford with Scholar Orla and the entrance to the Bellbindery.
    - `bellbindery` (20×14): An interior room with Binder Maren.

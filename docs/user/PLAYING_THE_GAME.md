@@ -715,8 +715,8 @@ How the campaign is built and how to make your own:
 
 ### 16.6 Souldolls
 
-A 3-chapter, 8-level story campaign: `/game.html?campaign=souldolls`.
-Set off from Hushmoor Hollow with a starter souldoll from Elspeth the Dollwright, travel through Lantern Road and Gloamford, enter the rainy Whisperfen and Hollow Tide Cavern, and reach Tidewatch Beacon at Saltreach Quay to dispel the Hush over the moor. Features 12 new creature species and 4 encounter zones (`heath`, `fen`, `cavern`, `tide`).
+A 3-chapter, 12-level story campaign: `/game.html?campaign=souldolls`.
+Set off from Hushmoor Hollow with a starter souldoll from Elspeth the Dollwright (climb the mage's tower north of the hollow, if you like), travel through Lantern Road and Gloamford, enter the rainy Whisperfen and Hollow Tide Cavern, and reach Tidewatch Beacon at Saltreach Quay to dispel the Hush over the moor. Features 12 new creature species and 4 encounter zones (`heath`, `fen`, `cavern`, `tide`).
 
 ---
 

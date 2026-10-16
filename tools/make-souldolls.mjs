@@ -34,7 +34,7 @@ import { parseArgs, canonicalObject, keyLevel, keyIssueLines, splitSharedKeys, p
 import { gridFromLevel, placerFromLevel } from './lib/levelcheck.mjs';
 import { checkCampaign } from './lib/campaigncheck.mjs';
 
-/** @import { Level, LevelObject } from '../src/engine/level/types.js' */
+/** @import { Level, LevelObject, LevelSpawn } from '../src/engine/level/types.js' */
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
@@ -129,13 +129,18 @@ function towerStair(L, id, x, z, { dir, to, entrance, here, label, facing }) {
   return arrive;
 }
 
-/** The way out of the ground floor: the low south wall's door out to hushmoor-hollow. */
+/**
+ * The way out of the ground floor: the low south wall's door out to hushmoor-hollow, and where the
+ * player stands on arriving from it (just inside the door, facing north into the hall).
+ * @param {Level} L
+ * @returns {LevelSpawn}
+ */
 function towerFrontDoor(L) {
   put(L, 'en_tower_door', 'entrance', 9, 11.7, { name: 'tower-door', facing: 'up' });
   put(L, 'ex_tower_door', 'exit', 0, 0, {
     minX: 7.8, maxX: 10.2, minZ: 12.2, maxZ: TOWER_D, to: 'hushmoor-hollow', entrance: 'tower-door', mode: 'use', label: 'Go out',
   });
-  return { x: 9, z: 11.7 };
+  return { x: 9, z: 11.7, facing: 'up' };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -220,14 +225,13 @@ function buildHushmoorHollow() {
     ],
   });
 
-  // The wizard's tower on the north ridge: its door faces south, the four floors inside
-  put(L, 'wizard_tower', 'wizardTower', 9.5, 28, {
-    rotation: Math.PI,
+  // The wizard's tower on the north ridge: its door faces south (rotation 0), the four floors inside
+  put(L, 'wizard_tower', 'wizardTower', 4, 7, {
     opts: { stories: 4, wall: 'stone_brick', roof: 'roof_slate', chimney: true, crystal: true, seed: 3 },
   });
-  put(L, 'en_tower', 'entrance', 9.5, 25.09, { name: 'tower-door', facing: 'up' });
+  put(L, 'en_tower', 'entrance', 4, 10.4, { name: 'tower-door', facing: 'down' });
   put(L, 'ex_tower', 'exit', 0, 0, {
-    minX: 8.6, maxX: 10.4, minZ: 25.19, maxZ: 26.39,
+    minX: 3.1, maxX: 4.9, minZ: 9.1, maxZ: 10.3,
     to: 'tower-floor-1', entrance: 'tower-door', mode: 'use', label: 'Enter',
   });
 
@@ -290,7 +294,7 @@ function buildTowerFloor2() {
   put(L, 'chair_study', 'chair', 10.4, 6.6);
   put(L, 'rug_study', 'rug', 10.4, 8.4, { opts: { color: 'blue', width: 2.6, length: 2.6, seed: 2 } });
   put(L, 'bed_study', 'bed', 14.9, 9.1, { rotation: W_, opts: { width: 1.2, length: 2.2, blanket: 'blue', seed: 3 } });
-  put(L, 'wardrobe_study', 'wardrobe', 15.7, 5.5, { rotation: W_, opts: { kind: 'wardrobe', width: 1.4, seed: 6 } });
+  put(L, 'wardrobe_study', 'wardrobe', 15.7, 5.9, { rotation: W_, opts: { kind: 'wardrobe', width: 1.4, seed: 6 } });
   put(L, 'torch_study_w', 'wallTorch', 2, 3.4, { rotation: E_, dy: 2.1 });
   put(L, 'torch_study_e', 'wallTorch', 16, 7.4, { rotation: W_, dy: 2.1 });
   put(L, 'light_study', 'light', 9.6, 7.4, { dy: 2.4, color: '#ffd9a0', intensity: 4, distance: 7, flicker: 0.06, nightOnly: false });
@@ -802,6 +806,10 @@ const campaignRaw = {
   start: { level: 'hushmoor-hollow', entrance: 'hollow-start' },
   levels: [
     { id: 'hushmoor-hollow', at: [0, 0] },
+    { id: 'tower-floor-1' },
+    { id: 'tower-floor-2' },
+    { id: 'tower-floor-3' },
+    { id: 'tower-floor-4' },
     { id: 'lantern-road', at: [40, 6] },
     { id: 'gloamford', at: [96, 0] },
     { id: 'bellbindery' },
@@ -839,6 +847,10 @@ const campaignRaw = {
 /** @type {[string, Level][]} */
 const built = [
   ['hushmoor-hollow', buildHushmoorHollow()],
+  ['tower-floor-1', buildTowerFloor1()],
+  ['tower-floor-2', buildTowerFloor2()],
+  ['tower-floor-3', buildTowerFloor3()],
+  ['tower-floor-4', buildTowerFloor4()],
   ['lantern-road', buildLanternRoad()],
   ['gloamford', buildGloamford()],
   ['bellbindery', buildBellbindery()],
@@ -902,6 +914,12 @@ for (const { value } of EVENT_TRIGGERS) {
   if (!allObjects.some((o) => o.type === 'event' && o.on === value)) problems.push(`coverage: no "${value}" event in campaign`);
 }
 
+// The tower floors' walls are the campaign's only raised tiles: no prop may reach into one
+for (const id of ['tower-floor-1', 'tower-floor-2', 'tower-floor-3', 'tower-floor-4']) {
+  const lv = levels.get(id);
+  if (lv) for (const m of wallClips(lv)) problems.push(`${id}: ${m}`);
+}
+
 for (const [file, issues] of /** @type {[string, ReturnType<typeof fileKeyIssues>][]} */ ([
   ['campaign.json', fileKeyIssues('campaign', campaignKeyed)],
   [storyFile('main.json'), fileKeyIssues('story', storyMain)],
@@ -910,6 +928,42 @@ for (const [file, issues] of /** @type {[string, ReturnType<typeof fileKeyIssues
 
 for (const [id, sc] of Object.entries(story.scripts)) {
   for (const e of parseScript(sc.lines).errors) problems.push(`${sc.file} › ${id}:${e.line}: ${e.msg}`);
+}
+
+/**
+ * Props whose collider reaches into a raised tile (a wall): the level checks' colliders
+ * (`collidersOf`, the builders' footprints) sampled every 0.1 inside a 0.03 margin, so a piece
+ * flush with its wall passes. The tower rooms' walls are the only raised tiles in this campaign.
+ * @param {Level} level
+ * @returns {string[]}
+ */
+function wallClips(level) {
+  const g = gridFromLevel(level);
+  const P = placerFromLevel(g, level);
+  const floor = levelToChar(1);
+  const raised = (x, z) => {
+    const i = Math.floor(x);
+    const j = Math.floor(z);
+    if (i < 0 || j < 0 || i >= level.width || j >= level.depth) return true;
+    return level.heights[j][i] !== floor;
+  };
+  const out = [];
+  for (const o of level.objects) {
+    if (OBJECT_TYPES[o.type].kind !== 'prop') continue;
+    for (const c of P.collidersOf(o)) {
+      const pts = [];
+      if (c.c === 'box') {
+        for (let x = c.minX + 0.03; x <= c.maxX - 0.03 + 1e-9; x += Math.min(0.1, (c.maxX - c.minX - 0.06) || 0.1)) {
+          for (let z = c.minZ + 0.03; z <= c.maxZ - 0.03 + 1e-9; z += Math.min(0.1, (c.maxZ - c.minZ - 0.06) || 0.1)) pts.push([x, z]);
+        }
+      } else if (c.c === 'circle') {
+        for (let a = 0; a < 16; a++) pts.push([c.x + Math.cos(a * Math.PI / 8) * (c.r - 0.03), c.z + Math.sin(a * Math.PI / 8) * (c.r - 0.03)]);
+      }
+      const hit = pts.find(([x, z]) => raised(x, z));
+      if (hit) out.push(`${o.type} ${o.id} reaches into a wall at (${hit[0].toFixed(2)}, ${hit[1].toFixed(2)})`);
+    }
+  }
+  return out;
 }
 
 const report = checkCampaign(campaign, (id) => (levels.has(id) ? { level: levels.get(id), warnings: [] } : null), {

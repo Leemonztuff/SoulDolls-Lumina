@@ -432,13 +432,21 @@ Where: `campaigns/souldolls` (levels and story files).
 | English | 日本語 | Why |
 |---|---|---|
 | Hushmoor Hollow | ハシュモア・ホロウ | Start level. |
-| Lantern Road | ランタンロード | Level 2. |
-| Gloamford | グロームフォード | Level 3. |
-| The Bellbindery | ベルバインダリー | Level 4. |
-| Whisperfen | ウィスパーフェン | Level 5. |
-| Hollow Tide Cavern | ホロウタイド洞窟 | Level 6. |
-| Saltreach Quay | ソルトリーチ港 | Level 7. |
-| Tidewatch Light | タイドウォッチ灯台 | Level 8. |
+| The Wizard's Tower | 魔導士の塔 | The mage's tower north of Hushmoor Hollow: the level name and its region (four interior floors). |
+| The Hall | 広間 | Tower floor subtitles: the room, not the building (Gildhaven Hall 市庁舎). |
+| The Study | 書斎 | Tower floor subtitle. |
+| The Workshop | 工房 | Tower floor subtitle (Hollis's workshop is also 工房). |
+| The Observatory | 天文台 | Tower floor subtitle; as the Lumen Observatory 天文台 in Starfall Vale. |
+| Go upstairs | 上の階へ | Exit prompts: as in Emberfall's rooms. |
+| Go downstairs | 下の階へ | Exit prompt: as in Emberfall's rooms. |
+| Go out | 外に出る | Exit prompt: as in Emberfall's rooms. |
+| Lantern Road | ランタンロード | Level 6. |
+| Gloamford | グロームフォード | Level 7. |
+| The Bellbindery | ベルバインダリー | Level 8. |
+| Whisperfen | ウィスパーフェン | Level 9. |
+| Hollow Tide Cavern | ホロウタイド洞窟 | Level 10. |
+| Saltreach Quay | ソルトリーチ港 | Level 11. |
+| Tidewatch Light | タイドウォッチ灯台 | Level 12. |
 | Elspeth | エルスペス | The Dollwright. |
 | Corvin | コルビン | Hollow Watcher. |
 | Maren | マレン | Binder Maren. |
@@ -1008,13 +1016,21 @@ Where: `campaigns/souldolls` (levels and story files).
 | English | 中文 | Why |
 |---|---|---|
 | Hushmoor Hollow | 寂荒山谷 | Start level. |
-| Lantern Road | 灯笼路 | Level 2. |
-| Gloamford | 幽渡镇 | Level 3. |
-| The Bellbindery | 钟楼装订所 | Level 4. |
-| Whisperfen | 低语沼泽 | Level 5. |
-| Hollow Tide Cavern | 虚潮洞穴 | Level 6. |
-| Saltreach Quay | 盐达码头 | Level 7. |
-| Tidewatch Light | 观潮灯塔 | Level 8. |
+| The Wizard's Tower | 巫师之塔 | The mage's tower north of Hushmoor Hollow: the level name and its region (four interior floors). |
+| The Hall | 大厅 | Tower floor subtitles: the room, not the building (Gildhaven Hall 市政厅). |
+| The Study | 书房 | Tower floor subtitle. |
+| The Workshop | 工坊 | Tower floor subtitle (Hollis's workshop is also 工坊). |
+| The Observatory | 天文台 | Tower floor subtitle; as the Lumen Observatory 天文台 in Starfall Vale. |
+| Go upstairs | 上楼 | Exit prompts: as in Emberfall's rooms. |
+| Go downstairs | 下楼 | Exit prompt: as in Emberfall's rooms. |
+| Go out | 出去 | Exit prompt: as in Emberfall's rooms. |
+| Lantern Road | 灯笼路 | Level 6. |
+| Gloamford | 幽渡镇 | Level 7. |
+| The Bellbindery | 钟楼装订所 | Level 8. |
+| Whisperfen | 低语沼泽 | Level 9. |
+| Hollow Tide Cavern | 虚潮洞穴 | Level 10. |
+| Saltreach Quay | 盐达码头 | Level 11. |
+| Tidewatch Light | 观潮灯塔 | Level 12. |
 | Elspeth | 埃尔斯佩斯 | The Dollwright. |
 | Corvin | 柯尔文 | Hollow Watcher. |
 | Maren | 玛伦 | Binder Maren. |
