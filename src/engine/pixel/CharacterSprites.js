@@ -311,14 +311,16 @@ function resolvePainter(p, ramps, dst, dx, dy, flip = false, { outline = true } 
       const ty = dy + y;
       const m = mat[i];
       if (m) {
-        const ramp = ramps[m] || ramps[M.TOP];
+        // the LINE material (ASCII 'k': eyes, beaks, ink lines) is normally painted through
+        // ramps[M.LINE] = OUTLINE; with a pack-installed outline override every tone swaps to it
+        const ramp = m === M.LINE && outlineColorOverride ? [outlineColorOverride, outlineColorOverride, outlineColorOverride, outlineColorOverride, outlineColorOverride] : (ramps[m] || ramps[M.TOP]);
         dst.set(tx, ty, ramp[Math.max(0, Math.min(4, shade[i]))]);
       } else if (outline) {
         const l = x > 0 && mat[i - 1];
         const r = x < w - 1 && mat[i + 1];
         const u = y > 0 && mat[i - w];
         const d = y < h - 1 && mat[i + w];
-        if (l || r || u || d) dst.set(tx, ty, OUTLINE);
+        if (l || r || u || d) dst.set(tx, ty, outlineColorOverride ?? OUTLINE);
       }
     }
   }
@@ -961,30 +963,43 @@ const EYE_COLORS = {
 
 const RANDOM_CLOTH = ['cream', 'brown', 'green', 'blue', 'red', 'purple', '#5a6b82', '#8a6a4a', '#6e3a3a', '#3f5f5a', '#a8563f', '#c9b48a', '#4a4450'];
 const RANDOM_HAIR = ['hairBrown', 'hairBrown', 'hairBlonde', 'hairBlack', 'hairRed', 'hairWhite'];
+const RANDOM_SKIN = ['skinLight', 'skinLight', 'skinTan', 'skinDark'];
+const RANDOM_BOOT = ['brown', 'black', '#5a3a24'];
+
+/** A randomizer pool: pack override when it has the same length (RNG draw order is preserved), else default. */
+function pool(override, dflt) {
+  return Array.isArray(override) && override.length === dflt.length ? override : dflt;
+}
 
 /**
  * Seeded NPC variation: fills every field the caller did not set explicitly with a random pick
- * (used when spec.randomize is true or spec.preset === 'random').
+ * (used when spec.randomize is true or spec.preset === 'random'). `randomizePools` lets a style
+ * pack recolour the crowds without changing the RNG draw order.
  */
 function randomizeSpec(spec, seed) {
   const rng = new RNG(seed);
   const out = { preset: 'villager', ...spec };
+  const pools = randomizePools ?? {};
+  const CLOTH = pool(pools.cloth, RANDOM_CLOTH);
+  const HAIR = pool(pools.hair, RANDOM_HAIR);
+  const SKIN = pool(pools.skin, RANDOM_SKIN);
+  const BOOT = pool(pools.boots, RANDOM_BOOT);
   const female = spec.female ?? rng.chance(0.5);
   out.female = female;
-  out.skin ??= rng.pick(['skinLight', 'skinLight', 'skinTan', 'skinDark']);
-  out.hair ??= rng.pick(RANDOM_HAIR);
+  out.skin ??= rng.pick(SKIN);
+  out.hair ??= rng.pick(HAIR);
   out.hairStyle ??= female ? rng.pick(['long', 'ponytail', 'bun', 'short']) : rng.pick(['short', 'short', 'spiky', 'bald']);
-  const top = rng.pick(RANDOM_CLOTH);
-  let bottom = rng.pick(RANDOM_CLOTH);
+  const top = rng.pick(CLOTH);
+  let bottom = rng.pick(CLOTH);
   if (bottom === top) bottom = 'brown';
   out.outfit = { top, bottom, accent: rng.pick(['brown', 'gold', 'cream', 'red']), style: female ? rng.pick(['dress', 'dress', 'tunic']) : rng.pick(['tunic', 'tunic', 'vest', 'overalls']), shirt: 'cream', ...(spec.outfit || {}) };
   out.hat ??= rng.pick(['none', 'none', 'none', 'cap', 'wide']);
-  if (out.hat === 'cap') out.hatColor ??= rng.pick(RANDOM_CLOTH);
+  if (out.hat === 'cap') out.hatColor ??= rng.pick(CLOTH);
   if (out.hat === 'wide') out.hatColor ??= rng.pick(['thatch', '#7a5a3c']);
   out.beard ??= !female && out.hairStyle !== 'long' && rng.chance(0.3) ? rng.pick(['full', 'mustache', 'goatee']) : false;
   out.blush ??= female && rng.chance(0.6);
   out.eyes ??= rng.pick(Object.keys(EYE_COLORS));
-  out.gear = { boots: rng.pick(['brown', 'black', '#5a3a24']), apron: out.outfit.style === 'dress' && rng.chance(0.5) ? 'cream' : undefined, ...(spec.gear || {}) };
+  out.gear = { boots: rng.pick(BOOT), apron: out.outfit.style === 'dress' && rng.chance(0.5) ? 'cream' : undefined, ...(spec.gear || {}) };
   if (!out.gear.apron) delete out.gear.apron;
   out.cape ??= false;
   out.weapon ??= 'none';
@@ -1009,8 +1024,88 @@ function normSeed(seed) {
   return Number.isFinite(n) ? n >>> 0 : 1;
 }
 
+// ---------------------------------------------------------------------------
+// Style hooks (tools/restyle-characters.mjs / src/engine/pixel/StyleRuntime.js)
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional restyle hooks for art pipelines (src/engine/pixel/StyleRuntime.js installs them from
+ * a JSON style pack; tools/restyle-characters.mjs validates the result). `characterSpecHook` maps
+ * any createCharacterSheet spec (preset name or object) to a restyled spec before painting;
+ * `presetPatchHook` maps a CHARACTER_PRESETS entry (keyed by preset name) to a patched spec.
+ * Both null = no restyle: every call site (player, NPCs, editor previews, portraits) keeps
+ * working untouched and pixel-identical.
+ * The spec hook runs BEFORE randomize resolution; `randomizePools` lets a pack swap the internal
+ * pick lists of randomizeSpec() while keeping its RNG draw order (same seeds → same silhouettes).
+ * @type {((spec: string|object|null) => string|object|null)|null}
+ */
+export let characterSpecHook = null;
+
+/**
+ * Preset-level patch applied inside resolveSpec() right after the preset lookup, so even a bare
+ * `createCharacterSheet('guard')` sees the pack's changes (the caller never merged the preset).
+ * @type {((name: string, preset: object) => object)|null}
+ */
+export let presetPatchHook = null;
+
+/**
+ * Pack-provided replacements for the randomizer pools: `{ cloth?: string[], hair?: string[], skin?: string[] }`.
+ * Unset / empty entries keep the built-in defaults.
+ * @type {{cloth?: string[], hair?: string[], skin?: string[]}|null}
+ */
+export let randomizePools = null;
+
+/**
+ * Pack-provided replacement for the silhouette outline colour (a PALETTE ramp name or hex),
+ * consulted by resolvePainter() when drawing each frame's 1px outline. Null = OUTLINE.
+ * @type {number[]|null}
+ */
+export let outlineColorOverride = null;
+
+/** Install / remove the restyle hooks, the randomizer pools and the outline override.
+ * Not part of the stable public API. `outline` is a PALETTE ramp name or hex; it is resolved to
+ * its mid tone exactly like materialRamp() does for single colours (parseColor on a ramp name
+ * would fall back to magenta). Null = keep the stock OUTLINE. */
+/**
+ * Canvas-level hook installed by StyleRuntime (see setCharacterSheetPostHook): receives the plain
+ * sheet's finished canvas before it becomes a texture. Null → no post-processing at all.
+ * @type {((canvas: HTMLCanvasElement, spec: object) => void) | null}
+ */
+let characterSheetPostHook = null;
+
+/** Install / clear the canvas-level postFx hook (pass null to restore the stock pipeline). */
+export function setCharacterSheetPostHook(fn) {
+  characterSheetPostHook = typeof fn === 'function' ? fn : null;
+}
+
+export function setCharacterSpecHook(fn, pools = null, outline = null, presetFn = null) {
+  characterSpecHook = typeof fn === 'function' ? fn : null;
+  presetPatchHook = typeof presetFn === 'function' ? presetFn : null;
+  randomizePools = pools && typeof pools === 'object' ? pools : null;
+  if (outline == null) outlineColorOverride = null;
+  else {
+    const p = typeof outline === 'string' && PALETTE[outline] !== undefined ? PALETTE[outline] : outline;
+    const mid = Array.isArray(p) ? p[Math.floor((p.length - 1) / 2)] : p;
+    outlineColorOverride = parseColor(mid);
+  }
+}
+
+/**
+ * Run the installed restyle hook over a spec (used by resolveSpec() and by art pipelines that
+ * must merge CHARACTER_PRESETS themselves — Npc.js does, so StyleRuntime.createStyledSheet()
+ * routes through this helper). A bare `{ preset }` object passes through untouched when no hook
+ * is installed, so with no style pack every call site stays pixel-identical to the stock art.
+ */
+export function applyCharacterSpecHook(spec) {
+  if (!characterSpecHook) return spec;
+  let s = characterSpecHook(spec ?? {});
+  if (typeof s === 'string') s = { preset: s }; // a hook may still return a preset name
+  return s ?? {};
+}
+
 function resolveSpec(spec = {}) {
   if (typeof spec === 'string') spec = { preset: spec }; // createCharacterSheet('traveler')
+  spec = applyCharacterSpecHook(spec);
   spec = stripUndefined(spec);
   if (spec.seed !== undefined) spec.seed = normSeed(spec.seed);
   if (spec.randomize || spec.preset === 'random') {
@@ -1022,7 +1117,10 @@ function resolveSpec(spec = {}) {
   }
   const known = typeof spec.preset === 'string' && Object.hasOwn(CHARACTER_PRESETS, spec.preset);
   const presetName = known ? spec.preset : String(spec.preset ?? 'villager');
-  const base = spec._random ? { ...CHARACTER_PRESETS.villager, gear: {} } : (known ? CHARACTER_PRESETS[presetName] : CHARACTER_PRESETS.villager);
+  let base = spec._random ? { ...CHARACTER_PRESETS.villager, gear: {} } : (known ? CHARACTER_PRESETS[presetName] : CHARACTER_PRESETS.villager);
+  // style packs patch presets here (see presetPatchHook), so a bare `createCharacterSheet('guard')`
+  // restyles even though the caller never merged CHARACTER_PRESETS itself
+  if (presetPatchHook) base = presetPatchHook(presetName, base);
   const c = {
     ...base,
     ...spec,
@@ -3249,6 +3347,11 @@ function buildAnimations(rows, { idleFps = 2.5, walkFps = 8, runFps = 13, extra 
  *   name: string, spec: object, dispose: () => void, poses?: Record<string, number>}}
  */
 export function createCharacterSheet(spec = {}, opts = {}) {
+  // pipeline mode (tools/restyle-characters.mjs): paint the frames into a plain canvas and return
+  // it, WITHOUT creating a three.js texture — so the CLI can run headless with no WebGL context.
+  // Never taken unless `__SPRITE_PIPELINE__` is set before this module loads: the game path below
+  // stays byte-identical to the stock art.
+  if (typeof globalThis !== 'undefined' && globalThis.__SPRITE_PIPELINE__) return createCharacterSheetCanvas(spec, opts);
   const c = resolveSpec(spec);
   const ramps = buildRamps(c);
   const FW = 32, FH = 32;
@@ -3263,10 +3366,54 @@ export function createCharacterSheet(spec = {}, opts = {}) {
     });
   });
   if (opts && opts.combat) return combatSheet(c, ramps, sheet, p);
+  return finishCharacterSheet(c, sheet, cols, rows);
+}
+
+/**
+ * Pipeline-mode sheet painter (tools/restyle-characters.mjs): the exact frame loop of
+ * createCharacterSheet() plus the canvas-level postFx hook, but no three.js texture — the CLI
+ * hashes and exports canvases directly in a headless page without WebGL. The game never calls it.
+ * @param {object|string} spec
+ * @param {{combat?: boolean}} [opts]
+ * @returns {{ canvas: HTMLCanvasElement, name: string, spec: object, columns: number, rows: number }}
+ */
+export function createCharacterSheetCanvas(spec = {}, opts = {}) {
+  const c = resolveSpec(spec);
+  const ramps = buildRamps(c);
+  const FW = 32, FH = 32;
+  const cols = POSES.length;
+  const rows = DIRECTIONS.length;
+  const sheet = new PixelCanvas(FW * cols, FH * rows);
+  const p = new Painter(FW, FH);
+  DIRECTIONS.forEach((dir, row) => {
+    POSES.forEach((pose, col) => {
+      drawCharacterFrame(p, c, dir, pose);
+      resolvePainter(p, ramps, sheet, col * FW, row * FH, dir === 'right');
+    });
+  });
+  if (opts && opts.combat) return combatSheetCanvas(c, ramps, sheet, p, cols, rows);
   const canvas = sheet.toCanvas();
+  if (characterSheetPostHook) characterSheetPostHook(canvas, c);
+  return { canvas, name: c.preset, spec: c, columns: cols, rows };
+}
+
+/**
+ * Canvas → texture → sheet object, with one hook in between: `characterSheetPostHook` (set by
+ * StyleRuntime.installCharacterStyle through setCharacterSheetPostHook) gets the finished canvas
+ * before it becomes a texture, so a style pack's pixel-level postFx restyles EVERY call site —
+ * player, NPCs, party, editor previews, dialog portraits — without touching any of them.
+ * With no hook installed this is byte-identical to the previous inline code (sprite_art hashes).
+ * @param {object} c resolved spec
+ * @param {PixelCanvas} sheet
+ * @param {number} cols
+ * @param {number} rows
+ */
+function finishCharacterSheet(c, sheet, cols, rows) {
+  const canvas = sheet.toCanvas();
+  if (characterSheetPostHook) characterSheetPostHook(canvas, c);
   const texture = finishTexture(canvas, `character:${c.preset}`);
   return {
-    texture, canvas, frameWidth: FW, frameHeight: FH, columns: cols, rows,
+    texture, canvas, frameWidth: 32, frameHeight: 32, columns: cols, rows,
     pixelsPerUnit: PPU, anchor: [0.5, 0], animations: buildAnimations(rows),
     name: c.preset, spec: c,
     /** Free the GPU texture (clones made by sprites share the image and must be disposed by their owners). */
@@ -3299,19 +3446,10 @@ const COMBAT_ANIMS = {
  * @returns {ReturnType<typeof createCharacterSheet>}
  */
 function combatSheet(c, ramps, plain, p) {
-  const FW = 32, FH = 32;
-  const rows = DIRECTIONS.length;
+  const built = combatSheetCanvas(c, ramps, plain, p, POSES.length, DIRECTIONS.length);
+  const { canvas } = built;
   const cols = POSES.length + COMBAT_POSES.length;
-  const pc = new PixelCanvas(FW * cols, FH * rows);
-  const rowBytes = plain.width * 4;
-  for (let y = 0; y < plain.height; y++) pc.data.set(plain.data.subarray(y * rowBytes, (y + 1) * rowBytes), y * pc.width * 4);
-  DIRECTIONS.forEach((dir, row) => {
-    COMBAT_POSES.forEach((pose, i) => {
-      drawCharacterFrame(p, c, dir, pose);
-      resolvePainter(p, ramps, pc, (POSES.length + i) * FW, row * FH, dir === 'right');
-    });
-  });
-  const canvas = pc.toCanvas();
+  const rows = DIRECTIONS.length;
   const texture = finishTexture(canvas, `character:${c.preset}:combat`);
   const poses = {};
   POSES.forEach((pose, col) => { poses[pose.key] = col; });
@@ -3324,11 +3462,36 @@ function combatSheet(c, ramps, plain, p) {
     },
   });
   return {
-    texture, canvas, frameWidth: FW, frameHeight: FH, columns: cols, rows,
+    texture, canvas, frameWidth: 32, frameHeight: 32, columns: cols, rows,
     pixelsPerUnit: PPU, anchor: [0.5, 0], animations, name: c.preset, spec: c, poses,
     /** Free the GPU texture (clones made by sprites share the image and must be disposed by their owners). */
     dispose() { texture.dispose(); },
   };
+}
+
+/**
+ * Pipeline-mode combat painter: the frame loop of combatSheet() up to (and including) the postFx
+ * hook, without the three.js texture — see createCharacterSheetCanvas.
+ */
+function combatSheetCanvas(c, ramps, plain, p, plainCols, rows) {
+  const FW = 32, FH = 32;
+  const cols = plainCols + COMBAT_POSES.length;
+  const pc = new PixelCanvas(FW * cols, FH * rows);
+  const rowBytes = plain.width * 4;
+  for (let y = 0; y < plain.height; y++) pc.data.set(plain.data.subarray(y * rowBytes, (y + 1) * rowBytes), y * pc.width * 4);
+  DIRECTIONS.forEach((dir, row) => {
+    COMBAT_POSES.forEach((pose, i) => {
+      drawCharacterFrame(p, c, dir, pose);
+      resolvePainter(p, ramps, pc, (plainCols + i) * FW, row * FH, dir === 'right');
+    });
+  });
+  const canvas = pc.toCanvas();
+  // the pack's canvas postFx covers the combat sheet too (same hook as the plain factory)
+  if (characterSheetPostHook) characterSheetPostHook(canvas, c);
+  const poses = {};
+  POSES.forEach((pose, col) => { poses[pose.key] = col; });
+  COMBAT_POSES.forEach((pose, i) => { poses[pose.key] = plainCols + i; });
+  return { canvas, name: c.preset, spec: c, columns: cols, rows, poses };
 }
 
 // ---------------------------------------------------------------------------

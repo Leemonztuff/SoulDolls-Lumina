@@ -1,0 +1,13 @@
+{
+  "name": "retro",
+  "description": "Gameboy-print look: moss-green cloth pools for random NPCs, heavy desaturation, ink outlines.",
+  "palette": {
+    "outline": "#14200a"
+  },
+  "randomPool": {
+    "cloth": ["green", "brown", "#3f5d1e", "#5c7a2a", "#77913b"],
+    "hair": ["hairBlack", "hairBrown", "#2c2416", "#5c4a2a"],
+    "skin": ["skinMid", "skinDark", "#c8b48c"]
+  },
+  "postFx": { "hueShift": 72, "saturation": 0.55 }
+}

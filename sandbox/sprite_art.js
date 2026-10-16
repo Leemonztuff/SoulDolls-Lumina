@@ -10,10 +10,15 @@
  *   ?mode=combat             combat art (COMBAT.md §10): enemy sheets, player combat sheet, FX atlas,
  *                            flash / glow sprites under PostFX bloom, hash + value-contrast checks
  *                            (&focus=<player|slime|…|golem|atlas>&z=N: one sheet, zoomed)
+ *   ?style=<url>             install a character style pack (JSON at that URL — the restyle CLI and
+ *                            sandbox/sprite_restyle.html pass it; works with any mode above: every
+ *                            sheet of this page paints through the installed hooks). With
+ *                            &mode=hashes, window.__spriteStyleHashes holds the styled hashes.
  *   ?t=1.25                  freeze animation time (seconds) for stable screenshots
  */
 import * as THREE from 'three';
 import { createCharacterSheet, createCreatureSheet, CHARACTER_PRESETS, COMBAT_POSE_NAMES } from '../src/engine/pixel/CharacterSprites.js';
+import { installCharacterStyle, uninstallCharacterStyle } from '../src/engine/pixel/StyleRuntime.js';
 import { createPropSprite, PROP_SPRITE_KINDS } from '../src/engine/pixel/PropSprites.js';
 import { createEnemySheet, ENEMY_SHEET_KINDS } from '../src/engine/pixel/MonsterSprites.js';
 import { createFxAtlas, FX_FRAMES } from '../src/engine/pixel/FxSprites.js';
@@ -103,6 +108,21 @@ function sheetCanvas(sheet, zoom) {
 // Build content
 // ---------------------------------------------------------------------------
 
+/**
+ * ?style=<url> — install a character style pack (JSON) before any sheet is built, so every
+ * createCharacterSheet call below paints through the pack's hooks. Awaited at module top level:
+ * importers and the automation harness see the page only once the pack is live. Exposes
+ * window.__spriteStylePack for the restyle CLI / sandbox review pages.
+ */
+if (params.get('style')) {
+  const res = await fetch(params.get('style'));
+  if (!res.ok) throw new Error(`sprite_art: style pack fetch failed (${res.status}) ${params.get('style')}`);
+  const pack = await res.json();
+  installCharacterStyle(pack);
+  window.__spriteStylePackRaw = pack; // stockCharacterHashes() re-installs this exact pack
+  window.__spriteStylePack = pack.name ?? params.get('style');
+}
+
 const t0 = performance.now();
 const presetNames = Object.keys(CHARACTER_PRESETS);
 const sheets = {};
@@ -173,6 +193,35 @@ function existingSheetHashes() {
     a.dispose();
     out[`prop:${k}:seed7`] = canvasHash(props[k].canvas);
   }
+  return out;
+}
+
+/**
+ * ?mode=hashes&style=<url> — the STOCK hashes measured in the same page load (the committed
+ * baseline can drift from this GPU / browser build, so the restyle CLI compares styled vs stock
+ * within one session). Rebuilds every character sheet with the pack uninstalled; creatures and
+ * props are untouched by style packs.
+ * @returns {Record<string, string>}
+ */
+function stockCharacterHashes() {
+  uninstallCharacterStyle();
+  const out = {};
+  for (const name of presetNames) {
+    const s = createCharacterSheet({ preset: name });
+    out[`preset:${name}`] = canvasHash(s.canvas);
+    s.dispose();
+  }
+  for (let i = 1; i <= 8; i++) {
+    const s = createCharacterSheet({ randomize: true, seed: i });
+    out[`random:${i}`] = canvasHash(s.canvas);
+    s.dispose();
+  }
+  for (const [k, spec] of Object.entries(CUSTOM_SPECS)) {
+    const s = createCharacterSheet(spec);
+    out[`custom:${k}`] = canvasHash(s.canvas);
+    s.dispose();
+  }
+  installCharacterStyle(window.__spriteStylePackRaw);
   return out;
 }
 
@@ -295,6 +344,17 @@ if (mode === 'gallery') {
   window.__spriteHashes = hashes;
   app.append(el('h2', {}, `Existing-sheet hashes (${Object.keys(hashes).length})`));
   app.append(el('pre', { id: 'hashes', style: 'font: 12px/1.3 monospace; white-space: pre-wrap;' }, JSON.stringify(hashes, null, 2)));
+  // With a style pack installed (?style=<url>) the numbers above are the STYLED hashes; expose them
+  // separately so the restyle CLI can diff styled vs baseline without a second page load.
+  if (window.__spriteStylePack) {
+    window.__spriteStyleHashes = hashes;
+    // …and the STOCK hashes from this same session (same GPU / browser build), so the CLI's gate
+    // compares styled vs stock in one run instead of against the committed baseline (which drifts
+    // across machines). Only character sheets: creatures/props never change with a pack.
+    window.__spriteStockHashes = stockCharacterHashes();
+    app.append(el('h2', {}, `Stock-session character hashes (${Object.keys(window.__spriteStockHashes).length})`));
+    app.append(el('pre', { id: 'stock-hashes', style: 'font: 12px/1.3 monospace; white-space: pre-wrap;' }, JSON.stringify(window.__spriteStockHashes, null, 2)));
+  }
 } else if (mode === 'combat') {
   // ?mode=combat — combat sheets (COMBAT.md §10): every enemy sheet × pose × direction, the player
   // combat sheet, the FX atlas, flash / glow sprites under PostFX bloom, hash / contrast checks.

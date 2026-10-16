@@ -25,6 +25,10 @@
  * Loading problems are shown on the loading screen; normalisation warnings go to the console.
  */
 import { Game } from './game/Game.js';
+import { installCharacterStyle } from './engine/pixel/StyleRuntime.js';
+// (the pack validator is a pure function; stylePacks.mjs keeps its node:fs / node:path helpers
+// behind an isNode guard so this import never drags Node modules into the bundle)
+import { validatePack as validateStylePack } from '../tools/lib/stylePacks.mjs';
 import {
   resolveLevelFromURL, loadProjectLevel, saveLocalLevel, loadLocalLevel, listLocalLevels, PLAYTEST_SLOT, slugify,
 } from './engine/level/LevelStorage.js';
@@ -140,7 +144,33 @@ function exposeHook(extra = {}) {
   };
 }
 
+/**
+ * `?style=<name>` (or a full URL): load public/styles/<name>.json and install it as the character
+ * art style pack before the game builds any sheet (docs/specs/SPRITE_STYLE_PACKS.md). A missing
+ * or invalid pack is a console warning, never a broken game — the stock art paints instead.
+ */
+async function installStyleFromURL() {
+  const style = params.get('style');
+  if (!style) return;
+  const url = /^https?:|^\.?\//.test(style) ? style : `styles/${style}.json`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const pack = await res.json();
+    const errs = validateStylePack(pack, { source: url });
+    if (errs.length) throw new Error(errs.join('; '));
+    installCharacterStyle(pack);
+    console.info(`[style] character art restyled from "${pack.name}" (${url})`);
+  } catch (err) {
+    console.warn(`[style] could not load the style pack ${url}: ${err?.message ?? err} — using the stock art`);
+  }
+}
+
 async function boot() {
+  // character-art style pack (?style=<name> → public/styles/<name>.json, or an explicit URL):
+  // installed before the game builds any sheet, so player / NPCs / portraits all paint restyled
+  // (docs/specs/SPRITE_STYLE_PACKS.md)
+  await installStyleFromURL();
   // the language before anything renders, the core string tables (the loading screen's texts are
   // in them: t('game.…') works before the UI exists), and the fonts — Google first, else the dist/
   // copies — loading in parallel with the level (docs/specs/I18N.md §1, §5)

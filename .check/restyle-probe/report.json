@@ -1,0 +1,48 @@
+{
+  "page": "sandbox/sprite_art.html",
+  "query": "mode=hashes",
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "log",
+      "text": "sprite_art: built 14 characters, 4 creatures, 23 props in 259.6 ms"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "evals": [
+    {
+      "code": "(() => { const g = (x,y)=>Array.from(document.querySelector('#hashes')?document.getElementById('hashes').textContent.slice(0,40):'no el'); return { ua: navigator.userAgent.slice(0,60), webgl2: (()=>{try{return !!document.createElement('canvas').getContext('webgl2')}catch(e){return String(e).slice(0,120)}})(), sw: typeof OffscreenCanvas, has3d: typeof WebGLRenderingContext }; })()",
+      "result": {
+        "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l",
+        "webgl2": false,
+        "sw": "function",
+        "has3d": "function"
+      }
+    }
+  ],
+  "fps": [],
+  "shots": [
+    ".check/restyle-probe/initial.png"
+  ],
+  "gl": "NO WEBGL2",
+  "strict": false,
+  "strictFailures": [],
+  "fonts": "local",
+  "lang": null,
+  "base": "/",
+  "dist": false
+}

@@ -44,6 +44,9 @@ export {
 export { PALETTE, rampAt } from './pixel/Palette.js';
 export { TextureLibrary, TEXTURE_NAMES } from './pixel/Textures.js';
 export { createCharacterSheet, createCreatureSheet, CHARACTER_PRESETS, materialRamp, COMBAT_POSE_NAMES } from './pixel/CharacterSprites.js';
+// character-art style packs (docs/specs/SPRITE_STYLE_PACKS.md): install a JSON pack at startup to
+// restyle the player / NPCs / portraits without touching any call site
+export { installCharacterStyle, uninstallCharacterStyle, getCharacterStyle, createStyledSheet } from './pixel/StyleRuntime.js';
 export { createPropSprite, PROP_SPRITE_KINDS } from './pixel/PropSprites.js';
 // combat levels only (COMBAT.md §10): enemy sheets and the FX atlas. (The combat-only modules of
 // this barrel are marked side-effect free in vite.config.js: re-exporting them here puts nothing
