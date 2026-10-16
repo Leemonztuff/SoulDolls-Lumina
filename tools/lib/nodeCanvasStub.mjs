@@ -1,3 +1,4 @@
+// @ts-nocheck — Node-only DOM stubs; intentionally a minimal subset of the browser globals.
 // Node-canvas stubs for tools/restyle-characters.mjs — lets CharacterSprites.js run in plain Node.
 // Only what the sheet painters touch: document.createElement('canvas'), canvas 2D contexts and
 // ImageData (all backed by a Uint8ClampedArray; no compositing is needed because the pipeline
@@ -38,9 +39,11 @@ class StubCanvas {
   toDataURL() { throw new Error('toDataURL needs a real canvas — the CLI exports PNGs from the RGBA buffer'); }
 }
 
-globalThis.document = { createElement: (tag) => (tag === 'canvas' ? new StubCanvas() : {}) };
+globalThis.document = { createElement: (tag) => (tag === 'canvas' ? new StubCanvas() : /** @type {any} */ ({})) };
+// @ts-ignore stub canvas intentionally omits the full HTMLCanvasElement surface.
 globalThis.HTMLCanvasElement = StubCanvas;
 // PixelCanvas.toCanvas() builds `new ImageData(data, w, h)` — support both constructor shapes.
+// @ts-ignore stub intentionally omits DOM-only fields (e.g. colorSpace).
 globalThis.ImageData = class {
   constructor(a, b, c) {
     if (a instanceof Uint8ClampedArray) { this.data = a; this.width = b; this.height = c ?? b; }

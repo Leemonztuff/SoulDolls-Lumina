@@ -3403,7 +3403,7 @@ export function createCharacterSheetCanvas(spec = {}, opts = {}) {
  * before it becomes a texture, so a style pack's pixel-level postFx restyles EVERY call site —
  * player, NPCs, party, editor previews, dialog portraits — without touching any of them.
  * With no hook installed this is byte-identical to the previous inline code (sprite_art hashes).
- * @param {object} c resolved spec
+ * @param {Record<string, any>} c resolved spec
  * @param {PixelCanvas} sheet
  * @param {number} cols
  * @param {number} rows
