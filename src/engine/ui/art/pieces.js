@@ -352,6 +352,35 @@ export function plate(w, h) {
 }
 
 /**
+ * A menu button (the battle's action rows): a raised navy cap — a 1 px chamfer, a lit top bevel and a
+ * shaded foot — so it reads as a button and not as a flat selectable row; the selected one is a step
+ * lighter with a gilt rim. w × h art px.
+ * @param {number} w
+ * @param {number} h
+ * @param {{ sel?: boolean }} [o]
+ */
+export function btn(w, h, { sel = false } = {}) {
+  const k = pal();
+  return art(w, h, (p) => {
+    // the ink outline, its four corners chamfered by one pixel
+    p.rect(1, 0, w - 2, h, k.ink0);
+    p.rect(0, 1, w, h - 2, k.ink0);
+    // the face: lit along the top, shaded at the foot, so the cap reads as raised
+    p.rect(1, 1, w - 2, h - 2, sel ? k.ink3 : k.ink2);
+    p.hline(2, 1, w - 4, sel ? k.g4 : k.ink4);
+    p.hline(2, h - 2, w - 4, k.ink0);
+    if (sel) {
+      p.hline(2, 2, w - 4, k.g2);
+      p.vline(1, 2, h - 4, k.g3);
+      p.vline(w - 2, 2, h - 4, k.g1);
+    } else {
+      p.vline(1, 2, h - 4, k.ink3);
+      p.vline(w - 2, 2, h - 4, k.ink1);
+    }
+  });
+}
+
+/**
  * The selection band (A's selBand with today's gold wash): one flat wash, checker-dithered only in
  * its last 14 px; hairlines top and bottom fading to dots in their last 36 px — gilt, or dim gilt
  * (`lines: 'dim'`, a quieter focus like today's rules row).

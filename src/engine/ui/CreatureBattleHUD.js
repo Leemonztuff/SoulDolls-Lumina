@@ -2,18 +2,18 @@ import './ui.css';
 import './creature.css';
 import { pal } from './art/palette.js';
 import { art, copyCanvas } from './art/painter.js';
-import { bar } from './art/pieces.js';
+import { bar, band, hairline, btn } from './art/pieces.js';
 import { icon as creatureIcon, TYPE_ICONS } from './art/icons/creature.js';
 import { txt, measure, fit, lines, cjk, FONT } from './layout/type.js';
-import { box, put, win, key } from './layout/layout.js';
+import { box, put, win, key, capW } from './layout/layout.js';
 import { onScale, currentScale } from './UiScale.js';
 import { currentFonts } from './FontLoader.js';
 
 /**
  * CreatureBattleHUD — the turn-based creature battle screen ("Critters Collection" phase 4b), drawn
  * after mockup G (docs/specs/PIXEL_UI.md §5): a full-screen overlay with the foe's framed stat
- * panel and the player's, the two 32 × 32 sprites, the log window and the action menu (a 2 × 2 grid,
- * or a vertical list for the party). Created by `creatureUIClasses()` and enabled through
+ * panel and the player's, the two 32 × 32 sprites, the log band and the action menu (a 2 × 2 grid of
+ * buttons, or a 2 × n grid for the party). Created by `creatureUIClasses()` and enabled through
  * `UI.enableCreature()`.
  *
  * It is a *view*: it owns no battle rules and, like every engine UI module, must not import
@@ -23,11 +23,11 @@ import { currentFonts } from './FontLoader.js';
  * `onCancel`. Every setter is cheap: it writes the DOM only when its signature changes.
  *
  * The battle fills the room it is given (`_layout`): every box is measured in art px of the
- * screen's own `artW` × `artH` and can never leave it. Two arrangements — **wide** (the diagonal
- * stage: the foe's panel top-left, the player's bottom-right, the sprites between them, the log and
- * the menu along the foot) and **tall** (a single centred column: foe panel, foe sprite, player
- * sprite, player panel, log, menu) for portrait and small screens. Nothing is placed at a fixed
- * size that the screen cannot hold, so a 640 × 360 screen and a 400 × 800 phone both fit.
+ * screen's own `artW` × `artH` and can never leave it. The screen is three bands down its height —
+ * the **scene** (58%), the **log** (14%) and the **actions** (28%) — so the same reading holds on a
+ * 640 × 360 desktop and a 200 × 400 phone. In the scene the foe's panel sits above the field and the
+ * player's below it, with the two souldolls standing on the diagonal between them (the foe upper
+ * right, the player lower left), each scaled to the field.
  *
  * Sprites come in already cropped (e.g. `createSpeciesSheet(id, { pose: 'front' })` frame 0,
  * 32 × 32) and are copied, so the caller keeps its canvas.
@@ -47,8 +47,6 @@ const TYPE_ICON = /** @type {Record<string, string>} */ (TYPE_ICONS);
  * @property {number} maxHp
  * @property {number} [hpRatio] HP as a 0..1 fraction (computed from hp / maxHp when absent)
  * @property {boolean} [fainted]
- * @property {Record<string, string|number>} [parts]
- * @property {Record<string, string|number>} [paperdoll]
  */
 
 /**
@@ -96,6 +94,7 @@ const TYPE_ICON = /** @type {Record<string, string>} */ (TYPE_ICONS);
  * @property {1|2} cols
  * @property {number} menuPad
  * @property {number} itemH
+ * @property {number} itemGap
  * @property {boolean} canBack
  * @property {{ x: number, y: number, w: number, h: number } | null} hint
  * @property {{ x: number, y: number, w: number, h: number }} foe
@@ -228,12 +227,12 @@ export class CreatureBattleHUD {
   // --------------------------------------------------------------------------------------------
 
   /**
-   * The battle's geometry for a screen of `artW` × `artH` art px, guaranteed to stay inside it.
-   * **wide**: the diagonal stage (foe panel top-left, player panel bottom-right, the sprites in the
-   * band between them, the log and the menu along the foot). **tall**: a single centred column
-   * (foe panel, foe sprite, player sprite, player panel, log, menu) for portrait and small screens.
-   * The foot stack (menu + log + hint strip) is built bottom-up; the tallest block that cannot fit
-   * is shrunk until the column fits.
+   * The battle's geometry for a screen of `artW` × `artH` art px, guaranteed to stay inside it. The
+   * screen is three bands down its height: **the scene** (58% — the foe's panel above the field and
+   * the player's below it, the two souldolls standing on the diagonal, the foe upper right, the
+   * player lower left), **the log** (14%, a caption band) and **the actions** (28%, the button grid,
+   * the keycap hints along its foot). The bands hold at any ratio, so a 640 × 360 screen and a
+   * 200 × 400 phone both read the same; only the widths and the souldoll scale change.
    * @param {number} artW
    * @param {number} artH
    * @returns {BattleLayout}
@@ -242,7 +241,6 @@ export class CreatureBattleHUD {
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const pad = clamp(Math.floor(Math.min(artW, artH) * 0.045), 6, 16);
     const gap = Math.max(3, Math.round(pad * 0.45));
-    // wide needs two panels' width and a little more height than a phone
     const wide = artW >= 380 && artW >= artH;
     const contentW = Math.max(80, Math.min(artW - pad * 2, 560));
     const cx = Math.round(artW / 2);
@@ -251,73 +249,50 @@ export class CreatureBattleHUD {
     const m = this._menu;
     const cols = /** @type {1|2} */ (m?.cols === 1 ? 1 : 2);
     const items = m?.items?.length || 0;
-    const menuPad = Math.max(4, Math.round(pad * 0.6));
-    const menuRows = items > 0 ? Math.ceil(items / cols) : 0;
-    const menuW = Math.min(contentW, cols === 1 ? 340 : 400);
-    const logW = Math.min(contentW, 400);
     const canBack = !!m && m.back !== false;
+    const menuRows = items > 0 ? Math.ceil(items / cols) : 0;
+    const menuPad = Math.max(4, Math.round(pad * 0.6));
+    const itemGap = 3;
+    const menuW = Math.min(contentW, cols === 1 ? 340 : 400);
 
-    if (wide) {
-      const panelH = clamp(Math.round(artH * 0.13), 44, 54);
-      const panelW = Math.min(328, contentW);
-      const itemH = clamp(Math.round(artH * 0.07), 20, 28);
-      const menuH = items > 0 ? menuPad * 2 + menuRows * itemH : 0;
-      const logH = clamp(Math.round(artH * 0.13), 26, 48);
-      const hints = items > 0 && artH >= 260;
-      const hintH = hints ? clamp(Math.round(artH * 0.04), 12, 16) : 0;
-      const footGap = hints ? gap : 0;
+    // the three bands: the scene (58%), the log (14%) and the actions (28%)
+    const sceneH = Math.round(artH * 0.58);
+    const logH = Math.round(artH * 0.14);
+    const actH = Math.max(0, artH - sceneH - logH);
 
-      const menuY = artH - pad - hintH - footGap - menuH;
-      const menu = { x: cx - Math.round(menuW / 2), y: menuY, w: menuW, h: menuH };
-      const log = { x: cx - Math.round(logW / 2), y: menuY - (menuH > 0 ? gap : 0) - logH, w: logW, h: logH };
-      const player = { x: left + contentW - panelW, y: log.y - gap - panelH, w: panelW, h: panelH };
-      const foe = { x: left, y: pad, w: panelW, h: panelH };
-      // the band between the panels: both sprites stand on one line (foe right, player left),
-      // scaled to fit it — never over the frames
-      const bandTop = foe.y + foe.h + gap;
-      const bandBot = Math.max(bandTop + 20, player.y - gap);
-      const k = clamp(Math.floor((bandBot - bandTop) / 32), 1, 4);
-      const spriteY = Math.round((bandTop + bandBot) / 2);
-      const foeSprite = { x: left + Math.round(contentW * 0.70), y: spriteY, k };
-      const playerSprite = { x: left + Math.round(contentW * 0.30), y: spriteY, k };
-      const hint = hints ? { x: left, y: artH - pad - hintH, w: contentW, h: hintH } : null;
-      return { artW, artH, mode: 'wide', pad, gap, cols, menuPad, itemH, canBack, hint,
-        foe, player, log, menu, foeSprite, playerSprite };
-    }
+    // the scene: the foe's panel over the field, the player's under it, the two souldolls on the
+    // diagonal between them — scaled to the field and kept apart (never over a panel or each other)
+    const panelH = clamp(Math.round(sceneH * 0.18), 30, 46);
+    const panelW = clamp(Math.round(contentW * 0.62), 120, 244);
+    const foe = { x: left, y: pad, w: panelW, h: panelH };
+    const player = { x: left + contentW - panelW, y: sceneH - pad - panelH, w: panelW, h: panelH };
+    const fieldTop = foe.y + foe.h + gap;
+    const fieldBot = player.y - gap;
+    const field = Math.max(24, fieldBot - fieldTop);
+    const k = clamp(Math.min(Math.floor(field / 32), Math.floor((contentW * 0.42) / 32)), 1, 4);
+    const step = clamp(Math.floor((field - 32 * k) / 2), 0, 18);
+    const mid = Math.round((fieldTop + fieldBot) / 2);
+    const foeSprite = { x: left + Math.round(contentW * 0.70), y: mid - step, k };
+    const playerSprite = { x: left + Math.round(contentW * 0.28), y: mid + step, k };
 
-    // tall: one centred column (foe panel, foe sprite, player sprite, player panel, log, menu),
-    // shrunk until the column fits the screen
-    const panelW = Math.min(contentW, 340);
-    let panelH = clamp(Math.round(artH * 0.11), 40, 54);
-    let logH = clamp(Math.round(artH * 0.15), 24, 56);
-    let itemH = clamp(Math.round(artH * 0.07), 18, 26);
-    let k = clamp(Math.floor((artH * 0.22) / 32), 1, 3);
-    let g = gap;
-    const menuH = () => (items > 0 ? menuPad * 2 + menuRows * itemH : 0);
-    const avail = artH - pad * 2;
-    const total = () => panelH * 2 + k * 32 * 2 + logH + menuH() + g * 5;
-    for (let pass = 0; pass < 60 && total() > avail; pass++) {
-      if (k > 1) k--;
-      else if (panelH > 34) panelH -= 2;
-      else if (logH > 20) logH -= 2;
-      else if (itemH > 18) itemH -= 2;
-      else if (g > 2) g--;
-      else break;
-    }
-    const colX = Math.max(0, Math.round((artW - panelW) / 2));
-    let y = pad + Math.max(0, Math.round((avail - total()) / 2));
-    const foe = { x: colX, y, w: panelW, h: panelH };
-    y += panelH + g;
-    const foeSprite = { x: cx, y: y + k * 16, k };
-    y += k * 32 + g;
-    const playerSprite = { x: cx, y: y + k * 16, k };
-    y += k * 32 + g;
-    const player = { x: colX, y, w: panelW, h: panelH };
-    y += panelH + g;
-    const log = { x: colX, y, w: panelW, h: logH };
-    y += logH + g;
-    const menu = { x: Math.max(0, Math.round((artW - menuW) / 2)), y, w: menuW, h: menuH() };
-    return { artW, artH, mode: 'tall', pad, gap: g, cols, menuPad, itemH, canBack, hint: null,
+    const log = { x: left, y: sceneH, w: contentW, h: logH };
+
+    // the actions band: the button grid centred in it, the keycap hints along the foot
+    const hints = items > 0 && artH >= 260;
+    const hintH = hints ? clamp(Math.round(artH * 0.035), 11, 15) : 0;
+    const actInner = Math.max(0, actH - (hints ? hintH + gap : 0));
+    const itemH = menuRows ? clamp(Math.floor((actInner - 2 * menuPad - (menuRows - 1) * itemGap) / menuRows), 20, 42) : 0;
+    const gridH = menuRows ? menuRows * itemH + (menuRows - 1) * itemGap : 0;
+    const menuOuterH = gridH + 2 * menuPad;
+    const menu = {
+      x: cx - Math.round(menuW / 2),
+      y: sceneH + logH + Math.max(0, Math.round((actInner - menuOuterH) / 2)),
+      w: menuW,
+      h: menuOuterH,
+    };
+    const hint = hints ? { x: left, y: sceneH + logH + actInner + gap, w: contentW, h: hintH } : null;
+
+    return { artW, artH, mode: wide ? 'wide' : 'tall', pad, gap, cols, menuPad, itemH, itemGap, canBack, hint,
       foe, player, log, menu, foeSprite, playerSprite };
   }
 
@@ -487,7 +462,7 @@ export class CreatureBattleHUD {
   _signature(artW = 360, artH = 640) {
     const st = this._state;
     const m = this._menu;
-    const side = (s) => (s ? `${s.uid}|${s.name}|${s.level}|${s.hp}|${s.maxHp}|${s.hpRatio ?? ''}|${s.fainted ? 1 : 0}|${JSON.stringify(s.parts || s.paperdoll || '')}` : '');
+    const side = (s) => (s ? `${s.uid}|${s.name}|${s.level}|${s.hp}|${s.maxHp}|${s.hpRatio ?? ''}|${s.fainted ? 1 : 0}` : '');
     return [
       `${artW}x${artH}`,
       st ? `${st.phase ?? ''}|${st.terrain ?? ''}|${side(st.player)}|${side(st.foe)}` : '',
@@ -510,67 +485,8 @@ export class CreatureBattleHUD {
   }
 
   /**
-   * Render paperdoll body part status icon (head, torso, arms, legs) for a creature.
-   * Status colors: green = healthy, yellow = damaged, red = broken.
-   * @param {BattleSideView} info
-   * @returns {HTMLCanvasElement}
-   */
-  _drawPaperdoll(info) {
-    const ratio = typeof info.hpRatio === 'number' ? info.hpRatio : (info.maxHp > 0 ? info.hp / info.maxHp : 0);
-    const partsInput = info.parts || info.paperdoll || {};
-
-    /**
-     * @param {string|number|undefined} val
-     * @param {() => string} fallbackHpCheck
-     */
-    const getColor = (val, fallbackHpCheck) => {
-      if (val === 'red' || val === 'broken' || val === 2) return '#ef4444';
-      if (val === 'yellow' || val === 'damaged' || val === 1) return '#eab308';
-      if (val === 'green' || val === 'healthy' || val === 0) return '#22c55e';
-      return fallbackHpCheck();
-    };
-
-    const headCol = getColor(partsInput.head, () => (ratio > 0.35 ? '#22c55e' : ratio > 0 ? '#eab308' : '#ef4444'));
-    const torsoCol = getColor(partsInput.torso, () => (ratio > 0.5 ? '#22c55e' : ratio > 0.2 ? '#eab308' : '#ef4444'));
-    const armsCol = getColor(partsInput.arms, () => (ratio > 0.65 ? '#22c55e' : ratio > 0.35 ? '#eab308' : '#ef4444'));
-    const legsCol = getColor(partsInput.legs, () => (ratio > 0.75 ? '#22c55e' : ratio > 0.4 ? '#eab308' : '#ef4444'));
-
-    return art(38, 26, (p) => {
-      p.rect(0, 0, 38, 26, '#0f172a');
-      p.box(0, 0, 38, 26, '#334155');
-
-      // Head
-      p.rect(17, 2, 5, 5, headCol);
-      p.box(17, 2, 5, 5, '#020617');
-
-      // Torso
-      p.rect(16, 8, 7, 8, torsoCol);
-      p.box(16, 8, 7, 8, '#020617');
-
-      // Arms
-      p.rect(12, 8, 3, 7, armsCol);
-      p.box(12, 8, 3, 7, '#020617');
-      p.rect(24, 8, 3, 7, armsCol);
-      p.box(24, 8, 3, 7, '#020617');
-
-      // Legs
-      p.rect(16, 17, 3, 7, legsCol);
-      p.box(16, 17, 3, 7, '#020617');
-      p.rect(20, 17, 3, 7, legsCol);
-      p.box(20, 17, 3, 7, '#020617');
-
-      // Mini status indicator dots at left side
-      p.rect(2, 3, 3, 3, headCol);
-      p.rect(2, 8, 3, 3, torsoCol);
-      p.rect(2, 13, 3, 3, armsCol);
-      p.rect(2, 18, 3, 3, legsCol);
-    });
-  }
-
-  /**
-   * The two framed stat panels: the name and (right) the type icon, then Lv and the HP track; the
-   * player's panel adds the HP numbers. A narrow panel drops the paperdoll and shortens the name so
-   * its rows never collide.
+   * The two framed stat panels: the name and the level on the top line (the type icon at the right),
+   * the HP track — with the player's numbers — on the second. Kept short so the field keeps the room.
    * @param {Element} stage
    * @param {BattleView} st
    * @param {ReturnType<typeof pal>} k
@@ -584,31 +500,22 @@ export class CreatureBattleHUD {
       win(el, { size: 'M', beads: true }, p.x, p.y, p.w, p.h);
       if (info.fainted) el.classList.add('is-fainted');
 
-      const compact = p.w < 236;
-      const showDoll = !compact && p.h >= 46;
+      const iconName = info.type ? TYPE_ICON[info.type] : null;
       const nameY = p.y + 6;
-      const rowHp = p.y + Math.round(p.h * 0.44);
-      const rowNum = p.y + p.h - 14;
+      const rowY = p.y + Math.max(18, p.h - 16);
+      const maxNameW = Math.max(24, p.w - (iconName && p.w >= 150 ? 74 : 50));
+      txt(el, fit(this._name(side, info), 'name', maxNameW), p.x + 10, nameY, { font: 'name', color: k.tx1, ol: true, drop: true });
+      txt(el, `Lv ${info.level}`, p.x + p.w - (iconName && p.w >= 150 ? 30 : 10), nameY + 1, { font: 'num', color: k.g5, align: 'right', drop: true });
+      if (iconName && p.w >= 150) put(el, creatureIcon(iconName), p.x + p.w - 22, p.y + 5, 1, 'lu-creature__type');
 
-      const maxNameW = Math.max(24, p.w - (compact ? 58 : 112));
-      const nameText = fit(this._name(side, info), 'name', maxNameW);
-      txt(el, nameText, p.x + 10, nameY, { font: 'name', color: k.tx1, ol: true, drop: true });
-
-      txt(el, `Lv ${info.level}`, p.x + p.w - (compact ? 46 : 78), nameY + 1, { font: 'num', color: k.g5, drop: true });
-
-      const t = info.type ? TYPE_ICON[info.type] : null;
-      if (t && p.w >= 150) put(el, creatureIcon(t), p.x + p.w - 24, p.y + 5, 1, 'lu-creature__type');
-
-      txt(el, 'HP', p.x + 10, rowHp, { font: 'tiny', color: k.g4, drop: true });
-
-      const bx = p.x + 26, bw = Math.max(24, p.w - 26 - (showDoll ? 56 : 10)), bh = 8;
+      txt(el, 'HP', p.x + 10, rowY, { font: 'tiny', color: k.g4, drop: true });
+      const numText = `${info.hp}/${info.maxHp}`;
+      const numW = side === 'player' ? Math.round(measure(numText, 'num')) + 8 : 0;
+      const bx = p.x + 26, bw = Math.max(20, p.w - 26 - numW - 12), bh = 8;
       const ratio = typeof info.hpRatio === 'number' ? info.hpRatio : info.maxHp > 0 ? info.hp / info.maxHp : 0;
-      const track = box(el, bx, rowHp, bw, bh, 'lu-creature__track');
-      put(track, art(bw, bh, (pp) => bar(pp, bw, bh, ratio, [k.hp0, k.hp1, k.hp2, k.hp3], { ring: k.dm1 })), bx, rowHp);
-
-      if (showDoll) put(el, this._drawPaperdoll(info), p.x + p.w - 48, rowHp - 2, 1, 'lu-creature__paperdoll');
-
-      txt(el, `${info.hp}/${info.maxHp}`, p.x + 26, rowNum, { font: 'num', color: side === 'player' ? k.tx1 : k.g4, drop: true });
+      const track = box(el, bx, rowY, bw, bh, 'lu-creature__track');
+      put(track, art(bw, bh, (pp) => bar(pp, bw, bh, ratio, [k.hp0, k.hp1, k.hp2, k.hp3], { ring: k.dm1 })), bx, rowY);
+      if (side === 'player') txt(el, numText, p.x + p.w - 10, rowY, { font: 'num', color: k.tx1, align: 'right', drop: true });
     }
   }
 
@@ -629,7 +536,8 @@ export class CreatureBattleHUD {
   }
 
   /**
-   * The log window: the last two wrapped rows of the log's lines (one on a short window).
+   * The log: a lower-third band (no frame — navy fading out to the right under a gilt rule) with the
+   * last row or two of the log's lines, so it reads like a caption and recedes into the scene.
    * @param {Element} stage
    * @param {ReturnType<typeof pal>} k
    * @param {BattleLayout} layout
@@ -637,20 +545,24 @@ export class CreatureBattleHUD {
   _renderLog(stage, k, layout) {
     const lb = layout.log;
     const el = box(stage, lb.x, lb.y, lb.w, lb.h, 'lu-creature__log');
-    win(el, { size: 'M', beads: true }, lb.x, lb.y, lb.w, lb.h);
+    put(el, band(lb.w, lb.h), lb.x, lb.y);
+    put(el, hairline(lb.w), lb.x, lb.y);
     /** @type {string[]} */
     const rows = [];
-    for (const ln of this._log) for (const w of lines(String(ln ?? ''), 'line', lb.w - 20)) rows.push(w);
+    for (const ln of this._log) for (const w of lines(String(ln ?? ''), 'line', lb.w - 18)) rows.push(w);
     const pitch = cjk() ? FONT.line.L : 16 * FONT.line.unit;
-    const show = lb.h < 34 ? 1 : 2;
+    const show = Math.max(1, Math.min(2, Math.floor((lb.h - 6) / pitch)));
+    const blockH = 11 + (show - 1) * pitch;
+    const y0 = lb.y + Math.max(3, Math.round((lb.h - blockH) / 2));
     rows.slice(-show).forEach((r, i) => {
-      txt(el, r, lb.x + 10, lb.y + 9 + i * pitch, { font: 'line', color: k.tx1, ol: true });
+      txt(el, r, lb.x + 9, y0 + i * pitch, { font: 'line', color: k.tx1, ol: true });
     });
   }
 
   /**
-   * The action menu (a 2 × 2 grid, or a vertical list), anchored to the foot. A row may carry a
-   * type icon (a move's type), a right-aligned note (its power) and an effectiveness marker.
+   * The action menu: each row a raised button (a 2 × 2 grid, or a vertical list), the cursor one lit.
+   * A row may carry a type icon (a move's type), a right-aligned note (its power) and an
+   * effectiveness marker.
    * @param {Element} stage
    * @param {ReturnType<typeof pal>} k
    * @param {BattleLayout} layout
@@ -662,27 +574,29 @@ export class CreatureBattleHUD {
     const bx = layout.menu;
     const pad = layout.menuPad;
     const itemH = layout.itemH;
-    const itemW = Math.floor((bx.w - 2 * pad) / cols);
+    const itemGap = layout.itemGap;
+    const itemW = Math.floor((bx.w - 2 * pad - itemGap * (cols - 1)) / cols);
     const el = box(stage, bx.x, bx.y, bx.w, bx.h, 'lu-creature__menu');
-    win(el, { size: 'M', beads: true }, bx.x, bx.y, bx.w, bx.h);
     const cursor = Number.isInteger(m.cursor) ? /** @type {number} */ (m.cursor) : 0;
     const ty = Math.max(0, Math.round((itemH - 9) / 2));
     m.items.forEach((it, i) => {
       const r = Math.floor(i / cols), c = i % cols;
-      const ix = bx.x + pad + c * itemW;
-      const iy = bx.y + pad + r * itemH;
+      const ix = bx.x + pad + c * (itemW + itemGap);
+      const iy = bx.y + pad + r * (itemH + itemGap);
+      const on = i === cursor;
       const row = box(el, ix, iy, itemW, itemH, 'lu-creature__item');
       row.dataset.index = String(i);
-      if (i === cursor) row.classList.add('is-sel');
+      if (on) row.classList.add('is-sel');
       if (it.disabled) row.classList.add('is-disabled');
+      put(row, btn(itemW, itemH, { sel: on }), ix, iy);
 
-      let tx = ix + 7;
+      let tx = ix + 9;
       const iconName = it.type ? TYPE_ICON[it.type] : null;
       if (iconName) {
-        put(row, creatureIcon(iconName), ix + 5, iy + Math.max(0, Math.round((itemH - 16) / 2)), 1, 'lu-creature__type');
-        tx = ix + 5 + 16 + 4;
+        put(row, creatureIcon(iconName), ix + 7, iy + Math.max(0, Math.round((itemH - 16) / 2)), 1, 'lu-creature__type');
+        tx = ix + 7 + 16 + 4;
       }
-      txt(row, String(it.label ?? ''), tx, iy + ty, { font: 'line', color: i === cursor ? k.sel : k.tx1, ol: true });
+      txt(row, String(it.label ?? ''), tx, iy + ty, { font: 'line', color: on ? k.sel : k.tx1, ol: true });
 
       const subStr = it.sub != null ? String(it.sub) : '';
       if (it.eff) {
@@ -702,12 +616,13 @@ export class CreatureBattleHUD {
    */
   _renderHints(stage, k, layout) {
     const h = layout.hint;
-    if (!h) return;
-    const el = box(stage, h.x, h.y, h.w, h.h, 'lu-creature__hints');
+    if (!h || h.h <= 0) return;
     const keys = ['↑', '↓', '←', '→', 'Space'];
     if (layout.canBack) keys.push('Esc');
+    const total = keys.reduce((a, name) => a + capW(name) + 4, -4);
+    const el = box(stage, h.x, h.y, h.w, h.h, 'lu-creature__hints');
     const ky = h.y + Math.max(0, Math.floor((h.h - 11) / 2));
-    let x = h.x + 2;
+    let x = h.x + Math.max(0, Math.round((h.w - total) / 2));
     for (const name of keys) x += key(el, name, x, ky, { dim: true }) + 4;
   }
 }

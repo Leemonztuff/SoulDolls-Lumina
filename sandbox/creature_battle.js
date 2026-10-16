@@ -2,8 +2,8 @@
  * Creature battle UI sandbox — the turn-based battle screen of `UI.enableCreature()`
  * (src/engine/ui/CreatureBattleHUD.js + src/game/creatures/creatureUI.js, the "Critters Collection"
  * phase 4b) driven by a real `CreatureBattle` (src/game/creatures/CreatureBattle.js) over the pixel
- * UI: the two framed stat panels, the 32 × 32 front sprites, the log window and the 2 × 2 action
- * menu / 2 × 2 moves / 1 · n party list, under the real `CreatureInput` bindings
+ * UI: the two framed stat panels, the 32 × 32 front sprites, the log band and the 2 × 2 button
+ * action menu / 2 × 2 moves / 2 × n bench grid, under the real `CreatureInput` bindings
  * (CREATURE_BINDINGS). A wild battle with three orbs against a Leafling: fight (emberpuff ×2 wins),
  * bag (throw an orb, catch or break free), party (switch to the level-7 Rippling), run.
  *
@@ -197,7 +197,7 @@ function switchMenu(st) {
     label: ct(`species.${c.species}`, c.name),
     sub: ct('roster.level', 'Lv {n}', { n: c.level }),
   }));
-  return { items, cursor: 0, cols: 1, back: true };
+  return { items, cursor: 0, cols: 2, back: true };
 }
 
 /** The translated log lines, newest at the bottom. @param {BattleEvent[]} events */
@@ -438,6 +438,10 @@ function checks() {
   add(document.querySelectorAll('.lu-creature__panel').length === 2, 'two stat panels');
   add(document.querySelectorAll('.lu-creature__sprite').length === 2, 'two sprites');
   add(document.querySelectorAll('.lu-creature__log').length === 1, 'the log window');
+  // the log is a frameless plate (no gilt frame) and each menu row is a raised button cap
+  add(document.querySelectorAll('.lu-creature__log .frame').length === 0, 'the log plate carries no frame');
+  const items = [...document.querySelectorAll('.lu-creature__item')];
+  add(items.length === 4 && items.every((it) => it.querySelector('canvas.px')), 'the menu is four button caps');
   const st = battle.state();
   add(st.phase === 'action' || st.phase === 'end', `a fresh battle waits at the menu (${st.phase})`);
   const fight = scriptedFight();

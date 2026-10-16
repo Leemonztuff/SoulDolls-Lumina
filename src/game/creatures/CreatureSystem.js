@@ -633,7 +633,8 @@ export class CreatureSystem {
   }
 
   /**
-   * The 1 × n bench menu (the translated species names, the level beside them).
+   * The bench menu (the translated species names, the level beside them), two columns so a full
+   * party still fits the action band.
    * @returns {BattleMenu}
    */
   _switchMenu(st) {
@@ -641,7 +642,7 @@ export class CreatureSystem {
       label: ct(`species.${c.species}`, c.name),
       sub: ct('roster.level', 'Lv {n}', { n: c.level }),
     }));
-    return { items, cursor: 0, cols: 1, back: true };
+    return { items, cursor: 0, cols: 2, back: true };
   }
 
   /**

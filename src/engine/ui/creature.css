@@ -1,7 +1,7 @@
 /*
  * Luminati UI  the creature battle overlay (docs/specs/PIXEL_UI.md 5, CreatureBattleHUD.js): the
  * full-screen battle screen a creature encounter opens  the dim backdrop, the two framed stat
- * panels, the two sprites, the log window and the action menu. Creature battles only: imported by
+ * panels, the two sprites, the log band and the action menu. Creature battles only: imported by
  * CreatureBattleHUD, which only the creature chunk loads (CREATURE_PURE, vite.config.js), so a
  * peaceful level's stylesheet does not carry these rules.
  *
@@ -42,11 +42,11 @@
 .lu-root .lu-creature__sprite.is-fainted { opacity: 0.4; }
 .lu-root .lu-creature__panel.is-fainted { opacity: 0.7; }
 
-/* the action menu: clickable, the cursor a card-sel band, a disabled row pale */
+/* the action menu: each row a raised button (the cap is a canvas), lit on hover, pale when disabled */
 .lu-root .lu-creature__menu { pointer-events: auto; }
 .lu-root .lu-creature__item { pointer-events: auto; cursor: pointer; }
-.lu-root .lu-creature__item.is-sel { background: var(--g-card-sel0); }
-.lu-root .lu-creature__item.is-disabled { opacity: 0.45; cursor: default; }
+.lu-root .lu-creature__item:hover:not(.is-disabled) { filter: brightness(1.14); }
+.lu-root .lu-creature__item.is-disabled { opacity: 0.4; cursor: default; }
 
 /*
  * The roster panel (CreatureRosterUI.js): the same full-screen overlay and navy backdrop as the
