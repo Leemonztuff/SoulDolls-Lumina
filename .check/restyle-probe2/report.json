@@ -1,0 +1,73 @@
+{
+  "page": "sandbox/sprite_art.html",
+  "query": "mode=hashes",
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "log",
+      "text": "sprite_art: built 14 characters, 4 creatures, 23 props in 265.8 ms"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "evals": [
+    {
+      "code": "(async () => { const m = await import('/src/engine/pixel/CharacterSprites.js'); const s = m.createCharacterSheet('traveler'); const d = s.canvas.getContext('2d').getImageData(0,0,s.canvas.width,s.canvas.height).data; let h=0x811c9dc5; const step=(b)=>{h^=b;h=Math.imul(h,0x01000193);}; for (const v of [s.canvas.width,s.canvas.height]) {step(v&255);step(v>>>8);} for(let i=0;i<d.length;i++) step(d[i]); return { hash:(h>>>0).toString(16).padStart(8,'0'), first: Array.from(d.slice(0,8)), mid: Array.from(d.slice(4000,4016)) }; })()",
+      "result": {
+        "hash": "aae63ab8",
+        "first": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "mid": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          21,
+          14,
+          11,
+          255
+        ]
+      }
+    }
+  ],
+  "fps": [],
+  "shots": [
+    ".check/restyle-probe2/initial.png"
+  ],
+  "gl": "NO WEBGL2",
+  "strict": false,
+  "strictFailures": [],
+  "fonts": "local",
+  "lang": null,
+  "base": "/",
+  "dist": false
+}

@@ -260,6 +260,9 @@ const browser = await puppeteer.launch({
   // @ts-expect-error puppeteer ≥ 22 types drop 'new'; it still runs as true (--headless=new)
   headless: args.headful ? false : 'new',
   args: [
+    // containers / CI run Chrome as root, where the sandbox refuses to start (crbug.com/638180);
+    // harmless on a normal desktop launch
+    '--no-sandbox',
     `--window-size=${width},${height}`,
     '--ignore-gpu-blocklist', '--enable-gpu', '--enable-webgl', '--use-angle=d3d11',
     '--autoplay-policy=no-user-gesture-required', '--no-first-run', '--no-default-browser-check',

@@ -1,0 +1,26 @@
+{
+  "name": "pastel",
+  "description": "Soft storybook look: warm milky skins, cotton-candy hair and outfits, gentle desaturation.",
+  "palette": {
+    "skinLight": "#ffe3d1",
+    "skinMid": "#f6cbb2",
+    "skinDark": "#e8b49a",
+    "hairBrown": "#e8b7a0",
+    "hairBlonde": "#ffd9a0",
+    "hairBlack": "#9a8aa6",
+    "hairRed": "#ffb3ba",
+    "hairWhite": "#fdf6ec",
+    "green": "#b5e3c0",
+    "blue": "#aed0f0",
+    "purple": "#d6c2ef",
+    "red": "#ff9aa2",
+    "orange": "#ffc3a0",
+    "yellow": "#fff3b0",
+    "brown": "#d7b8a1",
+    "grey": "#cfd0d8",
+    "white": "#fffaf2",
+    "black": "#5b5470",
+    "outline": "#4a3f5e"
+  },
+  "postFx": { "saturation": 0.82 }
+}
