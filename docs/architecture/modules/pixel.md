@@ -91,10 +91,10 @@ npm run check -- --page=sandbox/sprite_art.html --query=mode=combat --out=spr_co
 ```js
 import { PixelCanvas, PALETTE, RNG } from './engine/index.js';
 
-const pc = new PixelCanvas(16, 16, '#4a7d3a');   // width, height, optional fill
+const pc = new PixelCanvas(16, 16, '#5b8f50');   // width, height, optional fill
 pc.wrap = true;                                   // out-of-range coords wrap (seamless tiles)
 pc.fillNoise(PALETTE.grass, { scale: 4, seed: 7, period: 4, dither: 0.5 });
-pc.speckle('#d6e58a', 0.04, new RNG(3));
+pc.speckle('#cbf2d5', 0.04, new RNG(3));
 const tex = pc.toTexture({ wrap: 'repeat', mipmaps: true });   // SRGB, NEAREST mag
 ```
 
@@ -144,9 +144,11 @@ name, a non-finite number, a boolean — is opaque black after a console warning
 
 ## 3. Palette
 
-`PALETTE` holds named ramps (arrays of hex, dark → light, hue-shifted: cool saturated shadows,
-warm soft highlights) plus three single colours. Using the same ramps for textures and sprites
-keeps the scene cohesive. `rampAt(ramp, i)` picks a colour with the index clamped.
+`PALETTE` holds named ramps (arrays of hex, dark → light) plus three single colours, all generated
+from the `BRAND` anchors at the top of the module (shadows fall toward the brand inks — warm
+wine-wood or cool ki-teal — and highlights toward parchment or ki-glow). Using the same ramps for
+textures and sprites keeps the scene cohesive. `rampAt(ramp, i)` picks a colour with the index
+clamped.
 
 | Group | Ramps (length) |
 | --- | --- |
@@ -154,7 +156,7 @@ keeps the scene cohesive. `rampAt(ramp, i)` picks a colour with the index clampe
 | Building | `wood`(6), `woodGray`(5), `plaster`(6), `brick`(5), `roofRed`(6), `roofBlue`(5), `thatch`(6), `slate`(5), `metal`(6), `gold`(6) |
 | Cloth / accents | `red`(6), `blue`(6), `green`(5), `purple`(5), `yellow`(6), `cream`(5), `brown`(5), `black`(4), `white`(5) |
 | Characters | `skinLight`, `skinTan`, `skinDark`, `hairBrown`, `hairBlonde`, `hairRed`, `hairWhite` (5 each), `hairBlack`(4) |
-| Light | `fire`(6), plus the single colours `glowWarm` `#ffc27a`, `glowCool` `#9fd8ff`, `outline` `#140f17` (the plum-black sprite outline, never pure black) |
+| Light | `fire`(6), plus the single colours `glowWarm` `#f9ad81`, `glowCool` `#72d8dc`, `outline` `#150e0b` (the warm-ink sprite outline, never pure black) |
 
 ---
 

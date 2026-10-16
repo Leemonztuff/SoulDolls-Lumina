@@ -90,9 +90,12 @@ Everything — terrain, props and characters — is painted from the ramps in
 [`src/engine/pixel/Palette.js`](../../src/engine/pixel/Palette.js) (`PALETTE`). Sharing ramps is what
 makes a pixel villager look like they belong on the pixel cobbles.
 
-Every ramp runs **dark → light and is hue-shifted the way a pixel artist paints**: shadows go cool
-and saturated, highlights warm and soft (e.g. `grass` runs `#1f3a2c` → `#d6e58a`, from blue-green
-to yellow-green).
+Every ramp is **generated from a small set of brand anchors** (`BRAND` in the same file) and runs
+**dark → light**: shadows fall toward the brand inks (warm wine-wood or cool ki-teal), highlights
+rise toward parchment or ki-glow, and the generic hues are rotated/mixed from Fire, Water and Plant
+(e.g. `grass` runs `#1a3e3b` → `#cbf2d5`). Change a `BRAND` value and the whole palette follows;
+only the ramp keys, lengths and the exact anchors in `BRAND_INDEX` are fixed, so `rampAt()` and the
+sprite/tile recipes keep working.
 
 | Group | Ramps |
 | --- | --- |
@@ -100,7 +103,7 @@ to yellow-green).
 | Building materials | `wood`, `woodGray`, `plaster`, `brick`, `roofRed`, `roofBlue`, `thatch`, `slate`, `metal`, `gold` |
 | Cloth / accents | `red`, `blue`, `green`, `purple`, `yellow`, `cream`, `brown`, `black`, `white` |
 | Characters | `skinLight`, `skinTan`, `skinDark`, `hairBrown`, `hairBlonde`, `hairBlack`, `hairRed`, `hairWhite` |
-| Light / glow | `fire` (ramp), `glowWarm` `#ffc27a`, `glowCool` `#9fd8ff`, `outline` `#140f17` |
+| Light / glow | `fire` (ramp), `glowWarm` `#f9ad81`, `glowCool` `#72d8dc`, `outline` `#150e0b` |
 
 `rampAt(ramp, i)` clamps an index into a ramp.
 
@@ -172,7 +175,7 @@ Design principles (from the file header and the texture auditor's notes):
   → hair → hat → cape → gear) into a material + shade label buffer, then resolved to per-character
   **5-tone ramps** `[deep, shadow, base, light, shine]` (`materialRamp`). Selective inner lines
   (hair over forehead, arm over torso) separate overlapping parts.
-- **Outline.** A dark plum silhouette outline, `PALETTE.outline` `#140f17` — never pure black.
+- **Outline.** A warm-ink silhouette outline, `PALETTE.outline` `#150e0b` — never pure black.
 - **Light from the upper left.** The `right` row is the `left` row mirrored (so it is lit from the
   upper right), with asymmetric gear (sword, satchel, staff hand) redrawn on the correct side.
 - **Animation.** Rows follow `DIRECTIONS` (`down`, `left`, `right`, `up`); `idle_<dir>` 2 frames at
