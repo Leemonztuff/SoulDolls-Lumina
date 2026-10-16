@@ -119,8 +119,10 @@ if (params.get('style')) {
   if (!res.ok) throw new Error(`sprite_art: style pack fetch failed (${res.status}) ${params.get('style')}`);
   const pack = await res.json();
   installCharacterStyle(pack);
-  window.__spriteStylePackRaw = pack; // stockCharacterHashes() re-installs this exact pack
-  window.__spriteStylePack = pack.name ?? params.get('style');
+  /** @type {any} */
+  const w = window;
+  w.__spriteStylePackRaw = pack; // stockCharacterHashes() re-installs this exact pack
+  w.__spriteStylePack = pack.name ?? params.get('style');
 }
 
 const t0 = performance.now();
@@ -221,7 +223,7 @@ function stockCharacterHashes() {
     out[`custom:${k}`] = canvasHash(s.canvas);
     s.dispose();
   }
-  installCharacterStyle(window.__spriteStylePackRaw);
+  installCharacterStyle(/** @type {any} */ (window).__spriteStylePackRaw);
   return out;
 }
 
@@ -346,14 +348,16 @@ if (mode === 'gallery') {
   app.append(el('pre', { id: 'hashes', style: 'font: 12px/1.3 monospace; white-space: pre-wrap;' }, JSON.stringify(hashes, null, 2)));
   // With a style pack installed (?style=<url>) the numbers above are the STYLED hashes; expose them
   // separately so the restyle CLI can diff styled vs baseline without a second page load.
-  if (window.__spriteStylePack) {
-    window.__spriteStyleHashes = hashes;
+  /** @type {any} */
+  const w = window;
+  if (w.__spriteStylePack) {
+    w.__spriteStyleHashes = hashes;
     // …and the STOCK hashes from this same session (same GPU / browser build), so the CLI's gate
     // compares styled vs stock in one run instead of against the committed baseline (which drifts
     // across machines). Only character sheets: creatures/props never change with a pack.
-    window.__spriteStockHashes = stockCharacterHashes();
-    app.append(el('h2', {}, `Stock-session character hashes (${Object.keys(window.__spriteStockHashes).length})`));
-    app.append(el('pre', { id: 'stock-hashes', style: 'font: 12px/1.3 monospace; white-space: pre-wrap;' }, JSON.stringify(window.__spriteStockHashes, null, 2)));
+    w.__spriteStockHashes = stockCharacterHashes();
+    app.append(el('h2', {}, `Stock-session character hashes (${Object.keys(w.__spriteStockHashes).length})`));
+    app.append(el('pre', { id: 'stock-hashes', style: 'font: 12px/1.3 monospace; white-space: pre-wrap;' }, JSON.stringify(w.__spriteStockHashes, null, 2)));
   }
 } else if (mode === 'combat') {
   // ?mode=combat — combat sheets (COMBAT.md §10): every enemy sheet × pose × direction, the player
