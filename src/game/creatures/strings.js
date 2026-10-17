@@ -136,6 +136,7 @@ const table = {
     'battle.xp': '{name} gained {n} EXP.',
     'battle.levelUp': '{name} grew to Lv {n}!',
     'battle.learned': '{name} learned {move}!',
+    'battle.resonated': '{name} resonated and became {to}!',
   },
   ja: {
     ...namesFor(SPECIES_JA, true, TYPE_JA),

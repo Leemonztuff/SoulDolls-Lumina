@@ -705,6 +705,14 @@ export class CreatureSystem {
           break;
         case 'xp':
           out.push(ct('battle.xp', '{name} gained {n} EXP.', { name: this._nameOf(b.player), n: ev.xp ?? 0 }));
+          if (ev.levels) out.push(ct('battle.levelUp', '{name} grew to Lv {n}!', { name: this._nameOf(b.player), n: ev.levels }));
+          for (const id of ev.learned ?? []) {
+            out.push(ct('battle.learned', '{name} learned {move}!', { name: this._nameOf(b.player), move: ct(`move.${id}`, id) }));
+          }
+          if (ev.resonated) {
+            out.push(ct('battle.resonated', '{name} resonated and became {to}!',
+              { name: this._nameOf(b.player), to: ct(`species.${ev.resonated.to}`, ev.resonated.to) }));
+          }
           break;
         default:
           break;

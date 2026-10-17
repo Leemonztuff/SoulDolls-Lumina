@@ -154,6 +154,8 @@ export interface BattleEvent {
   levels?: number;
   /** Moves learned. */
   learned?: string[];
+  /** The Souldoll Resonance that fired (the species pair; 'xp' event). */
+  resonated?: { from: string, to: string } | null;
   /** How the battle ended. */
   outcome?: BattleOutcome;
 }
@@ -204,6 +206,8 @@ export interface BattleState {
   levels: number;
   /** Moves learned on the win. */
   learned: string[];
+  /** The Souldoll Resonance that fired on the win (null when none). */
+  resonated: { from: string, to: string } | null;
   /** A wild battle (capture and flee unlocked). */
   canCapture: boolean;
   /** The player may flee (an alias of `canCapture`). */

@@ -26,6 +26,20 @@ export const NICK_MAX = 24;
 /** The longest instance id kept on load (an untrusted `uid`). */
 const UID_MAX = 64;
 
+/**
+ * The Resonance chain of a species: the next `CREATURE_DEFS` id it grows into at `level`, or null.
+ * Reads only the plain `resonates` data of `defs.js`; an unknown target id reads as none (a save
+ * with a stale chain simply never resonates). A pure lookup, so the battle and a loaded roster agree.
+ * @param {string} speciesId
+ * @param {number} level
+ * @returns {{ to: string, level: number }|null}
+ */
+export function resonanceOf(speciesId, level) {
+  const r = creatureDef(speciesId)?.resonates;
+  if (!r || typeof r.to !== 'string' || !creatureDef(r.to)) return null;
+  return level >= r.level ? r : null;
+}
+
 /** A session-monotonic id: `c1`, `c2`, … The roster re-mints a collision on a load. */
 let uidSeq = 0;
 
@@ -194,25 +208,31 @@ export class Creature {
    * Gain `amount` experience, leveling up as the curve allows (a level-up keeps the HP gained with
    * the higher max). Stops at `MAX_LEVEL` (the extra experience is dropped). Move learning is the
    * caller's business: `gainXp` names the moves learned through `learnMoves` but does not itself
-   * decide which to keep.
+   * decide which to keep. A Souldoll Resonance (the Souldolls campaign) that fires on a level-up is
+   * reported as `resonated`; the species change happens in `_resonate`, keeping the uid, nickname,
+   * current-HP fraction and known moves.
    * @param {number} amount
-   * @returns {{ levels: number, learned: string[] }} levels gained and the moves newly learnable
+   * @returns {{ levels: number, learned: string[], resonated: { from: string, to: string }|null }}
    */
   gainXp(amount) {
     const gain = Math.max(0, Math.floor(num(amount) ?? 0));
     /** @type {string[]} */
     const learned = [];
     let levels = 0;
-    if (gain <= 0 || this.level >= MAX_LEVEL) return { levels, learned };
+    /** @type {{ from: string, to: string }|null} */
+    let resonated = null;
+    if (gain <= 0 || this.level >= MAX_LEVEL) return { levels, learned, resonated };
     this.exp += gain;
     while (this.level < MAX_LEVEL && this.exp >= xpToNext(this.level, this.def.growth)) {
       this.exp -= xpToNext(this.level, this.def.growth);
       this._levelUp();
       levels++;
       for (const id of this.learnMoves()) learned.push(id);
+      const r = this._resonate();
+      if (r) resonated = r;
     }
     if (this.level >= MAX_LEVEL) this.exp = 0;
-    return { levels, learned };
+    return { levels, learned, resonated };
   }
 
   /** One level up: the stats follow, and the HP gained with the higher max. */
@@ -221,6 +241,24 @@ export class Creature {
     this.level++;
     this.stats = statsAt(this.def, this.level);
     this.hp = clamp(this.hp + (this.maxHp - before), 0, this.maxHp);
+  }
+
+  /**
+   * Resonate when the species' `resonates` level is reached: the identity becomes the next souldoll
+   * (its stats re-derived at the same level, its HP scaled by the same fraction), the uid, nickname
+   * and known moves stay. At most one resonance per call (a chain continues on the next level-up).
+   * @returns {{ from: string, to: string }|null} the species pair, or null when none fired
+   */
+  _resonate() {
+    const r = resonanceOf(this.species, this.level);
+    if (!r) return null;
+    const from = this.species;
+    const wasFainted = this.fainted;
+    const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 1;
+    this.species = r.to;
+    this.stats = statsAt(this.def, this.level);
+    this.hp = clamp(Math.round(this.maxHp * ratio), wasFainted ? 0 : 1, this.maxHp);
+    return { from, to: r.to };
   }
 
   /**

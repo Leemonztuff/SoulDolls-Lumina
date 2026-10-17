@@ -59,6 +59,9 @@
  * @property {LearnsetEntry[]} learnset   the moves and their levels
  * @property {string} sprite          the sprite id passed to the engine's `createSpeciesSheet`
  * @property {boolean} starter        one of the three starter species
+ * @property {{ to: string, level: number }|null} [resonates] the Souldoll Resonance (Souldolls
+ *   campaign): the species a souldoll grows into once it reaches `level`, or null (none). Plain
+ *   data only — `Creature.gainXp` reads it; unknown ids are ignored at play.
  */
 
 /**
@@ -118,70 +121,70 @@ export const CREATURE_DEFS = {
     baseStats: { hp: 55, atk: 45, def: 55, spd: 30 },
     growth: 'medium', catchRate: 190, baseExp: 65,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'leafcut' }],
-    sprite: 'mossling', starter: false,
+    sprite: 'mossling', starter: false, resonates: { to: 'mossmote', level: 14 },
   },
   sparrowling: {
     id: 'sparrowling', name: 'Sparrowling', type: 'grass',
     baseStats: { hp: 40, atk: 55, def: 40, spd: 65 },
     growth: 'medium', catchRate: 190, baseExp: 60,
     learnset: [{ level: 1, move: 'peck' }, { level: 5, move: 'gust' }],
-    sprite: 'sparrowling', starter: false,
+    sprite: 'sparrowling', starter: false, resonates: { to: 'boggart', level: 12 },
   },
   stoneling: {
     id: 'stoneling', name: 'Stoneling', type: 'fire',
     baseStats: { hp: 60, atk: 50, def: 65, spd: 25 },
     growth: 'medium', catchRate: 120, baseExp: 70,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'cinderroll' }],
-    sprite: 'stoneling', starter: false,
+    sprite: 'stoneling', starter: false, resonates: { to: 'cinderbound', level: 18 },
   },
   voltling: {
     id: 'voltling', name: 'Voltling', type: 'fire',
     baseStats: { hp: 42, atk: 58, def: 40, spd: 60 },
     growth: 'medium', catchRate: 120, baseExp: 60,
     learnset: [{ level: 1, move: 'spark' }, { level: 5, move: 'emberpuff' }],
-    sprite: 'voltling', starter: false,
+    sprite: 'voltling', starter: false, resonates: { to: 'lanternfly', level: 14 },
   },
   slitherling: {
     id: 'slitherling', name: 'Slitherling', type: 'water',
     baseStats: { hp: 48, atk: 44, def: 48, spd: 52 },
     growth: 'medium', catchRate: 190, baseExp: 62,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'splashjet' }],
-    sprite: 'slitherling', starter: false,
+    sprite: 'slitherling', starter: false, resonates: { to: 'murkfin', level: 16 },
   },
   buzzling: {
     id: 'buzzling', name: 'Buzzling', type: 'grass',
     baseStats: { hp: 41, atk: 50, def: 42, spd: 58 },
     growth: 'medium', catchRate: 190, baseExp: 58,
     learnset: [{ level: 1, move: 'peck' }, { level: 5, move: 'leafcut' }],
-    sprite: 'buzzling', starter: false,
+    sprite: 'buzzling', starter: false, resonates: { to: 'lanternfly', level: 14 },
   },
   shadeling: {
     id: 'shadeling', name: 'Shadeling', type: 'fire',
     baseStats: { hp: 50, atk: 56, def: 45, spd: 48 },
     growth: 'medium', catchRate: 75, baseExp: 68,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'emberpuff' }],
-    sprite: 'shadeling', starter: false,
+    sprite: 'shadeling', starter: false, resonates: { to: 'gloamwing', level: 20 },
   },
   frostling: {
     id: 'frostling', name: 'Frostling', type: 'water',
     baseStats: { hp: 52, atk: 47, def: 52, spd: 40 },
     growth: 'medium', catchRate: 120, baseExp: 64,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'splashjet' }],
-    sprite: 'frostling', starter: false,
+    sprite: 'frostling', starter: false, resonates: { to: 'shellskimmer', level: 16 },
   },
   aurorling: {
     id: 'aurorling', name: 'Aurorling', type: 'water',
     baseStats: { hp: 47, atk: 51, def: 46, spd: 55 },
     growth: 'medium', catchRate: 75, baseExp: 66,
     learnset: [{ level: 1, move: 'spark' }, { level: 5, move: 'splashjet' }],
-    sprite: 'aurorling', starter: false,
+    sprite: 'aurorling', starter: false, resonates: { to: 'hollowwisp', level: 20 },
   },
   peatling: {
     id: 'peatling', name: 'Peatling', type: 'grass',
     baseStats: { hp: 46, atk: 50, def: 48, spd: 44 },
     growth: 'medium', catchRate: 190, baseExp: 63,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'leafcut' }],
-    sprite: 'peatling', starter: true,
+    sprite: 'peatling', starter: true, resonates: { to: 'boggart', level: 12 },
   },
   mossmote: {
     id: 'mossmote', name: 'Mossmote', type: 'grass',
@@ -209,7 +212,7 @@ export const CREATURE_DEFS = {
     baseStats: { hp: 45, atk: 52, def: 44, spd: 51 },
     growth: 'medium', catchRate: 45, baseExp: 64,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'emberpuff' }],
-    sprite: 'gloamwing', starter: true,
+    sprite: 'gloamwing', starter: true, resonates: { to: 'cavernmite', level: 22 },
   },
   cinderbound: {
     id: 'cinderbound', name: 'Cinderbound', type: 'fire',
@@ -258,7 +261,7 @@ export const CREATURE_DEFS = {
     baseStats: { hp: 46, atk: 48, def: 50, spd: 48 },
     growth: 'medium', catchRate: 45, baseExp: 64,
     learnset: [{ level: 1, move: 'nudge' }, { level: 5, move: 'splashjet' }],
-    sprite: 'tidewisp', starter: true,
+    sprite: 'tidewisp', starter: true, resonates: { to: 'saltling', level: 18 },
   },
 };
 
