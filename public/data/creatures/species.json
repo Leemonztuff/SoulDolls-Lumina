@@ -6,13 +6,24 @@
       "id": "leafling",
       "name": "Leafling",
       "type": "grass",
-      "baseStats": { "hp": 45, "atk": 49, "def": 49, "spd": 45 },
+      "baseStats": {
+        "hp": 45,
+        "atk": 49,
+        "def": 49,
+        "spd": 45
+      },
       "growth": "medium",
       "catchRate": 45,
       "baseExp": 64,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "leafcut" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "leafcut"
+        }
       ],
       "sprite": "leafling",
       "starter": true
@@ -21,13 +32,24 @@
       "id": "emberling",
       "name": "Emberling",
       "type": "fire",
-      "baseStats": { "hp": 44, "atk": 52, "def": 43, "spd": 50 },
+      "baseStats": {
+        "hp": 44,
+        "atk": 52,
+        "def": 43,
+        "spd": 50
+      },
       "growth": "medium",
       "catchRate": 45,
       "baseExp": 62,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "emberpuff" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "emberpuff"
+        }
       ],
       "sprite": "emberling",
       "starter": true
@@ -36,13 +58,24 @@
       "id": "rippling",
       "name": "Rippling",
       "type": "water",
-      "baseStats": { "hp": 46, "atk": 48, "def": 50, "spd": 47 },
+      "baseStats": {
+        "hp": 46,
+        "atk": 48,
+        "def": 50,
+        "spd": 47
+      },
       "growth": "medium",
       "catchRate": 45,
       "baseExp": 63,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "rippling",
       "starter": true
@@ -51,163 +84,324 @@
       "id": "mossling",
       "name": "Mossling",
       "type": "grass",
-      "baseStats": { "hp": 55, "atk": 45, "def": 55, "spd": 30 },
+      "baseStats": {
+        "hp": 55,
+        "atk": 45,
+        "def": 55,
+        "spd": 30
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 65,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "leafcut" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "leafcut"
+        }
       ],
       "sprite": "mossling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "mossmote",
+        "level": 14
+      }
     },
     {
       "id": "sparrowling",
       "name": "Sparrowling",
       "type": "grass",
-      "baseStats": { "hp": 40, "atk": 55, "def": 40, "spd": 65 },
+      "baseStats": {
+        "hp": 40,
+        "atk": 55,
+        "def": 40,
+        "spd": 65
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 60,
       "learnset": [
-        { "level": 1, "move": "peck" },
-        { "level": 5, "move": "gust" }
+        {
+          "level": 1,
+          "move": "peck"
+        },
+        {
+          "level": 5,
+          "move": "gust"
+        }
       ],
       "sprite": "sparrowling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "boggart",
+        "level": 12
+      }
     },
     {
       "id": "stoneling",
       "name": "Stoneling",
       "type": "fire",
-      "baseStats": { "hp": 60, "atk": 50, "def": 65, "spd": 25 },
+      "baseStats": {
+        "hp": 60,
+        "atk": 50,
+        "def": 65,
+        "spd": 25
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 70,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "cinderroll" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "cinderroll"
+        }
       ],
       "sprite": "stoneling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "cinderbound",
+        "level": 18
+      }
     },
     {
       "id": "voltling",
       "name": "Voltling",
       "type": "fire",
-      "baseStats": { "hp": 42, "atk": 58, "def": 40, "spd": 60 },
+      "baseStats": {
+        "hp": 42,
+        "atk": 58,
+        "def": 40,
+        "spd": 60
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 60,
       "learnset": [
-        { "level": 1, "move": "spark" },
-        { "level": 5, "move": "emberpuff" }
+        {
+          "level": 1,
+          "move": "spark"
+        },
+        {
+          "level": 5,
+          "move": "emberpuff"
+        }
       ],
       "sprite": "voltling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "lanternfly",
+        "level": 14
+      }
     },
     {
       "id": "slitherling",
       "name": "Slitherling",
       "type": "water",
-      "baseStats": { "hp": 48, "atk": 44, "def": 48, "spd": 52 },
+      "baseStats": {
+        "hp": 48,
+        "atk": 44,
+        "def": 48,
+        "spd": 52
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 62,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "slitherling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "murkfin",
+        "level": 16
+      }
     },
     {
       "id": "buzzling",
       "name": "Buzzling",
       "type": "grass",
-      "baseStats": { "hp": 41, "atk": 50, "def": 42, "spd": 58 },
+      "baseStats": {
+        "hp": 41,
+        "atk": 50,
+        "def": 42,
+        "spd": 58
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 58,
       "learnset": [
-        { "level": 1, "move": "peck" },
-        { "level": 5, "move": "leafcut" }
+        {
+          "level": 1,
+          "move": "peck"
+        },
+        {
+          "level": 5,
+          "move": "leafcut"
+        }
       ],
       "sprite": "buzzling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "lanternfly",
+        "level": 14
+      }
     },
     {
       "id": "shadeling",
       "name": "Shadeling",
       "type": "fire",
-      "baseStats": { "hp": 50, "atk": 56, "def": 45, "spd": 48 },
+      "baseStats": {
+        "hp": 50,
+        "atk": 56,
+        "def": 45,
+        "spd": 48
+      },
       "growth": "medium",
       "catchRate": 75,
       "baseExp": 68,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "emberpuff" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "emberpuff"
+        }
       ],
       "sprite": "shadeling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "gloamwing",
+        "level": 20
+      }
     },
     {
       "id": "frostling",
       "name": "Frostling",
       "type": "water",
-      "baseStats": { "hp": 52, "atk": 47, "def": 52, "spd": 40 },
+      "baseStats": {
+        "hp": 52,
+        "atk": 47,
+        "def": 52,
+        "spd": 40
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 64,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "frostling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "shellskimmer",
+        "level": 16
+      }
     },
     {
       "id": "aurorling",
       "name": "Aurorling",
       "type": "water",
-      "baseStats": { "hp": 47, "atk": 51, "def": 46, "spd": 55 },
+      "baseStats": {
+        "hp": 47,
+        "atk": 51,
+        "def": 46,
+        "spd": 55
+      },
       "growth": "medium",
       "catchRate": 75,
       "baseExp": 66,
       "learnset": [
-        { "level": 1, "move": "spark" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "spark"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "aurorling",
-      "starter": false
+      "starter": false,
+      "resonates": {
+        "to": "hollowwisp",
+        "level": 20
+      }
     },
     {
       "id": "peatling",
       "name": "Peatling",
       "type": "grass",
-      "baseStats": { "hp": 46, "atk": 50, "def": 48, "spd": 44 },
+      "baseStats": {
+        "hp": 46,
+        "atk": 50,
+        "def": 48,
+        "spd": 44
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 63,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "leafcut" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "leafcut"
+        }
       ],
       "sprite": "peatling",
-      "starter": true
+      "starter": true,
+      "resonates": {
+        "to": "boggart",
+        "level": 12
+      }
     },
     {
       "id": "mossmote",
       "name": "Mossmote",
       "type": "grass",
-      "baseStats": { "hp": 52, "atk": 44, "def": 56, "spd": 32 },
+      "baseStats": {
+        "hp": 52,
+        "atk": 44,
+        "def": 56,
+        "spd": 32
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 64,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "leafcut" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "leafcut"
+        }
       ],
       "sprite": "mossmote",
       "starter": false
@@ -216,13 +410,24 @@
       "id": "boggart",
       "name": "Boggart",
       "type": "grass",
-      "baseStats": { "hp": 44, "atk": 54, "def": 42, "spd": 58 },
+      "baseStats": {
+        "hp": 44,
+        "atk": 54,
+        "def": 42,
+        "spd": 58
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 62,
       "learnset": [
-        { "level": 1, "move": "peck" },
-        { "level": 5, "move": "gust" }
+        {
+          "level": 1,
+          "move": "peck"
+        },
+        {
+          "level": 5,
+          "move": "gust"
+        }
       ],
       "sprite": "boggart",
       "starter": false
@@ -231,13 +436,24 @@
       "id": "lanternfly",
       "name": "Lanternfly",
       "type": "fire",
-      "baseStats": { "hp": 42, "atk": 55, "def": 40, "spd": 62 },
+      "baseStats": {
+        "hp": 42,
+        "atk": 55,
+        "def": 40,
+        "spd": 62
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 61,
       "learnset": [
-        { "level": 1, "move": "spark" },
-        { "level": 5, "move": "emberpuff" }
+        {
+          "level": 1,
+          "move": "spark"
+        },
+        {
+          "level": 5,
+          "move": "emberpuff"
+        }
       ],
       "sprite": "lanternfly",
       "starter": false
@@ -246,28 +462,54 @@
       "id": "gloamwing",
       "name": "Gloamwing",
       "type": "fire",
-      "baseStats": { "hp": 45, "atk": 52, "def": 44, "spd": 51 },
+      "baseStats": {
+        "hp": 45,
+        "atk": 52,
+        "def": 44,
+        "spd": 51
+      },
       "growth": "medium",
       "catchRate": 45,
       "baseExp": 64,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "emberpuff" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "emberpuff"
+        }
       ],
       "sprite": "gloamwing",
-      "starter": true
+      "starter": true,
+      "resonates": {
+        "to": "cavernmite",
+        "level": 22
+      }
     },
     {
       "id": "cinderbound",
       "name": "Cinderbound",
       "type": "fire",
-      "baseStats": { "hp": 58, "atk": 52, "def": 60, "spd": 28 },
+      "baseStats": {
+        "hp": 58,
+        "atk": 52,
+        "def": 60,
+        "spd": 28
+      },
       "growth": "medium",
       "catchRate": 90,
       "baseExp": 68,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "cinderroll" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "cinderroll"
+        }
       ],
       "sprite": "cinderbound",
       "starter": false
@@ -276,13 +518,24 @@
       "id": "cavernmite",
       "name": "Cavernmite",
       "type": "fire",
-      "baseStats": { "hp": 50, "atk": 58, "def": 48, "spd": 46 },
+      "baseStats": {
+        "hp": 50,
+        "atk": 58,
+        "def": 48,
+        "spd": 46
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 66,
       "learnset": [
-        { "level": 1, "move": "spark" },
-        { "level": 5, "move": "cinderroll" }
+        {
+          "level": 1,
+          "move": "spark"
+        },
+        {
+          "level": 5,
+          "move": "cinderroll"
+        }
       ],
       "sprite": "cavernmite",
       "starter": false
@@ -291,13 +544,24 @@
       "id": "murkfin",
       "name": "Murkfin",
       "type": "water",
-      "baseStats": { "hp": 50, "atk": 46, "def": 52, "spd": 48 },
+      "baseStats": {
+        "hp": 50,
+        "atk": 46,
+        "def": 52,
+        "spd": 48
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 64,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "murkfin",
       "starter": false
@@ -306,13 +570,24 @@
       "id": "shellskimmer",
       "name": "Shellskimmer",
       "type": "water",
-      "baseStats": { "hp": 55, "atk": 42, "def": 62, "spd": 35 },
+      "baseStats": {
+        "hp": 55,
+        "atk": 42,
+        "def": 62,
+        "spd": 35
+      },
       "growth": "medium",
       "catchRate": 120,
       "baseExp": 65,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "shellskimmer",
       "starter": false
@@ -321,13 +596,24 @@
       "id": "saltling",
       "name": "Saltling",
       "type": "water",
-      "baseStats": { "hp": 48, "atk": 48, "def": 50, "spd": 50 },
+      "baseStats": {
+        "hp": 48,
+        "atk": 48,
+        "def": 50,
+        "spd": 50
+      },
       "growth": "medium",
       "catchRate": 190,
       "baseExp": 62,
       "learnset": [
-        { "level": 1, "move": "spark" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "spark"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "saltling",
       "starter": false
@@ -336,13 +622,24 @@
       "id": "hollowwisp",
       "name": "Hollowwisp",
       "type": "water",
-      "baseStats": { "hp": 44, "atk": 54, "def": 42, "spd": 56 },
+      "baseStats": {
+        "hp": 44,
+        "atk": 54,
+        "def": 42,
+        "spd": 56
+      },
       "growth": "medium",
       "catchRate": 90,
       "baseExp": 66,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "hollowwisp",
       "starter": false
@@ -351,16 +648,31 @@
       "id": "tidewisp",
       "name": "Tidewisp",
       "type": "water",
-      "baseStats": { "hp": 46, "atk": 48, "def": 50, "spd": 48 },
+      "baseStats": {
+        "hp": 46,
+        "atk": 48,
+        "def": 50,
+        "spd": 48
+      },
       "growth": "medium",
       "catchRate": 45,
       "baseExp": 64,
       "learnset": [
-        { "level": 1, "move": "nudge" },
-        { "level": 5, "move": "splashjet" }
+        {
+          "level": 1,
+          "move": "nudge"
+        },
+        {
+          "level": 5,
+          "move": "splashjet"
+        }
       ],
       "sprite": "tidewisp",
-      "starter": true
+      "starter": true,
+      "resonates": {
+        "to": "saltling",
+        "level": 18
+      }
     }
   ]
 }

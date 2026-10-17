@@ -103,6 +103,8 @@ export class CreatureBattle {
     this.levelsGained = 0;
     /** @type {string[]} the moves learned on the win. */
     this.learned = [];
+    /** @type {{ from: string, to: string }|null} the Souldoll Resonance that fired on the win. */
+    this.resonated = null;
     /** @type {Creature|null} the creature captured. */
     this.caught = null;
     /** Orbs spent. */
@@ -409,14 +411,15 @@ export class CreatureBattle {
     this.phase = 'end';
   }
 
-  /** Give the player's active creature the foe's experience. */
+  /** Give the player's active creature the foe's experience (a Souldoll Resonance rides along). */
   _awardXp() {
     const xp = expYield(this.foe.def.baseExp, this.foe.level);
     const res = this.player.gainXp(xp);
     this.xpGained = xp;
     this.levelsGained = res.levels;
     this.learned = res.learned;
-    this._event({ kind: 'xp', xp, levels: res.levels, learned: res.learned });
+    this.resonated = res.resonated ?? null;
+    this._event({ kind: 'xp', xp, levels: res.levels, learned: res.learned, resonated: res.resonated ?? null });
   }
 
   /** Throw an orb (phase `capture`): spend it, roll, catch or give the foe its turn. */
@@ -477,6 +480,7 @@ export class CreatureBattle {
       xp: this.xpGained,
       levels: this.levelsGained,
       learned: this.learned.slice(),
+      resonated: this.resonated,
       canCapture: this.capture,
       canRun: this.capture,
       orbs: this.orbCount ? this.orbCount() : null,
