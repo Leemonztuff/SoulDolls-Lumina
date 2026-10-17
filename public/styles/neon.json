@@ -1,0 +1,38 @@
+{
+  "name": "neon",
+  "description": "Cyber-festival look: cool skin tones, electric hair, deep violet outlines and saturated colours.",
+  "palette": {
+    "skinLight": "#cfe3f4",
+    "skinMid": "#a9c6de",
+    "skinDark": "#8aa8c4",
+    "hairBrown": "#22d3ee",
+    "hairBlonde": "#7dd3fc",
+    "hairBlack": "#0e7490",
+    "hairRed": "#f472b6",
+    "hairWhite": "#e0f2fe",
+    "green": "#34d399",
+    "blue": "#38bdf8",
+    "purple": "#a78bfa",
+    "red": "#fb7185",
+    "orange": "#fbbf24",
+    "yellow": "#fde047",
+    "brown": "#6d5a8a",
+    "grey": "#8b95b2",
+    "white": "#ecfeff",
+    "black": "#0b1020",
+    "outline": "#1b1440"
+  },
+  "overrides": {
+    "traveler": {
+      "hatBand": "#f472b6",
+      "feather": "#22d3ee",
+      "cape": { "color": "#7c3aed", "lining": "#1e1b4b" }
+    },
+    "guard": {
+      "hatColor": "#1e293b",
+      "hatBand": "#22d3ee",
+      "outfit": { "accent": "#22d3ee" }
+    }
+  },
+  "postFx": { "saturation": 1.15 }
+}

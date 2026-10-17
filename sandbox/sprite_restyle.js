@@ -96,7 +96,7 @@ function sheetCanvas(canvas, zoom) {
   return cv;
 }
 
-/** @param {Record<string, HTMLCanvasElement>} store canvases by key, without installing any pack */
+/** Re-runs a sheet builder while the requested hook state is active (hash-safe). */
 function buildSheatsWith(build) {
   // hash-safe: build each sheet while the requested hook state is active
   return build();
@@ -202,11 +202,13 @@ select.onchange = applyFromSelect;
     url = hit ? hit.url : want;
   } else if (shipped.length) url = shipped[0].url;
   if (url) {
-    select.value = url;
+    /** @type {any} */
+    const sel = select;
+    sel.value = url;
     await applyFromSelect();
     if (status.className.includes('err') || !currentPack) {
       // bad ?pack= value: fall back to stock, show the reason
-      select.value = '';
+      sel.value = '';
       setPack(null);
       render();
     }
